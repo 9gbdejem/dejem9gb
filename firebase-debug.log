@@ -1,0 +1,59 @@
+[debug] [2025-09-16T13:51:56.908Z] ----------------------------------------------------------------------
+[debug] [2025-09-16T13:51:56.911Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init functions
+[debug] [2025-09-16T13:51:56.911Z] CLI Version:   14.16.0
+[debug] [2025-09-16T13:51:56.912Z] Platform:      win32
+[debug] [2025-09-16T13:51:56.912Z] Node Version:  v22.13.0
+[debug] [2025-09-16T13:51:56.912Z] Time:          Tue Sep 16 2025 10:51:56 GMT-0300 (GMT-03:00)
+[debug] [2025-09-16T13:51:56.912Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-09-16T13:51:56.915Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2025-09-16T13:51:56.965Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-09-16T13:51:56.966Z] > authorizing via signed-in user (9gbdejem@gmail.com)
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\36953268832\Desktop\Production\Login HTML\Login\Página
+
+[debug] [2025-09-16T13:51:57.236Z] *** [apiv2] error from fetch(https://firebase-public.firebaseio.com/cli.json, {"headers":{},"method":"GET"}): FetchError: request to https://firebase-public.firebaseio.com/cli.json failed, reason: self-signed certificate in certificate chain
+[warn] !  Unable to fetch the CLI MOTD and remote config. This is not a fatal error, but may indicate an issue with your network connection. 
+[debug] [2025-09-16T13:51:57.237Z] Failed to fetch MOTD FirebaseError: Failed to make request to https://firebase-public.firebaseio.com/cli.json
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] but for now we'll just set up a default project.
+[info] 
+[debug] [2025-09-16T13:52:30.458Z] Checked if tokens are valid: false, expires at: 1754405334082
+[debug] [2025-09-16T13:52:30.459Z] Checked if tokens are valid: false, expires at: 1754405334082
+[debug] [2025-09-16T13:52:30.459Z] > refreshing access token with scopes: []
+[debug] [2025-09-16T13:52:30.460Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-09-16T13:52:30.460Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-09-16T13:52:30.580Z] *** [apiv2] error from fetch(https://www.googleapis.com/oauth2/v3/token, {"headers":{},"method":"POST","body":{"_overheadLength":545,"_valueLength":212,"_valuesToMeasure":[],"writable":false,"readable":true,"dataSize":0,"maxDataSize":2097152,"pauseStreams":true,"_released":true,"_streams":[],"_currentStream":null,"_insideLoop":false,"_pendingNext":false,"_boundary":"--------------------------0f0b14a23f86cc884206675f","_events":{},"_eventsCount":1}}): FetchError: request to https://www.googleapis.com/oauth2/v3/token failed, reason: self-signed certificate in certificate chain
+[error] Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2025-09-16T13:52:30.580Z] Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2025-09-16T13:52:30.581Z] FirebaseError: Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+    at invalidCredentialError (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\auth.js:167:12)
+    at refreshTokens (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\auth.js:591:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async getAccessToken (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\apiv2.js:42:18)
+    at async Client.addAuthHeader (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\apiv2.js:169:21)
+    at async Client.request (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\apiv2.js:120:34)
+    at async getProjectPage (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\management\projects.js:267:17)
+    at async getFirebaseProjectPage (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\management\projects.js:284:23)
+    at async selectProjectInteractively (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\management\projects.js:134:41)
+    at async Object.doSetup (C:\Users\36953268832\AppData\Roaming\npm\node_modules\firebase-tools\lib\init\features\project.js:89:31)
+[error] 
+[error] Error: Failed to list Firebase projects. See firebase-debug.log for more info.

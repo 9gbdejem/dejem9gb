@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de Usuários</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="table-container">
+        <div class="header">
+            <h2>Lista de Usuários</h2>
+            <div>
+                <button class="secondary" onclick="window.location.href='main.html'">Voltar</button>
+                <button class="logout-btn" id="logoutBtn">Sair</button>
+            </div>
+        </div>
+        
+        <table id="usersTable">
+            <thead>
+                <tr>
+                    <th>RE</th>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>CPF</th>
+                    <th>Primeiro Acesso</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Os dados serão preenchidos via JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <script type="module" src="lista-usuarios.js"></script>
+</body>
+</html>
