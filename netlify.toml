@@ -1,0 +1,3 @@
+[build]
+  publish = "."                  # pasta que será publicada (onde está index.html)
+  functions = "netlify/functions" # pasta das functions

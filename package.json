@@ -1,0 +1,6 @@
+{
+  "name": "dejem9gb",
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  }
+}
