@@ -146,54 +146,13 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             errorMessage.textContent = 'Senha incorreta.';
             
             if (confirm('Senha incorreta. Deseja receber uma senha temporária por e-mail?')) {
-                // USA A FUNÇÃO DO FIREBASE DIRETO (já que seu backend não está pronto)
-                await sendPasswordResetEmail(auth, usuarioAtual.email);
-                successMessage.textContent = 'E-mail de redefinição enviado!';
+                await enviarSenhaTemporariaComBrevo(reAtual);
             }
         } else {
             errorMessage.textContent = 'Erro ao fazer login. Tente novamente.';
         }
     }
 });
-
-// Função para enviar senha temporária PERSONALIZADA
-async function enviarSenhaTemporaria(re) {
-    const loading = document.getElementById('loading');
-    const errorMessage = document.getElementById('errorMessage');
-    const successMessage = document.getElementById('successMessage');
-    
-    loading.style.display = 'block';
-    errorMessage.textContent = '';
-    successMessage.textContent = '';
-    
-    try {
-        console.log('🔍 Buscando RE:', re);
-        
-        // 1. Busca o usuário pelo RE
-        const reSnapshot = await get(ref(database, `acesso/${re}`));
-        
-        if (!reSnapshot.exists()) {
-            errorMessage.textContent = 'RE não encontrado.';
-            loading.style.display = 'none';
-            return;
-        }
-        
-        const userData = reSnapshot.val();
-        console.log('📧 Email encontrado:', userData.email);
-        
-        // 2. USA O MÉTODO NATIVO DO FIREBASE (funciona sempre)
-        await sendPasswordResetEmail(auth, userData.email);
-        
-        successMessage.textContent = 'E-mail de redefinição enviado! Verifique sua caixa de entrada.';
-        console.log('✅ Email do Firebase enviado');
-        
-    } catch (error) {
-        console.error('❌ Erro:', error);
-        errorMessage.textContent = 'Erro ao enviar e-mail. Tente novamente.';
-    } finally {
-        loading.style.display = 'none';
-    }
-}
 
 // Função para gerar senha temporária
 function gerarSenhaTemporaria() {
@@ -216,6 +175,123 @@ function gerarSenhaTemporaria() {
     return senha + '!'; // Exemplo: "Ab3cdeF!"
 }
 
+// Função para atualizar senha no backend
+async function atualizarSenhaNoBackend(email, novaSenha, re) {
+    try {
+        const response = await fetch('/.netlify/functions/updatePassword', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                email: email, 
+                novaSenha: novaSenha,
+                re: re 
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Erro ao atualizar senha');
+        }
+        
+        console.log('✅ Senha atualizada no backend');
+        return data;
+        
+    } catch (error) {
+        console.error('❌ Erro ao atualizar senha:', error);
+        throw error;
+    }
+}
+
+// Função para enviar email via Brevo
+async function enviarEmailBrevo(email, senhaTemporaria, nome) {
+    try {
+        const response = await fetch('/.netlify/functions/sendEmail', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                email: email, 
+                senhaTemporaria: senhaTemporaria,
+                nome: nome 
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Erro ao enviar email');
+        }
+        
+        console.log('✅ Email enviado via Brevo');
+        return data;
+        
+    } catch (error) {
+        console.error('❌ Erro ao enviar email:', error);
+        throw error;
+    }
+}
+
+// Função principal para enviar senha temporária COM BREVO
+async function enviarSenhaTemporariaComBrevo(re) {
+    const loading = document.getElementById('loading');
+    const errorMessage = document.getElementById('errorMessage');
+    const successMessage = document.getElementById('successMessage');
+    
+    loading.style.display = 'block';
+    errorMessage.textContent = '';
+    successMessage.textContent = '';
+    
+    try {
+        console.log('🔍 Buscando RE:', re);
+        
+        // 1. Busca o usuário pelo RE
+        const reSnapshot = await get(ref(database, `acesso/${re}`));
+        
+        if (!reSnapshot.exists()) {
+            errorMessage.textContent = 'RE não encontrado.';
+            loading.style.display = 'none';
+            return;
+        }
+        
+        const userData = reSnapshot.val();
+        const email = userData.email;
+        const nome = userData.nome;
+        
+        console.log('📧 Email encontrado:', email);
+        
+        // 2. Gera nova senha temporária
+        const novaSenhaTemporaria = gerarSenhaTemporaria();
+        console.log('🔑 Senha temporária gerada:', novaSenhaTemporaria);
+        
+        // 3. Atualiza a senha no Firebase Auth e marca para reset
+        await atualizarSenhaNoBackend(email, novaSenhaTemporaria, re);
+        
+        // 4. Envia email com a senha temporária via Brevo
+        await enviarEmailBrevo(email, novaSenhaTemporaria, nome);
+        
+        successMessage.textContent = 'Senha temporária enviada para seu e-mail!';
+        
+    } catch (error) {
+        console.error('❌ Erro:', error);
+        
+        // Fallback: usa o método do Firebase se der erro
+        try {
+            if (usuarioAtual && usuarioAtual.email) {
+                await sendPasswordResetEmail(auth, usuarioAtual.email);
+                successMessage.textContent = 'E-mail de redefinição enviado! Verifique sua caixa de entrada.';
+            }
+        } catch (fallbackError) {
+            errorMessage.textContent = 'Erro ao enviar e-mail. Tente novamente.';
+        }
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
 // Esqueci minha senha
 document.getElementById('forgotPassword').addEventListener('click', async (e) => {
     e.preventDefault();
@@ -228,7 +304,7 @@ document.getElementById('forgotPassword').addEventListener('click', async (e) =>
         return;
     }
     
-    await enviarSenhaTemporaria(re);
+    await enviarSenhaTemporariaComBrevo(re);
 });
 
 // Verifica se usuário já está logado
@@ -237,33 +313,3 @@ auth.onAuthStateChanged(async (user) => {
         window.location.href = 'main.html';
     }
 });
-
-// Função para atualizar senha no backend
-async function atualizarSenhaNoBackend(email, novaSenha) {
-    try {
-        const response = await fetch('/api/atualizar-senha', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, novaSenha })
-        });
-        return await response.json();
-    } catch (error) {
-        console.error('Erro ao atualizar senha:', error);
-        throw error;
-    }
-}
-
-// Função para enviar email personalizado
-async function enviarEmailSenhaTemporaria(email, senhaTemporaria, nome) {
-    try {
-        const response = await fetch('/.netlify/functions/enviar-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, senhaTemporaria, nome })
-        });
-        return await response.json();
-    } catch (error) {
-        console.error('Erro ao enviar email:', error);
-        throw error;
-    }
-}

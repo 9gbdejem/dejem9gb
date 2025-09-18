@@ -1,3 +1,13 @@
 [build]
-  publish = "."                  # pasta que será publicada (onde está index.html)
-  functions = "netlify/functions" # pasta das functions
+  publish = "."
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type"
+    Access-Control-Allow-Methods = "POST, OPTIONS"

@@ -1,53 +1,63 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Formulário de Contato</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 40px; }
-    form { max-width: 400px; margin: auto; display: flex; flex-direction: column; gap: 10px; }
-    input, textarea, button { padding: 10px; font-size: 1rem; }
-    button { background: #007bff; color: white; border: none; cursor: pointer; }
-    button:hover { background: #0056b3; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEJEM - 9º GB</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h2>Contato</h2>
-  <form id="contact-form">
-    <input type="text" id="name" placeholder="Seu nome" required>
-    <input type="email" id="email" placeholder="Seu e-mail" required>
-    <input type="text" id="subject" placeholder="Assunto" required>
-    <textarea id="message" placeholder="Mensagem" rows="5" required></textarea>
-    <button type="submit">Enviar</button>
-  </form>
+    <div class="container">
+        <h2>DEJEM - 9º GB</h2>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="re">RE sem dígito:</label>
+                <input type="text" id="re" required placeholder="Digite seu RE" maxlength="6">
+                <div class="loading-small" id="loadingRE" >Buscando...</div>
+            </div>
+            
+            <!-- Dados do usuário (somente leitura) -->
+            <div class="user-info-preview" id="userInfo">
+                <div class="info-group">
+                    <label>Nome:</label>
+                    <span id="userNamePreview" class="info-value"></span>
+                </div>
+                <div class="info-group">
+                    <label>E-mail:</label>
+                    <span id="userEmailPreview" class="info-value"></span>
+                </div>
+                <div class="info-group">
+                    <label>Status:</label>
+                    <span id="userStatusPreview" class="info-value"></span>
+                </div>
+            </div>
 
-  <script>
-    const form = document.getElementById("contact-form");
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+            <!-- Campos de login normal (ocultos inicialmente) -->
+            <div id="loginFields" style="display: none;">
+                <div class="form-group">
+                    <label for="password">Senha:</label>
+                    <input type="password" id="password" required placeholder="Digite sua senha">
+                </div>
+                
+                <button type="submit" id="loginBtn">Entrar</button>
+            </div>
 
-      const payload = {
-        name: document.getElementById("name").value,
-        email: document.getElementById("email").value,
-        subject: document.getElementById("subject").value,
-        message: document.getElementById("message").value
-      };
+            <!-- Botão de primeiro acesso (oculto inicialmente) -->
+            <button type="button" id="redefinirSenhaBtn"  class="secondary" style="display: none;">
+                Primeiro Acesso
+            </button>
+        </form>
+        
+        <div class="link">
+            <a href="#" id="forgotPassword">Esqueci minha senha</a>
+        </div>
+        
+        <div id="errorMessage" class="error-message"></div>
+        <div id="successMessage" class="success-message"></div>
+        
+        <div class="loading" id="loading">Carregando...</div>
+    </div>
 
-      const res = await fetch("/.netlify/functions/sendEmail", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        alert("✅ Mensagem enviada com sucesso!");
-        form.reset();
-      } else {
-        alert("❌ Erro: " + data.error);
-      }
-    });
-  </script>
+    <script type="module" src="auth-re.js"></script>
 </body>
 </html>
