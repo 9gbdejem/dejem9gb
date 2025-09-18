@@ -16,7 +16,7 @@ exports.handler = async (event) => {
         "api-key": process.env.BREVO_API_KEY
       },
       body: JSON.stringify({
-        sender: { name: "Dejem9GB", email: "seuemail@gmail.com" }, 
+        sender: { name: "Dejem9GB", email: "9gbdejem@gmail.com" }, 
         to: [{ email, name }],
         subject,
         htmlContent: `
