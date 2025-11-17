@@ -7,7 +7,7 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #2c0000 0%, #a24b4b 100%);
+    background: linear-gradient(135deg, #2c0000 0%, #ffffff 100%);
     min-height: 100vh;
     display: flex;
     justify-content: center;
@@ -265,4 +265,5 @@ button:disabled {
 
 button:disabled:hover {
     background-color: #cbd5e0;
+
 }
