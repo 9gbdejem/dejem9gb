@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Importar Escalas</title>
+    <style>
+        textarea { width: 100%; height: 300px; margin: 10px 0; }
+        .container { max-width: 800px; margin: 20px auto; }
+        .alert { padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Importar Escalas do Google Sheets</h2>
+        
+        <div class="alert alert-info">
+            <strong>Instruções:</strong><br>
+            1. No Google Sheets, selecione os dados<br>
+            2. Copie (Ctrl+C)<br>
+            3. Cole no campo abaixo (Ctrl+V)<br>
+            4. Clique em "Processar"
+        </div>
+        
+        <textarea id="csvData" placeholder="Cole os dados do Google Sheets aqui..."></textarea>
+        
+        <button onclick="processData()" class="btn btn-primary">Processar</button>
+        <button onclick="clearData()" class="btn btn-secondary">Limpar</button>
+        
+        <div id="result" style="margin-top: 20px;"></div>
+        
+        <div id="preview" style="margin-top: 20px;"></div>
+    </div>
+    
+    <script>
+    function processData() {
+        const csv = document.getElementById('csvData').value;
+        const lines = csv.split('\n');
+        const result = [];
+        
+        // Pular cabeçalho se necessário
+        const startLine = lines[0].includes('GUARNIÇÃO') ? 1 : 0;
+        
+        for (let i = startLine; i < lines.length; i++) {
+            if (lines[i].trim() === '') continue;
+            
+            // Ajuste o split conforme seu formato de dados
+            const cells = lines[i].split('\t');
+            
+            if (cells.length >= 7) {
+                const escala = {
+                    guarnicao: cells[0]?.trim() || '',
+                    local: cells[1]?.trim() || '',
+                    composicao: cells[2]?.trim() || '',
+                    horario: cells[3]?.trim() || '',
+                    id: cells[4]?.trim() || '',
+                    confirmacao: cells[5]?.toLowerCase().includes('sim') || false,
+                    documento: cells[6]?.trim() || '',
+                    data: new Date().toISOString().split('T')[0],
+                    timestamp: Date.now()
+                };
+                
+                result.push(escala);
+            }
+        }
+        
+        document.getElementById('result').innerHTML = `
+            <div class="alert alert-success">
+                <strong>✓ ${result.length} escalas processadas</strong><br>
+                Copie o JSON abaixo e use no Firebase:
+            </div>
+            <pre style="background: #f8f9fa; padding: 15px; border-radius: 5px; max-height: 300px; overflow-y: auto;">
+${JSON.stringify(result, null, 2)}
+            </pre>
+        `;
+        
+        // Preview
+        let preview = '<h4>Pré-visualização:</h4><table border="1" cellpadding="5"><tr><th>RE</th><th>Nome</th><th>Local</th></tr>';
+        result.slice(0, 5).forEach(e => {
+            const re = e.guarnicao.substring(0, 6);
+            const nome = e.guarnicao.substring(7);
+            preview += `<tr><td>${re}</td><td>${nome}</td><td>${e.local}</td></tr>`;
+        });
+        preview += '</table>';
+        
+        document.getElementById('preview').innerHTML = preview;
+    }
+    
+    function clearData() {
+        document.getElementById('csvData').value = '';
+        document.getElementById('result').innerHTML = '';
+        document.getElementById('preview').innerHTML = '';
+    }
+    </script>
+</body>
+</html>

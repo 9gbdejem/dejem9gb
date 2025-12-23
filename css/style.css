@@ -1,0 +1,352 @@
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #3498db;
+    --success-color: #27ae60;
+    --danger-color: #e74c3c;
+    --light-color: #ecf0f1;
+    --dark-color: #2c3e50;
+}
+
+body {
+    background: linear-gradient(135deg, #a70000 0%, #270000 100%);
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.login-box {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    padding: 40px;
+    width: 100%;
+    max-width: 450px;
+}
+
+.logo-container {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.logo {
+    max-width: 50%;
+    /* max-height: 80px; */
+}
+
+.step {
+    display: none;
+}
+
+.step.active {
+    display: block;
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.btn {
+    padding: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background-color: var(--secondary-color);
+    border-color: var(--secondary-color);
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.input-group-text {
+    cursor: pointer;
+}
+
+.alert {
+    border-radius: 8px;
+    border: none;
+}
+
+#forgotPassword {
+    color: var(--secondary-color);
+    transition: color 0.3s ease;
+}
+
+#forgotPassword:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+/* Navbar styles */
+.navbar {
+    background-color: var(--primary-color) !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-brand {
+    color: white !important;
+    font-weight: bold;
+}
+
+.nav-link {
+    color: rgba(255, 255, 255, 0.8) !important;
+    transition: color 0.3s ease;
+}
+
+.nav-link:hover {
+    color: white !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .login-box {
+        padding: 30px 20px;
+    }
+    
+    .logo {
+        max-width: 120px;
+    }
+}
+
+/* Transição suave para mostrar/esconder o link */
+#forgotPassword {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+#forgotPassword.d-none {
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+}
+
+#forgotPassword:not(.d-none) {
+    animation: fadeInUp 0.5s ease;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Estilos específicos para escalas */
+
+/* Highlight para RE filtrado */
+.table-info {
+    background-color: #e3f2fd !important;
+}
+
+.table-info:hover {
+    background-color: #bbdefb !important;
+}
+
+/* Badges personalizados */
+.badge {
+    font-size: 0.85em;
+    padding: 0.35em 0.65em;
+}
+
+/* Cards de estatísticas */
+.card.bg-primary, 
+.card.bg-success, 
+.card.bg-warning, 
+.card.bg-info {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card.bg-primary:hover, 
+.card.bg-success:hover, 
+.card.bg-warning:hover, 
+.card.bg-info:hover {
+    transform: translateY(-2px);
+    transition: transform 0.2s ease;
+}
+
+/* Tabela responsiva */
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* Botões de ação */
+.btn-outline-primary, 
+.btn-outline-success {
+    border-width: 1px;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Barra de busca */
+.input-group-text {
+    background-color: #f8f9fa;
+}
+
+/* Modal */
+.modal-content {
+    border-radius: 10px;
+    border: none;
+}
+
+.modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .table td, .table th {
+        padding: 0.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+}
+
+/* Estilos para o Navbar */
+.navbar {
+    padding: 0.5rem 1rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-brand {
+    font-size: 1.3rem;
+    padding: 0.5rem 0;
+}
+
+.navbar-brand i {
+    color: #ffd700;
+}
+
+.nav-link {
+    padding: 0.5rem 1rem !important;
+    border-radius: 4px;
+    margin: 0 2px;
+    transition: all 0.3s ease;
+}
+
+.nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.nav-link.active {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    font-weight: 600;
+}
+
+/* Dropdown */
+.dropdown-menu {
+    border: none;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    margin-top: 8px;
+}
+
+.dropdown-item {
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    margin: 2px 5px;
+    width: auto;
+}
+
+.dropdown-item:hover {
+    background-color: #f8f9fa;
+}
+
+.dropdown-item.text-danger:hover {
+    background-color: #f8d7da;
+}
+
+/* Timer da sessão */
+#sessionTimerContainer .navbar-text {
+    font-size: 0.9rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Botão do usuário */
+.btn-outline-light {
+    border-color: rgba(255, 255, 255, 0.3);
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.btn-outline-light:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .navbar-collapse {
+        padding: 1rem 0;
+    }
+    
+    .nav-link {
+        margin: 2px 0;
+    }
+    
+    #userGreeting {
+        display: none !important;
+    }
+    
+    #sessionTimerContainer {
+        order: -1;
+        width: 100%;
+        text-align: center;
+        margin: 10px 0;
+    }
+}
+
+/* Animações */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.text-danger {
+    animation: pulse 1s infinite;
+}
+
+/* Ícones do menu */
+.nav-link i, .dropdown-item i {
+    width: 20px;
+    text-align: center;
+}

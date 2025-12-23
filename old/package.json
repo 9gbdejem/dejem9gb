@@ -1,0 +1,7 @@
+{
+  "name": "dejem9gb",
+  "dependencies": {
+    "node-fetch": "^2.6.7",
+    "firebase-admin": "^11.11.0"
+  }
+}
