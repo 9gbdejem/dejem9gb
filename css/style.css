@@ -350,3 +350,98 @@ body {
     width: 20px;
     text-align: center;
 }
+
+/* Estilos específicos para a página de escalas */
+
+/* Badges coloridas para composições */
+.badge.bg-danger { background-color: #dc3545 !important; }
+.badge.bg-success { background-color: #198754 !important; }
+.badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
+.badge.bg-info { background-color: #0dcaf0 !important; }
+.badge.bg-primary { background-color: #0d6efd !important; }
+
+/* Alertas coloridos para detalhes */
+.alert-danger { background-color: #f8d7da !important; }
+.alert-success { background-color: #d1e7dd !important; }
+.alert-warning { background-color: #fff3cd !important; }
+.alert-info { background-color: #cff4fc !important; }
+
+/* Tabela responsiva */
+#escalasTable th {
+    white-space: nowrap;
+    background-color: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* Linha destacada para escala do usuário */
+.table-info {
+    background-color: #e3f2fd !important;
+}
+
+.table-info:hover {
+    background-color: #bbdefb !important;
+}
+
+/* Filtros */
+#filterMonth, #filterStation {
+    max-width: 200px;
+}
+
+/* Paginação */
+.pagination .page-item.active .page-link {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+/* Modal de detalhes */
+.modal-content {
+    border-radius: 10px;
+}
+
+.modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+}
+
+/* Card de estatísticas */
+.card.bg-primary, 
+.card.bg-info, 
+.card.bg-warning, 
+.card.bg-success {
+    transition: transform 0.2s ease;
+}
+
+.card.bg-primary:hover, 
+.card.bg-info:hover, 
+.card.bg-warning:hover, 
+.card.bg-success:hover {
+    transform: translateY(-5px);
+    cursor: pointer;
+}
+
+/* Botões de ação */
+.btn-outline-primary:hover {
+    transform: scale(1.05);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+    
+    #escalasTable td, #escalasTable th {
+        padding: 0.5rem;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+}
