@@ -1,36 +1,51 @@
-import { auth } from './firebase-config.js';
-import { signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-import { checkAuth, loadNavbar } from './auth-check.js';
+// dashboard.js - VERSÃO DEFINITIVA PARA SPA
+import { checkAuth } from './auth-check.js';
 
-document.addEventListener('DOMContentLoaded', async function() {
-    console.log('🚀 Dashboard carregando...');
+// Exportar as funções principais
+export async function initDashboard() {
+    console.log('🚀 Dashboard inicializando (SPA)...');
     
     try {
-        // Verificar autenticação (nível 1)
-        const { user, userData, re } = await checkAuth(3);
+        // 1. Verificar autenticação
+        const { userData, re } = await checkAuth(3);
         
-        console.log('✅ Dashboard acessado:', {
-            nome: userData.nome,
+        console.log('📋 Dados do usuário:', {
             re: re,
+            nome: userData.nome,
             nivel: userData.nivel
         });
         
-        // Carregar navbar
-        await loadNavbar();
+        // 2. Garantir dados no sessionStorage
+        sessionStorage.setItem('userRE', re);
+        sessionStorage.setItem('userName', userData.nome);
         
-        // Personalizar dashboard
+        // 3. Atualizar userGreeting no SPA
+        if (window.updateUserGreetingInSPA) {
+            console.log('🔄 Atualizando userGreeting via SPA...');
+            window.updateUserGreetingInSPA();
+        }
+        
+        // 4. Personalizar dashboard
         customizeDashboard(userData, re);
+        
+        console.log('✅ Dashboard carregado com sucesso');
         
     } catch (error) {
         console.error('❌ Erro no dashboard:', error);
+        showDashboardError(error);
     }
-});
+}
 
-function customizeDashboard(userData, re) {
-    const cardBody = document.querySelector('.card-body');
-    if (!cardBody || !userData.nome) return;
+export function customizeDashboard(userData, re) {
+    // Buscar o card-body dentro do SPA
+    const cardBody = document.querySelector('#dashboard-content') || 
+                     document.querySelector('.card-body');
     
-    // Determinar cor do badge
+    if (!cardBody || !userData.nome) {
+        console.warn('⚠️ Elemento do dashboard não encontrado');
+        return;
+    }
+    
     let nivelClass = 'secondary';
     let nivelTexto = 'Básico';
     
@@ -43,7 +58,6 @@ function customizeDashboard(userData, re) {
     }
     
     cardBody.innerHTML = `
-        <h1 class="display-4 mb-4">Olá, ${userData.nome}!</h1>
         <div class="alert alert-success" role="alert">
             <h4 class="alert-heading">Bem-vindo ao Sistema</h4>
             <p>Seu acesso foi verificado com sucesso.</p>
@@ -60,13 +74,40 @@ function customizeDashboard(userData, re) {
                 </div>
             </div>
         </div>
-        <p class="mt-3">
-            <a href="escalas.html" class="btn btn-primary me-2">
-                <i class="fas fa-calendar-alt me-1"></i>Ver Escalas
-            </a>
-            <button class="btn btn-outline-secondary" onclick="location.reload()">
-                <i class="fas fa-redo me-1"></i>Atualizar
-            </button>
-        </p>
     `;
+}
+
+export function showDashboardError(error) {
+    const cardBody = document.querySelector('#dashboard-content') || 
+                     document.querySelector('.card-body');
+    
+    if (cardBody) {
+        cardBody.innerHTML = `
+            <div class="alert alert-danger">
+                <h4>Erro no Dashboard</h4>
+                <p>${error.message}</p>
+                <button class="btn btn-primary" onclick="window.app.loadPage('dashboard.html')">
+                    Tentar Novamente
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Se estiver carregando como página normal (não SPA)
+if (!window.location.pathname.includes('app.html') && 
+    !document.getElementById('app-content')) {
+    
+    console.log('🌐 Dashboard carregando como página normal...');
+    document.addEventListener('DOMContentLoaded', async function() {
+        // Carrega navbar primeiro
+        try {
+            const { loadNavbar } = await import('./auth-check.js');
+            await loadNavbar();
+        } catch (e) {
+            console.warn('⚠️ Não foi possível carregar navbar:', e);
+        }
+        
+        await initDashboard();
+    });
 }

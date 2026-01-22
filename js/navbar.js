@@ -1,163 +1,249 @@
-// js/navbar.js - JavaScript do Navbar SEM tempo de sessão
+// js/navbar.js - VERSÃO COM DROPDOWN UNIFICADO
 import { auth } from './firebase-config.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 
 console.log('✅ navbar.js carregado');
 
-// Função para destacar item ativo no menu
-function highlightActiveMenu() {
-    const currentPage = window.location.pathname.split('/').pop();
-    console.log('📌 Página atual:', currentPage);
+// 1. FUNÇÃO QUE ATUALIZA O DROPDOWN COM NOME DO USUÁRIO
+function updateUserGreeting() {
+    const greeting = document.getElementById('userGreeting');
+    const dropdownToggle = document.getElementById('userGreetingDropdown');
     
-    // Remover ativo de todos
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.classList.remove('active');
-        link.removeAttribute('aria-current');
-    });
-    
-    // Adicionar ativo ao item correto
-    let activeLink;
-    switch(currentPage) {
-        case 'dashboard.html':
-            activeLink = document.getElementById('navDashboard');
-            break;
-        case 'escalas.html':
-            activeLink = document.getElementById('navEscalas');
-            break;
-        default:
-            // Se for index.html ou outra página, não destacar nada
-            console.log('ℹ️  Página não mapeada:', currentPage);
-            return;
+    if (!greeting || !dropdownToggle) {
+        console.log('⏳ Aguardando elementos do dropdown...');
+        setTimeout(updateUserGreeting, 100);
+        return;
     }
     
-    if (activeLink) {
-        activeLink.classList.add('active');
-        activeLink.setAttribute('aria-current', 'page');
-        console.log('🎯 Menu ativo destacado:', activeLink.textContent.trim());
-    }
-}
-
-// Carregar informações do usuário
-function loadUserInfo() {
-    const userName = sessionStorage.getItem('userName') || localStorage.getItem('userName');
-    const userRE = sessionStorage.getItem('userRE') || localStorage.getItem('userRE');
+    // Buscar dados DIRETAMENTE do sessionStorage
+    const userName = sessionStorage.getItem('userName');
+    const userRE = sessionStorage.getItem('userRE');
     
-    const userNameElement = document.getElementById('userNameNav');
-    const greetingElement = document.getElementById('userGreeting');
+    console.log('📦 Dados encontrados:', { userName, userRE });
     
-    if (userName && userNameElement) {
-        userNameElement.textContent = userName;
-        console.log('👤 Nome do usuário carregado:', userName);
-    }
-    
-    if (greetingElement && userName && userRE) {
-        greetingElement.innerHTML = `
-            <i class="fas fa-user-circle me-1"></i>
-            <span id="userNameNav">${userName}</span>
-            <small class="text-muted ms-1">(${userRE})</small>
-        `;
-        console.log('👤 RE do usuário carregado:', userRE);
-    }
-}
-
-// Função de logout
-async function performLogout() {
-    try {
-        console.log('🚪 Iniciando logout...');
+    // Se tem dados, atualiza
+    if (userName) {
+        // Limpar nome (remover ..., RE, etc)
+        let cleanName = userName;
+        cleanName = cleanName.replace(/\.{3,}/g, '');
+        cleanName = cleanName.replace(/\s*\(.*\)/g, '');
+        cleanName = cleanName.trim();
         
-        // 1. Fazer logout do Firebase
-        if (auth) {
-            await signOut(auth);
-            console.log('✅ Firebase logout realizado');
+        // Atualizar o texto dentro do botão dropdown
+        greeting.textContent = cleanName;
+        
+        // Adicionar tooltip opcional com RE
+        if (userRE) {
+            dropdownToggle.title = `RE: ${userRE}`;
+            dropdownToggle.setAttribute('data-bs-toggle', 'tooltip');
+            dropdownToggle.setAttribute('data-bs-placement', 'bottom');
         }
         
-        // 2. Limpar todos os dados de sessão
+        console.log('✅ Dropdown atualizado:', cleanName);
+        return true;
+    }
+    
+    // Se não tem dados, mostra "Carregando..."
+    greeting.textContent = 'Carregando...';
+    return false;
+}
+
+// 2. Função de logout
+async function performLogout() {
+    try {
+        if (auth) {
+            await signOut(auth);
+        }
+        
         sessionStorage.clear();
-        
-        // 3. Limpar dados específicos do localStorage
-        const itemsToRemove = ['userRE', 'userName'];
-        itemsToRemove.forEach(item => localStorage.removeItem(item));
-        
-        console.log('🧹 Storage limpo');
-        
-        // 4. Redirecionar para login
+        localStorage.clear();
         window.location.href = 'index.html';
         
     } catch (error) {
-        console.error('❌ Erro no logout:', error);
-        
-        // Forçar limpeza e redirecionamento mesmo com erro
+        console.error('Erro no logout:', error);
         sessionStorage.clear();
         localStorage.clear();
         window.location.href = 'index.html';
     }
 }
 
-// Configurar eventos quando o DOM estiver pronto
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🔄 Navbar - DOM carregado, configurando eventos...');
-    
-    // 1. Destacar menu ativo
-    highlightActiveMenu();
-    
-    // 2. Carregar informações do usuário
-    loadUserInfo();
-    
-    // 3. Configurar eventos
-    setupEventListeners();
-});
-
-// Configurar todos os event listeners
-function setupEventListeners() {
-    console.log('🔗 Configurando event listeners do navbar...');
-    
+// 3. Configurar dropdown
+function setupDropdown() {
     // Logout
-    const logoutLink = document.getElementById('navLogout');
-    if (logoutLink) {
-        logoutLink.addEventListener('click', async function(e) {
+    const logoutBtn = document.getElementById('navLogout');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async (e) => {
             e.preventDefault();
-            console.log('👤 Usuário clicou em sair');
+            const originalText = logoutBtn.innerHTML;
+            logoutBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saindo...';
+            
             await performLogout();
+            
+            // Restaurar texto original (em caso de erro)
+            setTimeout(() => {
+                logoutBtn.innerHTML = originalText;
+            }, 3000);
         });
-        console.log('✅ Listener de logout configurado');
-    } else {
-        console.error('❌ Elemento #navLogout não encontrado');
     }
     
     // Perfil
-    const profileLink = document.getElementById('navProfile');
-    if (profileLink) {
-        profileLink.addEventListener('click', function(e) {
+    const profileBtn = document.getElementById('navProfile');
+    if (profileBtn) {
+        profileBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            alert('Página de perfil em desenvolvimento...');
+            window.location.href = 'perfil.html';
         });
     }
     
-    // Configurações
-    const settingsLink = document.getElementById('navSettings');
-    if (settingsLink) {
-        settingsLink.addEventListener('click', function(e) {
-            e.preventDefault();
-            alert('Configurações em desenvolvimento...');
-        });
-    }
-    
-    // Dropdown dos módulos - prevenir comportamento padrão para links #
-    const dropdownLinks = document.querySelectorAll('.dropdown-item[href="#"]');
-    dropdownLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            const text = this.textContent.trim();
-            alert(`Módulo "${text}" em desenvolvimento...`);
-        });
+    // Links "#" do dropdown de módulos
+    document.querySelectorAll('.dropdown-item[href="#"]').forEach(link => {
+        link.addEventListener('click', (e) => e.preventDefault());
     });
-    
-    console.log('✅ Todos os event listeners configurados');
 }
 
-// Exportar funções para uso em outros módulos (se necessário)
-export {
-    highlightActiveMenu,
-    loadUserInfo,
-    performLogout
+// 4. Destacar menu ativo
+function highlightMenu() {
+    const page = location.pathname.split('/').pop();
+    
+    // Remover classe "active" de todos os links
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+        link.style.pointerEvents = 'auto';
+        link.style.opacity = '1';
+        link.style.color = 'rgba(255, 255, 255, 0.8)';
+    });
+    
+    // Adicionar "active" apenas ao link correto
+    document.querySelectorAll('.nav-link').forEach(link => {
+        const href = link.getAttribute('href');
+        if (href === page) {
+            link.classList.add('active');
+            link.style.pointerEvents = 'none';
+            link.style.opacity = '0.9';
+            link.style.color = '#fff';
+        }
+    });
+    
+    // Garantir que navbar-brand não tenha link
+    const navbarBrand = document.querySelector('.navbar-brand');
+    if (navbarBrand) {
+        navbarBrand.classList.remove('active');
+        navbarBrand.style.cursor = 'default';
+        navbarBrand.style.opacity = '1';
+        navbarBrand.style.color = '#fff';
+    }
+}
+
+// 5. Configurar navegação SPA
+function setupSPANavigation() {
+    // Interceptar cliques nos links do navbar
+    document.addEventListener('click', (e) => {
+        const link = e.target.closest('.nav-link[href$=".html"]');
+        if (link && !link.hasAttribute('data-ignore-spa')) {
+            e.preventDefault();
+            const href = link.getAttribute('href');
+            
+            // Se estiver no SPA, usar window.app.loadPage
+            if (window.app && window.app.loadPage) {
+                window.app.loadPage(href);
+            } else {
+                // Fallback: navegação normal
+                window.location.href = href;
+            }
+        }
+    });
+}
+
+// 6. Estilizar o dropdown toggle
+function styleDropdownToggle() {
+    const dropdownToggle = document.getElementById('userGreetingDropdown');
+    if (!dropdownToggle) return;
+    
+    // Estilos para o botão dropdown
+    dropdownToggle.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+    dropdownToggle.style.color = '#fff';
+    dropdownToggle.style.transition = 'all 0.2s';
+    
+    // Estilo no hover
+    dropdownToggle.addEventListener('mouseenter', () => {
+        dropdownToggle.style.borderColor = '#fff';
+        dropdownToggle.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    });
+    
+    dropdownToggle.addEventListener('mouseleave', () => {
+        dropdownToggle.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+        dropdownToggle.style.backgroundColor = 'transparent';
+    });
+    
+    // Estilo quando aberto
+    dropdownToggle.addEventListener('click', () => {
+        setTimeout(() => {
+            const isOpen = dropdownToggle.getAttribute('aria-expanded') === 'true';
+            if (isOpen) {
+                dropdownToggle.style.borderColor = '#fff';
+                dropdownToggle.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+            } else {
+                dropdownToggle.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                dropdownToggle.style.backgroundColor = 'transparent';
+            }
+        }, 10);
+    });
+}
+
+// 7. INICIALIZAÇÃO
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🏁 Navbar inicializando...');
+    
+    // Atualizar dropdown com nome IMEDIATAMENTE
+    updateUserGreeting();
+    
+    // Tentar novamente após 500ms
+    setTimeout(updateUserGreeting, 500);
+    
+    // Tentar novamente após 1s
+    setTimeout(updateUserGreeting, 1000);
+    
+    // Configurar o resto
+    setupDropdown();
+    highlightMenu();
+    setupSPANavigation();
+    styleDropdownToggle();
+    
+    // Inicializar tooltips do Bootstrap
+    if (typeof bootstrap !== 'undefined') {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
+    
+    console.log('✅ Navbar inicializado');
+});
+
+// 8. Função global para forçar atualização
+window.updateNavbarUserGreeting = updateUserGreeting;
+
+// 9. Função para atualizar menu ativo quando SPA carrega página
+window.updateNavbarActiveMenu = function(pageUrl) {
+    // Remover active de todos
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+        link.style.pointerEvents = 'auto';
+        link.style.opacity = '1';
+        link.style.color = 'rgba(255, 255, 255, 0.8)';
+    });
+    
+    // Adicionar active ao correto
+    document.querySelectorAll('.nav-link').forEach(link => {
+        const href = link.getAttribute('href');
+        if (href === pageUrl) {
+            link.classList.add('active');
+            link.style.pointerEvents = 'none';
+            link.style.opacity = '0.9';
+            link.style.color = '#fff';
+        }
+    });
 };
+
+// 10. Exportar funções
+export { updateUserGreeting };

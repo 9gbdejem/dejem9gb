@@ -13,7 +13,7 @@ export function checkAuth(requiredLevel = 1) {
                 return;
             }
 
-            console.log('✅ Usuário autenticado:', user.email);
+            // console.log('✅ Usuário autenticado:', user.email);
 
             try {
                 // 1. PEGAR O RE DO STORAGE
@@ -68,7 +68,7 @@ function clearUserData() {
 }
 
 export async function loadNavbar() {
-    console.log('🔄 Iniciando loadNavbar()...');
+    // console.log('🔄 Iniciando loadNavbar()...');
     
     // Verificar se o elemento existe
     let navbarElement = document.getElementById('navbar');
@@ -80,7 +80,7 @@ export async function loadNavbar() {
     }
     
     try {
-        console.log('📤 Buscando navbar.html...');
+        // console.log('📤 Buscando navbar.html...');
         
         // Tentar carregar o navbar
         const response = await fetch('components/navbar.html');
@@ -90,11 +90,11 @@ export async function loadNavbar() {
         }
         
         const html = await response.text();
-        console.log(`✅ navbar.html carregado (${html.length} caracteres)`);
+        // console.log(`✅ navbar.html carregado (${html.length} caracteres)`);
         
         // Inserir no DOM
         navbarElement.innerHTML = html;
-        console.log('✅ Navbar inserido no DOM');
+        // console.log('✅ Navbar inserido no DOM');
         
         // O navbar.js será carregado automaticamente pelo script tag
         return true;

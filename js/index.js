@@ -162,12 +162,32 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             // console.log('📤 Enviando para Firebase Auth:', userEmail); // DEBUG 6
             
+            // No index.js, no login bem-sucedido, ADICIONE:
             const userCredential = await signInWithEmailAndPassword(auth, userEmail, password);
-            
+
+            // 1. SALVAR NO sessionStorage (funciona na mesma aba)
             sessionStorage.setItem('userRE', userRE);
             sessionStorage.setItem('userName', userFullName);
 
-            window.location.href = 'dashboard.html';
+            // 2. SALVAR NO localStorage (persiste entre abas)
+            localStorage.setItem('userRE', userRE);
+            localStorage.setItem('userName', userFullName);
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // 3. DISPARAR EVENTO para atualizar outros componentes
+            window.dispatchEvent(new CustomEvent('userLoggedIn', {
+                detail: { userRE, userName: userFullName }
+            }));
+
+            console.log('💾 Dados do usuário salvos:');
+            console.log('- sessionStorage:', sessionStorage.getItem('userRE'), sessionStorage.getItem('userName'));
+            console.log('- localStorage:', localStorage.getItem('userRE'), localStorage.getItem('userName'));
+
+            // Pequeno delay para garantir salvamento
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            window.location.href = 'app.html';
             
         } catch (error) {
             // DEBUG 8 - Mostra erro detalhado

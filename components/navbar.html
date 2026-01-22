@@ -1,19 +1,21 @@
-<!-- components/navbar.html -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+<!-- components/navbar.html - VERSÃO UNIFICADA -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm fixed-top">
     <div class="container-fluid">
-        <!-- Logo/Brand -->
-        <a class="navbar-brand fw-bold" href="dashboard.html">
-            <i class="fas fa-shield-alt me-2"></i>Sistema
-        </a>
+        <!-- Logo SEM LINK - apenas imagem e texto -->
+        <div class="navbar-brand fw-bold d-flex align-items-center">
+            <img src="img/logo.png" alt="Logo" class="navbar-logo me-2"
+                 onerror="this.style.display='none';">
+            <span>Sistema</span>
+        </div>
         
-        <!-- Botão Toggle para Mobile -->
+        <!-- Botão Mobile -->
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar">
             <span class="navbar-toggler-icon"></span>
         </button>
         
-        <!-- Conteúdo do Navbar -->
+        <!-- Conteúdo Navbar -->
         <div class="collapse navbar-collapse" id="mainNavbar">
-            <!-- Menu Principal (Esquerda) -->
+            <!-- Menu Principal -->
             <ul class="navbar-nav me-auto">
                 <!-- Dashboard -->
                 <li class="nav-item">
@@ -29,70 +31,47 @@
                     </a>
                 </li>
                 
-                <!-- Menu Dropdown para Futuras Páginas -->
+                <!-- Módulos -->
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" 
-                       data-bs-toggle="dropdown" aria-expanded="false">
+                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                         <i class="fas fa-th-large me-1"></i>Módulos
                     </a>
-                    <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                        <li><a class="dropdown-item" href="#">
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" data-ignore-spa>
                             <i class="fas fa-users me-1"></i>Pessoal
                         </a></li>
-                        <li><a class="dropdown-item" href="#">
+                        <li><a class="dropdown-item" href="#" data-ignore-spa>
                             <i class="fas fa-car me-1"></i>Viaturas
-                        </a></li>
-                        <li><a class="dropdown-item" href="#">
-                            <i class="fas fa-file-invoice me-1"></i>Relatórios
-                        </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="#">
-                            <i class="fas fa-cog me-1"></i>Configurações
                         </a></li>
                     </ul>
                 </li>
             </ul>
             
-            <!-- Área Direita do Navbar -->
-            <div class="d-flex align-items-center">
-                <!-- Nome do Usuário -->
-                <div class="navbar-text me-3 d-none d-md-block" id="userGreeting">
-                    <i class="fas fa-user-circle me-1"></i>
-                    <span id="userNameNav">Usuário</span>
-                </div>
-                
-                <!-- Dropdown do Usuário -->
-                <div class="dropdown">
-                    <button class="btn btn-outline-light btn-sm dropdown-toggle" 
-                            type="button" 
-                            id="userDropdown" 
-                            data-bs-toggle="dropdown" 
-                            aria-expanded="false">
-                        <i class="fas fa-user me-1"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                        <li>
-                            <a class="dropdown-item" href="#" id="navProfile">
-                                <i class="fas fa-id-card me-1"></i>Meu Perfil
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item" href="#" id="navSettings">
-                                <i class="fas fa-cog me-1"></i>Configurações
-                            </a>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item text-danger" href="#" id="navLogout">
-                                <i class="fas fa-sign-out-alt me-1"></i>Sair do Sistema
-                            </a>
-                        </li>
-                    </ul>
-                </div>
+            <!-- User Dropdown Unificado -->
+            <div class="dropdown">
+                <button class="btn btn-outline-light dropdown-toggle d-flex align-items-center" 
+                        type="button" 
+                        data-bs-toggle="dropdown"
+                        id="userGreetingDropdown">
+                    <!-- Ícone opcional antes do nome -->
+                    <i class="fas fa-user me-2"></i>
+                    <!-- Nome do usuário será inserido aqui -->
+                    <span id="userGreeting">Carregando...</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item" href="perfil.html" id="navProfile">
+                            <i class="fas fa-id-card me-1"></i>Meu Perfil
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="#" id="navLogout">
+                            <i class="fas fa-sign-out-alt me-1"></i>Sair do Sistema
+                        </a>
+                    </li>
+                </ul>
             </div>
         </div>
     </div>
 </nav>
-
-<!-- IMPORTANTE: Caminho CORRETO para o JS -->
-<script type="module" src="js/navbar.js"></script>
