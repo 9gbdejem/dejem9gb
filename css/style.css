@@ -1056,3 +1056,67 @@ td:last-child {
     color: white;
     border-color: #dc3545;
 }
+
+/* Estilos para página de exclusões */
+.documento-text {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: help;
+    font-size: 0.9rem;
+}
+
+.documento-text:hover {
+    overflow: visible;
+    white-space: normal;
+    background-color: #f8f9fa;
+    padding: 5px;
+    border-radius: 4px;
+    position: absolute;
+    z-index: 1000;
+    max-width: 400px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Estilos para página de exclusões */
+.documento-text {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: help;
+    font-size: 0.9rem;
+}
+
+.documento-text:hover {
+    overflow: visible;
+    white-space: normal;
+    background-color: #f8f9fa;
+    padding: 5px;
+    border-radius: 4px;
+    position: absolute;
+    z-index: 1000;
+    max-width: 400px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Cards específicos para exclusões */
+.card.bg-danger { background: linear-gradient(45deg, #dc3545, #c82333); }
+.card.bg-warning { background: linear-gradient(45deg, #ffc107, #e0a800); }
+.card.bg-info { background: linear-gradient(45deg, #17a2b8, #138496); }
+.card.bg-secondary { background: linear-gradient(45deg, #6c757d, #5a6268); }
+.card.bg-dark { background: linear-gradient(45deg, #343a40, #23272b); }
+
+/* Ajuste na tabela para coluna Documento */
+#exclusoesTable th:nth-child(10),
+#exclusoesTable td:nth-child(10) {
+    min-width: 150px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .documento-text {
+        max-width: 150px;
+    }
+}

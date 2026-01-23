@@ -18,12 +18,12 @@ let userRE = '';
 
 // ==================== FUNÇÕES DE INICIALIZAÇÃO ====================
 export async function initEscalasSPA() {
-    console.log('📅 Escalas SPA inicializando...');
+    // console.log('📅 Escalas SPA inicializando...');
     await initializeApp();
 }
 
 async function initEscalas() {
-    console.log('📅 Página de Escalas carregando...');
+    // console.log('📅 Página de Escalas carregando...');
     await initializeApp();
     await loadNavbar();
 }
@@ -104,10 +104,10 @@ async function loadEscalados() {
                 return dateB - dateA;
             });
             
-            console.log(`✅ ${allEscalas.length} escalas carregadas`);
+            // console.log(`✅ ${allEscalas.length} escalas carregadas`);
             
         } else {
-            console.log('📭 Nenhuma escala encontrada');
+            // console.log('📭 Nenhuma escala encontrada');
             allEscalas = [];
             showMessage('Nenhuma escala cadastrada no sistema.', 'info');
         }
@@ -121,6 +121,12 @@ async function loadEscalados() {
 }
 
 function processarEscala(escalaData, year, month, day, escalaKey) {
+    // FILTRAR EXCLUSÕES - NÃO ADICIONAR À LISTA
+    if (escalaData.Exclusao === "X" || escalaData.Exclusao === "x") {
+        // console.log(`🚫 Exclusão ignorada: ${escalaData.Id || ''}/${escalaData.RE || ''} - ${escalaData.Militar || 'N/A'}`);
+        return; // NÃO processa, NÃO adiciona ao allEscalas
+    }
+    
     const escalaId = escalaData.Id || '';
     const escalaRE = escalaData.RE || '';
     
@@ -162,7 +168,7 @@ function processarEscala(escalaData, year, month, day, escalaKey) {
 
 async function loadConfirmacoes() {
     try {
-        console.log('🔍 Carregando confirmações...');
+        // console.log('🔍 Carregando confirmações...');
         const confirmacoesRef = ref(database, 'confirmacoes');
         const snapshot = await get(confirmacoesRef);
         
@@ -183,7 +189,7 @@ async function loadConfirmacoes() {
                     }
                 });
             });
-            console.log(`✅ Confirmações carregadas: ${Object.keys(confirmacoesCache).length} escalas`);
+            // console.log(`✅ Confirmações carregadas: ${Object.keys(confirmacoesCache).length} escalas`);
         }
     } catch (error) {
         console.error('❌ Erro ao carregar confirmações:', error);
@@ -740,7 +746,7 @@ function clearFilters() {
 }
 
 function refreshEscalas() {
-    console.log('🔄 Atualizando escalas...');
+    // console.log('🔄 Atualizando escalas...');
     
     const refreshBtn = document.getElementById('refreshData');
     if (refreshBtn) {
@@ -845,11 +851,11 @@ function createModalIfNotExists() {
     `;
     
     document.body.insertAdjacentHTML('beforeend', modalHTML);
-    console.log('✅ Modal criado dinamicamente');
+    // console.log('✅ Modal criado dinamicamente');
 }
 
 window.openConfirmModal = async function(escalaId, reClicado) {
-    console.log('Abrindo modal para escala ID:', escalaId, 'RE clicado:', reClicado);
+    // console.log('Abrindo modal para escala ID:', escalaId, 'RE clicado:', reClicado);
     
     const escalasComMesmoId = allEscalas.filter(e => e.Id == escalaId);
     const usuarioEstaNaEscala = escalasComMesmoId.some(e => e.RE == userRE);
