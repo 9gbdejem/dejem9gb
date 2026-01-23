@@ -22,7 +22,7 @@
                         </h1>
                         
                         <div class="row g-3 align-items-center">
-                            <div class="col-md-6">
+                            <div class="col-md-5">
                                 <div class="input-group">
                                     <div class="input-group-prepend">
                                         <select class="form-select" id="searchType" style="max-width: 150px;">
@@ -34,36 +34,49 @@
                                         </select>
                                     </div>
                                     <input type="text" 
-                                           id="searchRE" 
-                                           class="form-control" 
-                                           placeholder="Filtrar por RE (6 dígitos)">
+                                        id="searchRE" 
+                                        class="form-control" 
+                                        placeholder="Filtrar por RE (6 dígitos)">
                                 </div>
                             </div>
                             
-                            <div class="col-md-2">
-                                <select id="filterMonth" class="form-select">
-                                    <option value="">Todos os meses</option>
-                                    <!-- Os meses serão populados dinamicamente -->
+                            <div class="col-md-1">
+                                <select id="filterDay" class="form-select">
+                                    <option value="">Dia</option>
+                                    <!-- Dias serão populados dinamicamente -->
                                 </select>
                             </div>
                             
                             <div class="col-md-2">
+                                <select id="filterMonth" class="form-select">
+                                    <option value="">Mês</option>
+                                    <!-- Meses serão populados dinamicamente -->
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-1">
                                 <select id="filterYear" class="form-select">
-                                    <option value="">Todos os anos</option>
-                                    <!-- Os anos serão populados dinamicamente -->
+                                    <option value="">Ano</option>
+                                    <!-- Anos serão populados dinamicamente -->
                                 </select>
                             </div>
                             
                             <div class="col-md-2">
                                 <select id="filterStation" class="form-select">
-                                    <option value="">Todas as estações</option>
-                                    <!-- As estações serão populadas dinamicamente -->
+                                    <option value="">Estação</option>
+                                    <!-- Estações serão populadas dinamicamente -->
                                 </select>
+                            </div>
+                            
+                            <div class="col-md-1">
+                                <button id="todayFilter" class="btn btn-danger w-100" title="Mostrar escalas de hoje">
+                                    <i class="fas fa-calendar-day"></i>
+                                </button>
                             </div>
                         </div>
                         
                         <div class="row mt-3">
-                            <div class="col-md-8">
+                            <div class="col-md-6">
                                 <div class="btn-group" role="group">
                                     <button id="clearFilters" class="btn btn-outline-secondary">
                                         <i class="fas fa-times me-1"></i>Limpar Filtros
@@ -73,10 +86,15 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="col-md-4 text-end">
-                                <button id="exportExcel" class="btn btn-success">
-                                    <i class="fas fa-file-excel me-1"></i>Exportar Excel
-                                </button>
+                            <div class="col-md-6 text-end">
+                                <div class="btn-group" role="group">
+                                    <button id="tutorialBtn" class="btn btn-info">
+                                        <i class="fas fa-question-circle me-1"></i>Tutorial
+                                    </button>
+                                    <button id="exportExcel" class="btn btn-success">
+                                        <i class="fas fa-file-excel me-1"></i>Exportar Excel
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -7,7 +7,7 @@ class AppCore {
     }
     
     async init() {
-        console.log('🚀 SPA Inicializando...');
+        // console.log('🚀 SPA Inicializando...');
         
         try {
             const { userData, re } = await checkAuth(3);
@@ -20,7 +20,7 @@ class AppCore {
             this.setupNavbar();
             await this.loadPage('dashboard.html');
             
-            console.log('✅ SPA Inicializado com sucesso!');
+            // console.log('✅ SPA Inicializado com sucesso!');
             
         } catch (error) {
             console.error('❌ Erro ao inicializar SPA:', error);
@@ -59,7 +59,7 @@ class AppCore {
                 greeting.style.overflow = 'visible';
                 
                 if (greeting.dataset.lastName !== cleanName) {
-                    console.log('✅ userGreeting atualizado:', cleanName);
+                    // console.log('✅ userGreeting atualizado:', cleanName);
                     greeting.dataset.lastName = cleanName;
                 }
             }
@@ -162,7 +162,7 @@ class AppCore {
     }
     
     async loadPage(pageUrl) {
-        console.log(`📄 Carregando: ${pageUrl}`);
+        // console.log(`📄 Carregando: ${pageUrl}`);
         
         if (this.currentPage === pageUrl) return;
         
@@ -192,7 +192,7 @@ class AppCore {
             this.currentPage = pageUrl;
             this.updateActiveNav(pageUrl);
             
-            console.log(`✅ ${pageUrl} carregada no SPA`);
+            // console.log(`✅ ${pageUrl} carregada no SPA`);
             
         } catch (error) {
             console.error(`❌ Erro ao carregar ${pageUrl}:`, error);
@@ -225,7 +225,7 @@ class AppCore {
     }
     
     async loadEscalasScript() {
-        console.log('📜 Inicializando escalas no SPA...');
+        // console.log('📜 Inicializando escalas no SPA...');
         
         try {
             // Carregar scripts externos primeiro
@@ -239,7 +239,7 @@ class AppCore {
             
             if (escalasModule && escalasModule.initEscalasSPA) {
                 await escalasModule.initEscalasSPA();
-                console.log('✅ Escalas inicializado no SPA');
+                // console.log('✅ Escalas inicializado no SPA');
             } else {
                 console.error('❌ Função initEscalasSPA não encontrada');
                 // Fallback para função normal
@@ -290,7 +290,7 @@ class AppCore {
                 script.onload = () => {
                     loaded++;
                     if (loaded === scripts.length) {
-                        console.log('✅ Scripts externos carregados');
+                        // console.log('✅ Scripts externos carregados');
                         resolve();
                     }
                 };
@@ -310,7 +310,7 @@ class AppCore {
             
             if (dashboardModule && dashboardModule.initDashboard) {
                 await dashboardModule.initDashboard();
-                console.log('✅ Dashboard carregado');
+                // console.log('✅ Dashboard carregado');
             } else {
                 this.executeDashboardFallback();
             }
@@ -444,7 +444,7 @@ class AppCore {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('📄 DOM carregado, iniciando app...');
+    // console.log('📄 DOM carregado, iniciando app...');
     window.app = new AppCore();
     window.app.init();
 });

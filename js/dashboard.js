@@ -3,17 +3,17 @@ import { checkAuth } from './auth-check.js';
 
 // Exportar as funções principais
 export async function initDashboard() {
-    console.log('🚀 Dashboard inicializando (SPA)...');
+    // console.log('🚀 Dashboard inicializando (SPA)...');
     
     try {
         // 1. Verificar autenticação
         const { userData, re } = await checkAuth(3);
         
-        console.log('📋 Dados do usuário:', {
-            re: re,
-            nome: userData.nome,
-            nivel: userData.nivel
-        });
+        // console.log('📋 Dados do usuário:', {
+        //     re: re,
+        //     nome: userData.nome,
+        //     nivel: userData.nivel
+        // });
         
         // 2. Garantir dados no sessionStorage
         sessionStorage.setItem('userRE', re);
@@ -21,14 +21,14 @@ export async function initDashboard() {
         
         // 3. Atualizar userGreeting no SPA
         if (window.updateUserGreetingInSPA) {
-            console.log('🔄 Atualizando userGreeting via SPA...');
+            // console.log('🔄 Atualizando userGreeting via SPA...');
             window.updateUserGreetingInSPA();
         }
         
         // 4. Personalizar dashboard
         customizeDashboard(userData, re);
         
-        console.log('✅ Dashboard carregado com sucesso');
+        // console.log('✅ Dashboard carregado com sucesso');
         
     } catch (error) {
         console.error('❌ Erro no dashboard:', error);
@@ -98,7 +98,7 @@ export function showDashboardError(error) {
 if (!window.location.pathname.includes('app.html') && 
     !document.getElementById('app-content')) {
     
-    console.log('🌐 Dashboard carregando como página normal...');
+    // console.log('🌐 Dashboard carregando como página normal...');
     document.addEventListener('DOMContentLoaded', async function() {
         // Carrega navbar primeiro
         try {

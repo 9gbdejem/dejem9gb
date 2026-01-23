@@ -917,3 +917,142 @@ body {
 .table-responsive::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
+
+/* Estilos para links de ID */
+.escala-id-link {
+    text-decoration: none;
+    font-weight: bold;
+    color: #0d6efd !important;
+    transition: all 0.2s;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background-color: rgba(13, 110, 253, 0.1);
+    display: inline-block;
+}
+
+.escala-id-link:hover {
+    color: #0a58ca !important;
+    background-color: rgba(13, 110, 253, 0.2);
+    text-decoration: underline;
+    transform: translateY(-1px);
+}
+
+/* Remover destaque do RE */
+.badge.bg-dark {
+    background-color: #6c757d !important;
+    font-weight: normal;
+}
+
+/* Botão de hoje */
+#todayFilter {
+    background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+    border: none;
+    color: white;
+}
+
+#todayFilter:hover {
+    background: linear-gradient(45deg, #ee5a52, #d64545);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(238, 90, 82, 0.2);
+}
+
+/* Botão de tutorial */
+#tutorialBtn {
+    background: linear-gradient(45deg, #6a11cb, #2575fc);
+    border: none;
+    color: white;
+}
+
+#tutorialBtn:hover {
+    background: linear-gradient(45deg, #5a0db5, #1c65e0);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(106, 17, 203, 0.2);
+}
+
+/* Ajustes no layout dos filtros */
+@media (max-width: 1200px) {
+    .row.g-3.align-items-center .col-md-2 {
+        width: 20%;
+    }
+}
+
+@media (max-width: 992px) {
+    .row.g-3.align-items-center .col-md-2 {
+        width: 33.333%;
+        margin-bottom: 10px;
+    }
+}
+
+@media (max-width: 768px) {
+    .row.g-3.align-items-center .col-md-2 {
+        width: 50%;
+    }
+    
+    .btn-group {
+        flex-wrap: wrap;
+    }
+    
+    .btn-group .btn {
+        margin-bottom: 5px;
+    }
+}
+
+/* Mensagem de validação do SEI */
+.form-text.text-warning {
+    font-size: 0.85rem;
+    margin-top: 5px;
+}
+
+/* Botão de anexo para admin */
+.btn-outline-info {
+    border-color: #0dcaf0;
+    color: #0dcaf0;
+}
+
+.btn-outline-info:hover {
+    background-color: #0dcaf0;
+    border-color: #0dcaf0;
+    color: white;
+}
+
+/* Ajuste na coluna de ações */
+td:last-child {
+    min-width: 120px;
+}
+
+/* Estilos para grupos de escalas */
+.escala-grupo-par {
+    background-color: rgba(0, 123, 255, 0.03) !important;
+}
+
+.escala-grupo-impar {
+    background-color: rgba(108, 117, 125, 0.03) !important;
+}
+
+.table-info {
+    background-color: rgba(13, 110, 253, 0.05) !important;
+}
+
+/* Badge de contagem */
+.badge.bg-info {
+    font-size: 0.7em;
+    padding: 0.2em 0.4em;
+    background-color: #0dcaf0 !important;
+}
+
+/* Ajustes no modal */
+#confirmModal .modal-dialog {
+    max-width: 900px;
+}
+
+#confirmModal .btn-check:checked + .btn-outline-success {
+    background-color: #198754;
+    color: white;
+    border-color: #198754;
+}
+
+#confirmModal .btn-check:checked + .btn-outline-danger {
+    background-color: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
