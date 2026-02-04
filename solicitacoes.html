@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Datepicker -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
 <body>
     <div id="navbar"></div>
@@ -18,7 +20,7 @@
                     <div class="card-body" id="solicitacoes-content">
                         <div class="text-center py-5">
                             <div class="spinner-border text-primary mb-3"></div>
-                            <p>Carregando Solicitações...</p>
+                            <p>Carregando Sistema de Solicitações...</p>
                         </div>
                     </div>
                 </div>
@@ -26,7 +28,76 @@
         </div>
     </main>
 
+    <!-- Modal para liberação admin -->
+    <div class="modal fade" id="modalLiberarEdicao" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-unlock me-2"></i>Liberar para Edição</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Tem certeza que deseja liberar esta solicitação para edição pelo usuário?</p>
+                    <p class="text-muted small">Após liberar, o status será removido e o usuário poderá fazer alterações.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="btnConfirmarLiberar">Sim, Liberar</button>
+                </div>
+            </div>
+        </div>
+    </modal>
+
+    <!-- Modal para visualizar/editar informações -->
+    <div class="modal fade" id="modalDetalhes" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-eye me-2"></i>Detalhes da Solicitação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formDetalhes">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Motivo</label>
+                                <textarea class="form-control" id="modalMotivo" rows="3" 
+                                          placeholder="(informar o que levou a solicitação)"></textarea>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Observações</label>
+                                <textarea class="form-control" id="modalObservacoes" rows="3"
+                                          placeholder="(anotações para lembretes particulares)"></textarea>
+                            </div>
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Administração</label>
+                                <textarea class="form-control" id="modalAdministracao" rows="2" 
+                                          readonly style="background-color: #f8f9fa;"></textarea>
+                                <small class="text-muted">Preenchido automaticamente pelo sistema local</small>
+                            </div>
+                            <div class="col-md-12">
+                                <div id="modalAnexos" class="mb-3">
+                                    <!-- Anexos serão carregados aqui -->
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="btnSalvarDetalhes">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </modal>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Flatpickr (datepicker) -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/pt.js"></script>
+    <!-- SheetJS para CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
     <script type="module" src="js/firebase-config.js"></script>
     <script type="module" src="js/auth-check.js"></script>
     <script type="module" src="js/solicitacoes.js"></script>

@@ -1255,3 +1255,251 @@ td:last-child {
     border: none;
     border-radius: 8px;
 }
+
+/* Estilos específicos para Solicitações */
+
+/* Checkboxes dos dias do mês */
+#divDiasMes .form-check {
+    flex: 0 0 calc(100% / 7 - 8px);
+    margin: 2px;
+    min-width: 40px;
+}
+
+/* Tabela de solicitações */
+#tabelaSolicitacoes th {
+    font-size: 0.85em;
+    white-space: nowrap;
+    background-color: #f8f9fa;
+}
+
+#tabelaSolicitacoes td {
+    vertical-align: middle;
+    font-size: 0.9em;
+}
+
+/* Status icons */
+.status-icon {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    border-radius: 4px;
+}
+
+/* Botões de ação */
+.btn-group-sm .btn {
+    padding: 0.15rem 0.3rem;
+    font-size: 0.75rem;
+}
+
+/* Progress bar para upload */
+.progress {
+    transition: height 0.3s ease;
+}
+
+/* Datepicker customizado */
+.flatpickr-input {
+    background-color: white;
+}
+
+/* Modal de detalhes */
+#modalDetalhes textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    #divDiasMes .form-check {
+        flex: 0 0 calc(100% / 4 - 8px);
+    }
+    
+    #tabelaSolicitacoes {
+        font-size: 0.8em;
+    }
+    
+    .btn-group-sm .btn {
+        padding: 0.1rem 0.2rem;
+    }
+}
+
+/* Estilos para novo layout das Solicitações */
+
+/* Layout em 3 blocos verticais */
+#solicitacoes-content .card {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+/* Tabela com rolagem vertical */
+.table-responsive {
+    border-radius: 0 0 8px 8px;
+}
+
+/* Checkboxes dos dias inline */
+#divDiasMes .form-check-inline {
+    margin-right: 0.2rem;
+    margin-bottom: 0.2rem;
+}
+
+#divDiasMes .form-check-input {
+    margin-top: 0;
+}
+
+/* Estilo para inputs de horário */
+input[type="time"] {
+    font-family: monospace;
+}
+
+/* Badge do contador */
+.badge.bg-light {
+    font-size: 0.9em;
+    padding: 0.4em 0.8em;
+    border: 1px solid #dee2e6;
+}
+
+/* Linhas da tabela com altura fixa */
+#tabelaSolicitacoes tbody tr {
+    height: 50px;
+}
+
+/* Colunas da tabela */
+#tabelaSolicitacoes th {
+    font-weight: 600;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    color: #495057;
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+}
+
+/* Status icons */
+.status-icon i {
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));
+}
+
+/* Modal de alerta */
+#modalAlertaVistoria .modal-header {
+    border-bottom: 2px solid #ffc107;
+}
+
+/* Progress bar animada */
+.progress-bar-animated {
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+/* Responsividade */
+@media (max-width: 992px) {
+    #solicitacoes-content .col-md-2,
+    #solicitacoes-content .col-md-3,
+    #solicitacoes-content .col-md-5,
+    #solicitacoes-content .col-md-6 {
+        margin-bottom: 1rem;
+    }
+    
+    #tabelaSolicitacoes {
+        font-size: 0.85em;
+    }
+    
+    #tabelaSolicitacoes th,
+    #tabelaSolicitacoes td {
+        padding: 0.5rem;
+    }
+}
+
+@media (max-width: 768px) {
+    #divDiasMes .form-check-inline {
+        flex: 0 0 calc(25% - 0.5rem);
+    }
+    
+    #tabelaSolicitacoes {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+}
+
+/* Estilos para layout otimizado das Solicitações */
+
+/* Campos de número pequenos */
+input[type="number"].text-center {
+    text-align: center;
+    font-weight: bold;
+}
+
+/* Checkboxes dos dias inline melhorados */
+#divDiasMes {
+    min-height: 50px;
+}
+
+#divDiasMes .form-check-inline {
+    margin-right: 2px;
+    margin-bottom: 4px;
+}
+
+#divDiasMes .form-check-label {
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+#divDiasMes .form-check-input:checked + .form-check-label {
+    background-color: #198754;
+    color: white;
+    border-color: #198754;
+}
+
+#divDiasMes .form-check-input:not(:checked):not(:disabled) + .form-check-label:hover {
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+}
+
+/* Labels em negrito para campos obrigatórios */
+.form-label span.text-danger {
+    font-weight: bold;
+}
+
+/* Tabela responsiva */
+@media (max-width: 1200px) {
+    #tabelaSolicitacoes th:nth-child(9),
+    #tabelaSolicitacoes td:nth-child(9) {
+        display: none; /* Esconde ID em telas menores */
+    }
+}
+
+@media (max-width: 992px) {
+    #tabelaSolicitacoes th:nth-child(10),
+    #tabelaSolicitacoes td:nth-child(10) {
+        display: none; /* Esconde Prazo em telas médias */
+    }
+}
+
+@media (max-width: 768px) {
+    #tabelaSolicitacoes th:nth-child(3),
+    #tabelaSolicitacoes td:nth-child(3),
+    #tabelaSolicitacoes th:nth-child(4),
+    #tabelaSolicitacoes td:nth-child(4) {
+        display: none; /* Esconde Composição e COD em telas pequenas */
+    }
+    
+    /* Layout responsivo para formulário */
+    .row.g-3 > div {
+        margin-bottom: 1rem;
+    }
+    
+    /* Campos de vagas lado a lado em mobile */
+    #inputVagasSubten,
+    #inputVagasCbSd {
+        max-width: 100% !important;
+    }
+}
+
+/* Estilo para dias retroativos desabilitados */
+#divDiasMes .form-check-input:disabled + .form-check-label {
+    background-color: #f8f9fa;
+    color: #adb5bd;
+    cursor: not-allowed;
+}

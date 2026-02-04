@@ -229,9 +229,12 @@ class AppCore {
                 await this.loadExclusoesScript();
             } else if (pageUrl === 'perfil.html') {
                 await this.loadPerfilScript();
-            } else if (pageUrl === 'solicitacoes.html') {
+            }
+            // ⬇️⬇️⬇️ ADICIONE ESTAS LINHAS AQUI ⬇️⬇️⬇️
+            else if (pageUrl === 'solicitacoes.html') {
                 await this.loadSolicitacoesScript();
             }
+            // ⬆️⬆️⬆️ ADICIONE ESTAS LINHAS AQUI ⬆️⬆️⬆️
         } else {
             contentDiv.innerHTML = '<div class="alert alert-danger">Erro: Conteúdo não encontrado</div>';
         }
@@ -300,6 +303,119 @@ class AppCore {
         }
     }
 
+    // Método para carregar solicitacoes
+    async loadSolicitacoesScript() {
+        try {
+            await this.loadExternalScripts();
+            await this.loadDatepicker();
+            await this.loadGoogleDriveAPI(); // ⬅️ ADICIONE ESTA LINHA
+            
+            await new Promise(resolve => setTimeout(resolve, 500)); // Aguardar carregamento
+            
+            const solicitacoesModule = await import('./solicitacoes.js');
+            
+            if (solicitacoesModule && solicitacoesModule.initSolicitacoesSPA) {
+                await solicitacoesModule.initSolicitacoesSPA();
+            } else if (solicitacoesModule && solicitacoesModule.initSolicitacoes) {
+                await solicitacoesModule.initSolicitacoes();
+            }
+            
+            this.addSolicitacoesStyles();
+            
+        } catch (error) {
+            console.error('❌ Erro ao carregar solicitações:', error);
+            this.showError(error);
+        }
+    }
+
+    async loadGoogleDriveAPI() {
+        return new Promise((resolve) => {
+            // Verificar se já está carregado
+            if (window.gapi && window.gapi.load) {
+                console.log('✅ Google Drive API já carregada');
+                resolve();
+                return;
+            }
+            
+            // Carregar apenas se não estiver carregado
+            if (!document.querySelector('script[src*="apis.google.com"]')) {
+                const script = document.createElement('script');
+                script.src = 'https://apis.google.com/js/api.js';
+                script.onload = () => {
+                    console.log('✅ Google Drive API carregada pelo SPA');
+                    // Aguardar para garantir inicialização
+                    setTimeout(resolve, 1000);
+                };
+                script.onerror = () => {
+                    console.warn('⚠️ Não foi possível carregar Google Drive API');
+                    resolve(); // Não falhar o sistema
+                };
+                document.head.appendChild(script);
+            } else {
+                // Já existe, apenas aguardar
+                setTimeout(resolve, 1000);
+            }
+        });
+    }
+
+    // Método para carregar datepicker
+    async loadDatepicker() {
+        return new Promise((resolve) => {
+            // Verificar se já está carregado
+            if (document.querySelector('link[href*="flatpickr"]') && 
+                document.querySelector('script[src*="flatpickr"]')) {
+                resolve();
+                return;
+            }
+            
+            // Carregar CSS
+            const linkCSS = document.createElement('link');
+            linkCSS.rel = 'stylesheet';
+            linkCSS.href = 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css';
+            linkCSS.onload = () => {
+                // Carregar JS principal
+                const scriptMain = document.createElement('script');
+                scriptMain.src = 'https://cdn.jsdelivr.net/npm/flatpickr';
+                scriptMain.onload = () => {
+                    // Carregar locale
+                    const scriptLocale = document.createElement('script');
+                    scriptLocale.src = 'https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/pt.js';
+                    scriptLocale.onload = resolve;
+                    scriptLocale.onerror = resolve; // Não falhar se locale não carregar
+                    document.head.appendChild(scriptLocale);
+                };
+                scriptMain.onerror = resolve; // Não falhar se não carregar
+                document.head.appendChild(scriptMain);
+            };
+            linkCSS.onerror = resolve; // Não falhar se CSS não carregar
+            document.head.appendChild(linkCSS);
+        });
+    }
+
+    // Adicionar estilos específicos das solicitações
+    addSolicitacoesStyles() {
+        const styleId = 'solicitacoes-spa-styles';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                .table-warning { background-color: rgba(255, 193, 7, 0.1) !important; }
+                .table-danger { background-color: rgba(220, 53, 69, 0.1) !important; }
+                .status-icon { font-size: 1.2em; }
+                .btn-group-sm { white-space: nowrap; }
+                #divDiasMes .form-check { 
+                    flex: 0 0 calc(100% / 7 - 8px); 
+                    margin: 2px; 
+                    min-width: 40px; 
+                }
+                @media (max-width: 768px) {
+                    #divDiasMes .form-check { flex: 0 0 calc(100% / 4 - 8px); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
     addPerfilStyles() {
         const styleId = 'perfil-spa-styles';
         if (!document.getElementById(styleId)) {
@@ -347,47 +463,7 @@ class AppCore {
             document.head.appendChild(style);
         }
     }
-
-    async loadSolicitacoesScript() {
-        try {
-            await this.loadExternalScripts();
-            await new Promise(resolve => setTimeout(resolve, 200));
-            
-            const solicitacoesModule = await import('./solicitacoes.js');
-            
-            if (solicitacoesModule && solicitacoesModule.initSolicitacoesSPA) {
-                await solicitacoesModule.initSolicitacoesSPA();
-            } else if (solicitacoesModule && solicitacoesModule.initSolicitacoes) {
-                await solicitacoesModule.initSolicitacoes();
-            }
-            
-            this.addSolicitacoesStyles();
-            
-        } catch (error) {
-            console.error('❌ Erro ao carregar solicitações:', error);
-            this.showError(error);
-        }
-    }
-
-    // Adicionar método para estilos das solicitações:
-    addSolicitacoesStyles() {
-        const styleId = 'solicitacoes-spa-styles';
-        if (!document.getElementById(styleId)) {
-            const style = document.createElement('style');
-            style.id = styleId;
-            style.textContent = `
-                .solicitacoes-card { 
-                    border-left: 4px solid #0d6efd !important; 
-                }
-                .list-group-item { 
-                    border-left: none; 
-                    border-right: none; 
-                }
-            `;
-            document.head.appendChild(style);
-        }
-    }
-    
+  
     async loadExternalScripts() {
         return new Promise((resolve) => {
             const scripts = [
