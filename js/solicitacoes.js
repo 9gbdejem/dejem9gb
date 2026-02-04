@@ -16,10 +16,10 @@ let opmSelecionada = null;
 let mesFiltro = null;
 let anoFiltro = null;
 
-// Google Drive API
+// Google Drive API (DESATIVADO TEMPORARIAMENTE)
 let gapiInicializada = false;
-let CLIENT_ID = 'SEU_CLIENT_ID_AQUI'; // Substituir
-let API_KEY = 'SUA_API_KEY_AQUI'; // Substituir
+let CLIENT_ID = 'SEU_CLIENT_ID_AQUI'; // Substituir quando configurar
+let API_KEY = 'SUA_API_KEY_AQUI'; // Substituir quando configurar
 let DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 let SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
@@ -48,9 +48,11 @@ export async function initSolicitacoes() {
         // 4. Carregar dados necessários
         await carregarDadosIniciais();
         
-        // 5. Inicializar Google Drive API EM SEGUNDO PLANO
+        // 5. Inicializar Google Drive API EM SEGUNDO PLANO (não bloqueante)
         inicializarGoogleDrive().then(success => {
             console.log(success ? '✅ Drive OK' : '⚠️ Drive não disponível');
+        }).catch(() => {
+            console.log('⚠️ Drive ignorado (não configurado)');
         });
         
         // 6. Renderizar interface IMEDIATAMENTE (não esperar pelo Drive)
@@ -67,50 +69,96 @@ export async function initSolicitacoes() {
 // Carregar dados iniciais do Firebase
 async function carregarDadosIniciais() {
     try {
-        // 1. Carregar OPMs permitidas para o usuário
-        const permissaoRef = ref(database, `efetivo/${userRE}/permissaoOPM`);
-        const permissaoSnapshot = await get(permissaoRef);
-        
-        if (permissaoSnapshot.exists()) {
-            opmsPermitidas = Object.keys(permissaoSnapshot.val());
+        // 1. Se for admin (nível 1), carrega TODAS as OPMs
+        if (userDataCache.nivel === 1) {
+            const localRef = ref(database, 'local');
+            const localSnapshot = await get(localRef);
+            
+            if (localSnapshot.exists()) {
+                opmsPermitidas = Object.keys(localSnapshot.val());
+                opmsNomes = localSnapshot.val();
+            }
+        } else {
+            // 2. Para não-admins, carregar OPMs permitidas
+            const permissaoRef = ref(database, `efetivo/${userRE}/permissaoOPM`);
+            const permissaoSnapshot = await get(permissaoRef);
+            
+            if (permissaoSnapshot.exists()) {
+                opmsPermitidas = Object.keys(permissaoSnapshot.val());
+            }
+            
+            // 3. Carregar nomes das OPMs
+            const localRef = ref(database, 'local');
+            const localSnapshot = await get(localRef);
+            
+            if (localSnapshot.exists()) {
+                opmsNomes = localSnapshot.val();
+            }
         }
         
         if (opmsPermitidas.length === 0) {
             throw new Error('Nenhuma OPM permitida para seu usuário');
         }
         
-        // 2. Carregar nomes das OPMs
-        const localRef = ref(database, 'local');
-        const localSnapshot = await get(localRef);
-        
-        if (localSnapshot.exists()) {
-            opmsNomes = localSnapshot.val();
-        }
-        
-        // 3. Carregar composições das OPMs permitidas
+        // 4. Carregar composições das OPMs permitidas
         for (const opm of opmsPermitidas) {
-            const opmRef = ref(database, `LocalOPM/${opm}`);
-            const opmSnapshot = await get(opmRef);
-            
-            if (opmSnapshot.exists()) {
-                composicoesDisponiveis[opm] = {};
-                Object.entries(opmSnapshot.val()).forEach(([codigo, dados]) => {
-                    composicoesDisponiveis[opm][codigo] = dados;
-                });
+            try {
+                const opmRef = ref(database, `LocalOPM/${opm}`);
+                const opmSnapshot = await get(opmRef);
+                
+                if (opmSnapshot.exists()) {
+                    composicoesDisponiveis[opm] = {};
+                    Object.entries(opmSnapshot.val()).forEach(([codigo, dados]) => {
+                        composicoesDisponiveis[opm][codigo] = dados;
+                    });
+                }
+            } catch (error) {
+                console.warn(`⚠️ Não foi possível carregar composições da OPM ${opm}:`, error);
             }
         }
         
-        // 4. Definir mês e ano atual para filtro
+        // 5. Definir mês e ano atual para filtro
         const hoje = new Date();
         mesFiltro = hoje.getMonth() + 1; // 1-12
         anoFiltro = hoje.getFullYear();
         
-        // 5. Carregar solicitações do mês atual
+        // 6. Carregar solicitações do mês atual
         await carregarSolicitacoesMes();
         
     } catch (error) {
         console.error('Erro ao carregar dados:', error);
         throw error;
+    }
+}
+
+// NOVA FUNÇÃO: Extrair data do ID da solicitação - CORRIGIDA PARA FUSO HORÁRIO
+function extrairDataDoId(idSolicitacao) {
+    try {
+        // ID tem formato: OPM(9) + Composição(var) + AAAAMMDD + HHMM
+        // Extrair os últimos 12 dígitos: AAAAMMDDHHMM
+        const ultimos12 = idSolicitacao.slice(-12);
+        const ano = ultimos12.substring(0, 4);
+        const mes = ultimos12.substring(4, 6);
+        const dia = ultimos12.substring(6, 8);
+        
+        // CORREÇÃO: Criar data no fuso horário local (Brasil)
+        // Usar UTC para evitar problemas de fuso horário
+        const dataUTC = new Date(Date.UTC(ano, mes - 1, dia));
+        
+        // Converter para data local
+        const dataLocal = new Date(dataUTC);
+        dataLocal.setMinutes(dataLocal.getMinutes() + dataLocal.getTimezoneOffset());
+        
+        return {
+            data: `${ano}-${mes}-${dia}`,
+            data_local: dataLocal,
+            ano: parseInt(ano),
+            mes: parseInt(mes),
+            dia: parseInt(dia)
+        };
+    } catch (error) {
+        console.warn('Erro ao extrair data do ID:', idSolicitacao, error);
+        return null;
     }
 }
 
@@ -126,36 +174,139 @@ async function carregarSolicitacoesMes() {
         
         if (!opmSelecionada) return;
         
-        // Construir prefixo para busca (OPM+AAAAMM)
-        const mesStr = mesFiltro.toString().padStart(2, '0');
-        const prefixoBusca = `${opmSelecionada}${anoFiltro}${mesStr}`;
-        
         // Buscar todas solicitações
         const solicitacoesRef = ref(database, 'solicitacoes');
         const snapshot = await get(solicitacoesRef);
         
         if (snapshot.exists()) {
             Object.entries(snapshot.val()).forEach(([id, dados]) => {
-                // Filtrar por OPM e mês
-                if (id.startsWith(prefixoBusca.substring(0, 15))) { // OPM(9) + Composição(5) + AAAAMM(6) = 20 chars
-                    solicitacoesCache.push({
-                        id: id,
-                        ...dados
-                    });
+                try {
+                    // Verificar se a solicitação pertence à OPM selecionada
+                    const idOpm = id.substring(0, 9);
+                    
+                    if (idOpm === opmSelecionada) {
+                        // Extrair data do ID
+                        const dataInfo = extrairDataDoId(id);
+                        
+                        if (dataInfo) {
+                            // Filtrar por mês e ano
+                            if (dataInfo.mes === mesFiltro && dataInfo.ano === anoFiltro) {
+                                // ====== ADICIONAR AQUI ======
+                                // Verificar se tem id_sistema_local mas não tem status
+                                if (dados.id_sistema_local && !dados.status) {
+                                    // Atualizar automaticamente para status 1
+                                    atualizarStatusParaAprovado(id);
+                                    // Atualizar dados localmente também
+                                    dados.status = 1;
+                                }
+                                // ====== FIM DA ADIÇÃO ======
+                                
+                                solicitacoesCache.push({
+                                    id: id,
+                                    ...dados,
+                                    // Adicionar data extraída (para ordenação)
+                                    data_extraida: dataInfo.data,
+                                    data_local: dataInfo.data_local
+                                });
+                            }
+                        } else {
+                            // Fallback: usar data do objeto se disponível
+                            if (dados.data) {
+                                const dataObj = new Date(dados.data);
+                                // CORREÇÃO: Ajustar fuso horário
+                                const dataAjustada = new Date(dataObj.getTime() - (dataObj.getTimezoneOffset() * 60000));
+                                if (dataAjustada.getMonth() + 1 === mesFiltro && 
+                                    dataAjustada.getFullYear() === anoFiltro) {
+                                    
+                                    // ====== ADICIONAR AQUI ======
+                                    // Verificar se tem id_sistema_local mas não tem status
+                                    if (dados.id_sistema_local && !dados.status) {
+                                        // Atualizar automaticamente para status 1
+                                        atualizarStatusParaAprovado(id);
+                                        // Atualizar dados localmente também
+                                        dados.status = 1;
+                                    }
+                                    // ====== FIM DA ADIÇÃO ======
+                                    
+                                    solicitacoesCache.push({
+                                        id: id,
+                                        ...dados
+                                    });
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`⚠️ Erro ao processar solicitação ${id}:`, error);
                 }
             });
             
             // Ordenar por data e horário
             solicitacoesCache.sort((a, b) => {
-                const dataA = new Date(a.data + 'T' + a.horario_inicial);
-                const dataB = new Date(b.data + 'T' + b.horario_inicial);
-                return dataA - dataB;
+                try {
+                    let dataA, dataB;
+                    
+                    if (a.data_local) {
+                        dataA = a.data_local;
+                    } else if (a.data_extraida) {
+                        dataA = new Date(a.data_extraida);
+                    } else {
+                        dataA = new Date(a.data);
+                    }
+                    
+                    if (b.data_local) {
+                        dataB = b.data_local;
+                    } else if (b.data_extraida) {
+                        dataB = new Date(b.data_extraida);
+                    } else {
+                        dataB = new Date(b.data);
+                    }
+                    
+                    // Ajustar fuso horário
+                    dataA = new Date(dataA.getTime() - (dataA.getTimezoneOffset() * 60000));
+                    dataB = new Date(dataB.getTime() - (dataB.getTimezoneOffset() * 60000));
+                    
+                    if (isNaN(dataA) || isNaN(dataB)) return 0;
+                    
+                    // Se mesma data, ordenar por horário
+                    if (dataA.getTime() === dataB.getTime() && a.horario_inicial && b.horario_inicial) {
+                        return a.horario_inicial.localeCompare(b.horario_inicial);
+                    }
+                    
+                    return dataA - dataB;
+                } catch (error) {
+                    return 0;
+                }
             });
         }
         
     } catch (error) {
         console.error('Erro ao carregar solicitações:', error);
         throw error;
+    }
+}
+
+// Função para atualizar status para aprovado (1) quando há ID do sistema
+async function atualizarStatusParaAprovado(id) {
+    try {
+        const solicitacaoRef = ref(database, `solicitacoes/${id}`);
+        
+        await update(solicitacaoRef, {
+            status: 1
+        });
+        
+        // Adicionar histórico
+        const historicoRef = ref(database, `solicitacoes/${id}/historico`);
+        const entradaHistorico = criarEntradaHistorico({
+            observacao: 'Status atualizado automaticamente para aprovado (tem ID do sistema)'
+        });
+        await update(historicoRef, entradaHistorico);
+        
+        console.log(`✅ Solicitação ${id} atualizada para status 1 (aprovado)`);
+        
+    } catch (error) {
+        console.error(`Erro ao atualizar status da solicitação ${id}:`, error);
+        // Não lançar o erro para não quebrar o carregamento
     }
 }
 
@@ -217,7 +368,6 @@ function renderInterface() {
                                 <button class="btn btn-success w-100" id="btnExportarCSV">
                                     <i class="fas fa-file-export me-1"></i>Exportar CSV
                                 </button>
-                                <small class="text-muted">Apenas administradores</small>
                             </div>
                             ` : ''}
                         </div>
@@ -248,7 +398,8 @@ function renderInterface() {
                                     <label class="form-label">Horário Inicial <span class="text-danger">*</span></label>
                                     <input type="time" class="form-control" 
                                            id="inputHorarioInicial" required
-                                           step="300">
+                                           min="00:00" max="23:55"
+                                           step="300"> <!-- 5 minutos -->
                                 </div>
                                 
                                 <div class="col-xl-2 col-lg-2 col-md-3">
@@ -330,7 +481,7 @@ function renderInterface() {
                                         <label class="form-label fw-bold mb-2" id="labelAnexo"></label>
                                         <div class="d-flex align-items-center gap-3">
                                             <input type="file" class="form-control w-auto" id="inputAnexo" 
-                                                   accept=".pdf,.jpg,.jpeg,.png">
+                                                accept=".pdf" title="Apenas arquivos PDF">
                                             <small class="text-muted flex-grow-1" id="textoAjudaAnexo"></small>
                                         </div>
                                         <div class="progress mt-2" style="height: 6px; display: none;" id="progressAnexo">
@@ -363,7 +514,7 @@ function renderInterface() {
             </div>
         </div>
         
-        <!-- Parte 3: Tabela de Solicitações -->
+        <!-- Parte 3: Tabela de Solicitações (LAYOUT MELHORADO) -->
         <div class="row">
             <div class="col-12">
                 <div class="card">
@@ -377,24 +528,40 @@ function renderInterface() {
                         <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
                             <table class="table table-hover table-sm mb-0" id="tabelaSolicitacoes">
                                 <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
-                                    <tr>
-                                        <th width="80">AÇÕES</th>
+                                    <tr class="text-center">
+                                        <th width="90">AÇÕES</th>
                                         <th width="90">DATA</th>
                                         <th>COMPOSIÇÃO</th>
                                         <th width="70">COD</th>
                                         <th width="120">HORÁRIO</th>
-                                        <th width="100">VAGAS</th>
-                                        <th width="70" class="text-center">PRIOR.</th>
-                                        <th width="70" class="text-center">STATUS</th>
+                                        <th colspan="2" width="120" class="text-center">VAGAS SOLICITADAS</th>
+                                        <th width="80" class="text-center">PRIOR.</th>
+                                        <th width="80" class="text-center">STATUS</th>
                                         <th width="80">ID</th>
                                         <th width="140">PRAZO</th>
-                                        <th width="100">ESCALADO</th>
-                                        <th width="50"></th>
+                                        <th colspan="2" width="120" class="text-center">ESCALADO</th>
+                                        <th width="60"></th>
+                                    </tr>
+                                    <tr class="text-center small table-secondary">
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th width="60">Sub/Sgt</th>
+                                        <th width="60">Cb/Sd</th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th width="60">Sub/Sgt</th>
+                                        <th width="60">Cb/Sd</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbodySolicitacoes">
                                     <tr>
-                                        <td colspan="12" class="text-center py-5">
+                                        <td colspan="14" class="text-center py-5">
                                             <div class="spinner-border text-primary"></div>
                                             <p class="mt-2 text-muted">Carregando solicitações...</p>
                                         </td>
@@ -414,21 +581,60 @@ function renderInterface() {
     atualizarTabelaSolicitacoes(); // Carregar tabela IMEDIATAMENTE
     
     // Configurar cálculo automático de horário final
-    document.getElementById('inputHorarioInicial').addEventListener('change', calcularHorarioFinal);
+    const inputHorarioInicial = document.getElementById('inputHorarioInicial');
+    if (inputHorarioInicial) {
+        inputHorarioInicial.addEventListener('change', calcularHorarioFinal);
+    }
     
     // Atualizar dias do mês quando data mudar
-    document.getElementById('inputData').addEventListener('change', atualizarDiasMes);
+    const inputData = document.getElementById('inputData');
+    if (inputData) {
+        inputData.addEventListener('change', atualizarDiasMes);
+    }
+    
+    // Configurar step de 5 minutos no input de horário
+    configurarInputHorario();
 }
 
-// Inicializar Google Drive API
+// Configurar input de horário para 5 minutos
+function configurarInputHorario() {
+    const input = document.getElementById('inputHorarioInicial');
+    if (!input) return;
+    
+    // Garantir step de 5 minutos
+    input.step = '300';
+    
+    // Adicionar validação para múltiplos de 5 minutos
+    input.addEventListener('input', function() {
+        if (this.value) {
+            const [hours, minutes] = this.value.split(':');
+            const mins = parseInt(minutes);
+            if (mins % 5 !== 0) {
+                // Arredondar para o múltiplo de 5 mais próximo
+                const roundedMins = Math.round(mins / 5) * 5;
+                this.value = `${hours.padStart(2, '0')}:${roundedMins.toString().padStart(2, '0')}`;
+            }
+        }
+    });
+}
+
+// Inicializar Google Drive API (NÃO BLOQUEANTE)
 function inicializarGoogleDrive() {
     return new Promise((resolve) => {
-        // Verificar se gapi já está disponível
+        // Verificar se gapi está disponível
         if (window.gapi && window.gapi.load) {
-            console.log('📱 gapi disponível, tentando inicializar...');
+            console.log('📱 Google Drive API disponível');
             
-            // Tentar inicializar, mas não falhar se der erro
+            // Configurar timeout para não travar
+            const timeout = setTimeout(() => {
+                console.log('⚠️ Google Drive timeout - continuando sem');
+                gapiInicializada = false;
+                resolve(false);
+            }, 3000);
+            
             gapi.load('client', () => {
+                clearTimeout(timeout);
+                
                 gapi.client.init({
                     apiKey: API_KEY,
                     clientId: CLIENT_ID,
@@ -441,7 +647,7 @@ function inicializarGoogleDrive() {
                 }).catch((error) => {
                     console.warn('⚠️ Google Drive não inicializou:', error.message);
                     gapiInicializada = false;
-                    resolve(false); // Não rejeitar, apenas continuar
+                    resolve(false);
                 });
             });
         } else {
@@ -452,32 +658,23 @@ function inicializarGoogleDrive() {
     });
 }
 
-// Função separada para carregar o cliente
-async function carregarClienteGoogleDrive() {
-    try {
-        await gapi.load('client', async () => {
-            await gapi.client.init({
-                apiKey: API_KEY,
-                clientId: CLIENT_ID,
-                discoveryDocs: DISCOVERY_DOCS,
-                scope: SCOPES
-            });
-            
-            gapiInicializada = true;
-            console.log('✅ Google Drive API inicializada com sucesso');
-        });
-        return true;
-    } catch (error) {
-        console.warn('⚠️ Erro ao inicializar Google Drive:', error);
-        gapiInicializada = false;
-        return false;
-    }
-}
-
-// Função para upload no Google Drive
+// Função para upload no Google Drive (com fallback)
 async function uploadParaGoogleDrive(arquivo, nomeArquivo) {
-    if (!gapiInicializada) {
-        throw new Error('Google Drive não inicializado. Por favor, faça login no Google ou tente novamente mais tarde.');
+    
+    // Validar se é PDF
+    if (!validarArquivoPDF(arquivo)) {
+        throw new Error('Apenas arquivos PDF são permitidos');
+    }
+
+    // Se Google Drive não disponível, usar fallback imediatamente
+    if (!gapiInicializada || !CLIENT_ID || CLIENT_ID === 'SEU_CLIENT_ID_AQUI') {
+        console.log('📦 Usando fallback (Google Drive não configurado)');
+        
+        if (arquivo.size < 1000000) { // 1MB
+            return await converterParaBase64(arquivo);
+        } else {
+            throw new Error('Arquivo muito grande. Configure o Google Drive para anexos maiores que 1MB.');
+        }
     }
     
     try {
@@ -489,7 +686,7 @@ async function uploadParaGoogleDrive(arquivo, nomeArquivo) {
         
         const accessToken = gapi.auth.getToken();
         if (!accessToken) {
-            throw new Error('Não autenticado no Google Drive. Faça login primeiro.');
+            throw new Error('Não autenticado no Google Drive');
         }
         
         const form = new FormData();
@@ -505,8 +702,7 @@ async function uploadParaGoogleDrive(arquivo, nomeArquivo) {
         });
         
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error?.message || 'Erro no upload');
+            throw new Error('Erro no upload Google Drive');
         }
         
         const data = await response.json();
@@ -515,12 +711,12 @@ async function uploadParaGoogleDrive(arquivo, nomeArquivo) {
     } catch (error) {
         console.error('Erro no upload Google Drive:', error);
         
-        // Fallback: Converter para Base64 e salvar no Firebase
-        if (arquivo.size < 1000000) { // Apenas para arquivos < 1MB
+        // Fallback: Converter para Base64
+        if (arquivo.size < 1000000) {
             console.log('📦 Usando fallback Base64 para arquivo pequeno');
             return await converterParaBase64(arquivo);
         } else {
-            throw new Error(`Arquivo muito grande para fallback. Use um arquivo menor ou configure o Google Drive. Erro: ${error.message}`);
+            throw new Error(`Arquivo muito grande para fallback. Use um arquivo menor ou configure o Google Drive.`);
         }
     }
 }
@@ -537,22 +733,45 @@ function converterParaBase64(arquivo) {
     });
 }
 
+// Função para validar tipo de arquivo (apenas PDF)
+function validarArquivoPDF(arquivo) {
+    // Verificar extensão .pdf (case insensitive)
+    const nomeArquivo = arquivo.name.toLowerCase();
+    if (!nomeArquivo.endsWith('.pdf')) {
+        return false;
+    }
+    
+    // Verificar tipo MIME (opcional, mas mais seguro)
+    const tiposPermitidos = ['application/pdf'];
+    if (arquivo.type && !tiposPermitidos.includes(arquivo.type)) {
+        // Alguns navegadores podem não reportar type corretamente
+        console.warn('Tipo MIME não reconhecido como PDF:', arquivo.type);
+        // Continuar mesmo assim, pois a extensão está correta
+    }
+    
+    return true;
+}
+
 // Inicializar datepicker
 function inicializarDatepicker() {
     const hoje = new Date();
     const amanha = new Date(hoje);
     amanha.setDate(amanha.getDate() + 1);
     
-    flatpickr('.datepicker', {
-        dateFormat: 'd/m/Y',
-        locale: 'pt',
-        minDate: amanha, // ⬅️ Apenas dia seguinte em diante
-        disableMobile: true,
-        defaultDate: amanha, // ⬅️ Define amanhã como padrão
-        onChange: function(selectedDates, dateStr, instance) {
-            atualizarDiasMes();
-        }
-    });
+    try {
+        flatpickr('.datepicker', {
+            dateFormat: 'd/m/Y',
+            locale: 'pt',
+            minDate: amanha, // ⬅️ Apenas dia seguinte em diante
+            disableMobile: true,
+            defaultDate: amanha, // ⬅️ Define amanhã como padrão
+            onChange: function(selectedDates, dateStr, instance) {
+                atualizarDiasMes();
+            }
+        });
+    } catch (error) {
+        console.warn('⚠️ Flatpickr não carregado:', error);
+    }
 }
 
 // Calcular horário final (+8 horas)
@@ -560,8 +779,8 @@ function calcularHorarioFinal() {
     const inputInicial = document.getElementById('inputHorarioInicial');
     const inputFinal = document.getElementById('inputHorarioFinal');
     
-    if (!inputInicial.value) {
-        inputFinal.value = '';
+    if (!inputInicial || !inputInicial.value) {
+        if (inputFinal) inputFinal.value = '';
         return;
     }
     
@@ -573,22 +792,29 @@ function calcularHorarioFinal() {
         horasFinais -= 24;
     }
     
-    inputFinal.value = `${horasFinais.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
+    // Arredondar minutos para múltiplo de 5
+    const minutosArredondados = Math.round(minutos / 5) * 5;
     
-    // Validar vistoria técnica após 19:00 (NOVO)
-    const prioridade = document.getElementById('selectPrioridade').value;
-    if (prioridade === 'vistoria_tecnica') {
-        const horarioFinal = new Date();
-        horarioFinal.setHours(horasFinais, minutos, 0, 0);
-        const limite = new Date();
-        limite.setHours(19, 0, 0, 0);
-        
-        if (horarioFinal > limite) {
-            // Mostrar alerta modal
-            mostrarAlertaVistoriaTecnica().then(() => {
-                // Focar no campo motivo
-                document.getElementById('inputMotivo').focus();
-            });
+    if (inputFinal) {
+        inputFinal.value = `${horasFinais.toString().padStart(2, '0')}:${minutosArredondados.toString().padStart(2, '0')}`;
+    }
+    
+    // Validar vistoria técnica após 19:00
+    const prioridadeSelect = document.getElementById('selectPrioridade');
+    if (prioridadeSelect) {
+        const prioridade = prioridadeSelect.value;
+        if (prioridade === 'vistoria_tecnica') {
+            const horarioFinal = new Date();
+            horarioFinal.setHours(horasFinais, minutosArredondados, 0, 0);
+            const limite = new Date();
+            limite.setHours(19, 0, 0, 0);
+            
+            if (horarioFinal > limite) {
+                mostrarAlertaVistoriaTecnica().then(() => {
+                    const inputMotivo = document.getElementById('inputMotivo');
+                    if (inputMotivo) inputMotivo.focus();
+                });
+            }
         }
     }
 }
@@ -600,7 +826,7 @@ function atualizarDiasMes() {
     
     // Obter data selecionada
     const inputData = document.getElementById('inputData');
-    if (!inputData.value) {
+    if (!inputData || !inputData.value) {
         divDias.innerHTML = '<div class="text-muted small">Selecione uma data primeiro</div>';
         return;
     }
@@ -626,7 +852,8 @@ function atualizarDiasMes() {
         const isDiaRetroativo = dia < diaSelecionado;
         
         // Validar vistoria técnica (máx 10 dias à frente da data ATUAL)
-        const prioridade = document.getElementById('selectPrioridade').value;
+        const prioridadeSelect = document.getElementById('selectPrioridade');
+        const prioridade = prioridadeSelect ? prioridadeSelect.value : '';
         let disabledPorVistoria = false;
         let title = '';
         
@@ -676,48 +903,92 @@ function atualizarDiasMes() {
 // Inicializar event listeners
 function inicializarEventListeners() {
     // Filtros
-    document.getElementById('selectOpm').addEventListener('change', async (e) => {
-        opmSelecionada = e.target.value;
-        await carregarSolicitacoesMes();
-        atualizarTabelaSolicitacoes();
-        atualizarComposicoesDropdown();
-    });
+    const selectOpm = document.getElementById('selectOpm');
+    if (selectOpm) {
+        selectOpm.addEventListener('change', async (e) => {
+            opmSelecionada = e.target.value;
+            await carregarSolicitacoesMes();
+            atualizarTabelaSolicitacoes();
+            atualizarComposicoesDropdown();
+        });
+    }
     
-    document.getElementById('selectMes').addEventListener('change', (e) => {
-        mesFiltro = parseInt(e.target.value);
-    });
+    const selectMes = document.getElementById('selectMes');
+    if (selectMes) {
+        selectMes.addEventListener('change', (e) => {
+            mesFiltro = parseInt(e.target.value);
+        });
+    }
     
-    document.getElementById('selectAno').addEventListener('change', (e) => {
-        anoFiltro = parseInt(e.target.value);
-    });
+    const selectAno = document.getElementById('selectAno');
+    if (selectAno) {
+        selectAno.addEventListener('change', (e) => {
+            anoFiltro = parseInt(e.target.value);
+        });
+    }
     
-    document.getElementById('btnAtualizarFiltro').addEventListener('click', async () => {
-        await carregarSolicitacoesMes();
-        atualizarTabelaSolicitacoes();
-    });
+    const btnAtualizarFiltro = document.getElementById('btnAtualizarFiltro');
+    if (btnAtualizarFiltro) {
+        btnAtualizarFiltro.addEventListener('click', async () => {
+            await carregarSolicitacoesMes();
+            atualizarTabelaSolicitacoes();
+        });
+    }
     
     // Formulário
-    document.getElementById('inputData').addEventListener('change', atualizarDiasMes);
-    document.getElementById('selectPrioridade').addEventListener('change', (e) => {
-        atualizarCampoAnexo(e.target.value);
-        atualizarDiasMes(); // Revalidar dias para vistoria técnica
-        calcularHorarioFinal(); // Revalidar horário para vistoria técnica
-    });
+    const formNovaSolicitacao = document.getElementById('formNovaSolicitacao');
+    if (formNovaSolicitacao) {
+        formNovaSolicitacao.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await cadastrarSolicitacao();
+        });
+    }
     
-    document.getElementById('formNovaSolicitacao').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await cadastrarSolicitacao();
-    });
-    
-    document.getElementById('btnLimparForm').addEventListener('click', () => {
-        if (confirm('Tem certeza que deseja limpar todos os dados do formulário?')) {
-            limparFormulario();
-        }
-    });
+    const btnLimparForm = document.getElementById('btnLimparForm');
+    if (btnLimparForm) {
+        btnLimparForm.addEventListener('click', () => {
+            if (confirm('Tem certeza que deseja limpar todos os dados do formulário?')) {
+                limparFormulario();
+            }
+        });
+    }
     
     // Exportar CSV (apenas admin)
     if (userDataCache.nivel === 1) {
-        document.getElementById('btnExportarCSV').addEventListener('click', exportarCSV);
+        const btnExportarCSV = document.getElementById('btnExportarCSV');
+        if (btnExportarCSV) {
+            btnExportarCSV.addEventListener('click', exportarCSV);
+        }
+    }
+    
+    // Prioridade change
+    const selectPrioridade = document.getElementById('selectPrioridade');
+    if (selectPrioridade) {
+        selectPrioridade.addEventListener('change', (e) => {
+            atualizarCampoAnexo(e.target.value);
+            atualizarDiasMes();
+            calcularHorarioFinal();
+        });
+    }
+
+    // Validação de PDF no input de anexo
+    const inputAnexo = document.getElementById('inputAnexo');
+    if (inputAnexo) {
+        inputAnexo.addEventListener('change', function(e) {
+            if (this.files.length > 0) {
+                const arquivo = this.files[0];
+                if (!validarArquivoPDF(arquivo)) {
+                    mostrarMensagemFormulario('❌ Apenas arquivos PDF são permitidos', 'danger');
+                    this.value = ''; // Limpar input
+                    
+                    // Esconder div de anexo se não for prioridade que requer anexo
+                    const prioridade = document.getElementById('selectPrioridade').value;
+                    if (prioridade !== 'minimo_operacional' && prioridade !== 'vistoria_tecnica') {
+                        document.getElementById('divAnexo').style.display = 'none';
+                    }
+                }
+            }
+        });
     }
 }
 
@@ -726,6 +997,8 @@ function atualizarCampoAnexo(prioridade) {
     const divAnexo = document.getElementById('divAnexo');
     const labelAnexo = document.getElementById('labelAnexo');
     const textoAjuda = document.getElementById('textoAjudaAnexo');
+    
+    if (!divAnexo || !labelAnexo || !textoAjuda) return;
     
     if (prioridade === 'minimo_operacional') {
         divAnexo.style.display = 'block';
@@ -767,6 +1040,8 @@ function atualizarComposicoesDropdown() {
 async function cadastrarSolicitacao() {
     try {
         const btnCadastrar = document.getElementById('btnCadastrar');
+        if (!btnCadastrar) return;
+        
         const originalText = btnCadastrar.innerHTML;
         btnCadastrar.disabled = true;
         btnCadastrar.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Processando...';
@@ -799,9 +1074,28 @@ async function cadastrarSolicitacao() {
         // Upload de anexo se houver
         let linkAnexo = null;
         const inputAnexo = document.getElementById('inputAnexo');
-        if (inputAnexo.files.length > 0) {
+        if (inputAnexo && inputAnexo.files.length > 0) {
             try {
-                linkAnexo = await processarUploadAnexo(inputAnexo.files[0], formData);
+                const progressBar = document.getElementById('progressAnexo');
+                const progressFill = progressBar ? progressBar.querySelector('.progress-bar') : null;
+                
+                if (progressBar) progressBar.style.display = 'block';
+                if (progressFill) progressFill.style.width = '50%';
+                
+                // Gerar nome do arquivo
+                const mesAno = formData.data_base.substring(0, 7).replace(/-/g, '');
+                const baseNome = `${formData.opm_codigo}${formData.composicao_cod}${mesAno}`;
+                const extensao = inputAnexo.files[0].name.substring(inputAnexo.files[0].name.lastIndexOf('.'));
+                const nomeArquivo = `${baseNome}01${extensao}`;
+                
+                linkAnexo = await uploadParaGoogleDrive(inputAnexo.files[0], nomeArquivo);
+                
+                if (progressFill) progressFill.style.width = '100%';
+                setTimeout(() => {
+                    if (progressBar) progressBar.style.display = 'none';
+                    if (progressFill) progressFill.style.width = '0%';
+                }, 500);
+                
             } catch (anexoError) {
                 console.warn('Erro no anexo:', anexoError);
                 // Continuar sem anexo
@@ -827,12 +1121,12 @@ async function cadastrarSolicitacao() {
                 'success'
             );
             
-            // Atualizar tabela
+            // Limpar formulário AUTOMATICAMENTE (sem confirmação)
+            limparFormularioSilencioso();
+            
+            // Atualizar tabela IMEDIATAMENTE
             await carregarSolicitacoesMes();
             atualizarTabelaSolicitacoes();
-            
-            // Limpar formulário AUTOMATICAMENTE (sem confirmação)
-            // limparFormularioSilencioso();
         }
         
         if (erros.length > 0) {
@@ -847,27 +1141,36 @@ async function cadastrarSolicitacao() {
         mostrarMensagemFormulario(`❌ Erro: ${error.message}`, 'danger');
     } finally {
         const btnCadastrar = document.getElementById('btnCadastrar');
-        btnCadastrar.disabled = false;
-        btnCadastrar.innerHTML = '<i class="fas fa-save me-1"></i>Cadastrar';
+        if (btnCadastrar) {
+            btnCadastrar.disabled = false;
+            btnCadastrar.innerHTML = '<i class="fas fa-save me-1"></i>Cadastrar';
+        }
     }
 }
 
-// Nova função para limpar formulário sem confirmação
+// Função para limpar formulário sem confirmação
 function limparFormularioSilencioso() {
-    document.getElementById('formNovaSolicitacao').reset();
-    document.getElementById('inputHorarioFinal').value = '';
-    document.getElementById('divDiasMes').innerHTML = '<div class="text-muted small">Selecione uma data primeiro</div>';
-    document.getElementById('divAnexo').style.display = 'none';
+    const form = document.getElementById('formNovaSolicitacao');
+    if (form) form.reset();
+    
+    const inputHorarioFinal = document.getElementById('inputHorarioFinal');
+    if (inputHorarioFinal) inputHorarioFinal.value = '';
+    
+    const divDiasMes = document.getElementById('divDiasMes');
+    if (divDiasMes) divDiasMes.innerHTML = '<div class="text-muted small">Selecione uma data primeiro</div>';
+    
+    const divAnexo = document.getElementById('divAnexo');
+    if (divAnexo) divAnexo.style.display = 'none';
 }
 
 // Coletar dados do formulário
 function coletarDadosFormulario() {
-    const dataInput = document.getElementById('inputData').value;
-    if (!dataInput) {
+    const dataInput = document.getElementById('inputData');
+    if (!dataInput || !dataInput.value) {
         throw new Error('Data é obrigatória');
     }
     
-    const [diaStr, mesStr, anoStr] = dataInput.split('/');
+    const [diaStr, mesStr, anoStr] = dataInput.value.split('/');
     const dataBase = `${anoStr}-${mesStr.padStart(2, '0')}-${diaStr.padStart(2, '0')}`;
     const diaSelecionado = parseInt(diaStr);
     
@@ -875,7 +1178,8 @@ function coletarDadosFormulario() {
     const diasSelecionados = [diaSelecionado]; // Começa com o dia selecionado
     
     // Adicionar outros dias marcados
-    document.querySelectorAll('#divDiasMes input[type="checkbox"]:checked').forEach(cb => {
+    const checkboxes = document.querySelectorAll('#divDiasMes input[type="checkbox"]:checked');
+    checkboxes.forEach(cb => {
         if (!cb.disabled) {
             const dia = parseInt(cb.value);
             if (dia !== diaSelecionado) { // Não adicionar duplicado
@@ -895,10 +1199,10 @@ function coletarDadosFormulario() {
         vagas_subten_sgt: parseInt(document.getElementById('inputVagasSubten').value),
         vagas_cb_sd: parseInt(document.getElementById('inputVagasCbSd').value),
         prioridade: document.getElementById('selectPrioridade').value,
-        motivo: document.getElementById('inputMotivo').value.trim(),
-        observacoes: document.getElementById('inputObservacoes').value.trim(),
+        motivo: document.getElementById('inputMotivo')?.value.trim() || '',
+        observacoes: document.getElementById('inputObservacoes')?.value.trim() || '',
         diasSelecionados: diasSelecionados,
-        tem_anexo: document.getElementById('inputAnexo').files.length > 0
+        tem_anexo: document.getElementById('inputAnexo')?.files.length > 0
     };
 }
 
@@ -989,21 +1293,28 @@ function mostrarAlertaVistoriaTecnica() {
         document.body.appendChild(modalContainer);
         
         // Mostrar modal
-        const modal = new bootstrap.Modal(document.getElementById('modalAlertaVistoria'));
+        const modalElement = document.getElementById('modalAlertaVistoria');
+        if (!modalElement) return resolve();
+        
+        const modal = new bootstrap.Modal(modalElement);
         modal.show();
         
         // Configurar botão
-        document.getElementById('btnEntendiAlerta').addEventListener('click', () => {
-            modal.hide();
-            setTimeout(() => {
-                modalContainer.remove();
-                resolve();
-            }, 300);
-        });
+        const btnEntendi = document.getElementById('btnEntendiAlerta');
+        if (btnEntendi) {
+            btnEntendi.onclick = () => {
+                modal.hide();
+                setTimeout(() => {
+                    modalContainer.remove();
+                    resolve();
+                }, 300);
+            };
+        }
         
         // Focar no campo motivo quando modal fechar
-        document.getElementById('modalAlertaVistoria').addEventListener('hidden.bs.modal', () => {
-            document.getElementById('inputMotivo').focus();
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            const inputMotivo = document.getElementById('inputMotivo');
+            if (inputMotivo) inputMotivo.focus();
         });
     });
 }
@@ -1028,84 +1339,30 @@ async function verificarDuplicidade(dados) {
     return diasDuplicados;
 }
 
-// Processar upload de anexo
-async function processarUploadAnexo(arquivo, dados) {
-    const progressBar = document.getElementById('progressAnexo');
-    const progressFill = progressBar.querySelector('.progress-bar');
-    
-    // Mostrar progresso
-    progressBar.style.display = 'block';
-    progressFill.style.width = '25%';
-    
-    try {
-        // Gerar nome do arquivo
-        const mesAno = dados.data_base.substring(0, 7).replace(/-/g, '');
-        const baseNome = `${dados.opm_codigo}${dados.composicao_cod}${mesAno}`;
-        
-        // Sequência incremental simples (em produção, verificaria no Firebase)
-        let sequencia = 1;
-        const extensao = arquivo.name.substring(arquivo.name.lastIndexOf('.'));
-        let nomeArquivo = `${baseNome}${sequencia.toString().padStart(2, '0')}${extensao}`;
-        
-        progressFill.style.width = '50%';
-        
-        let urlAnexo;
-        try {
-            // Tentar Google Drive primeiro
-            urlAnexo = await uploadParaGoogleDrive(arquivo, nomeArquivo);
-            progressFill.style.width = '100%';
-            
-        } catch (driveError) {
-            console.warn('Google Drive falhou, usando fallback:', driveError);
-            progressFill.style.width = '75%';
-            
-            // Fallback: salvar no Firebase como texto base64 (para arquivos pequenos)
-            if (arquivo.size < 1000000) {
-                urlAnexo = await converterParaBase64(arquivo);
-                progressFill.style.width = '100%';
-                
-                // Mostrar aviso
-                mostrarMensagemFormulario(
-                    '⚠️ Anexo salvo localmente (Google Drive não disponível). ' +
-                    'Para arquivos maiores, configure o Google Drive.',
-                    'warning'
-                );
-            } else {
-                throw new Error('Arquivo muito grande. Configure o Google Drive para anexos maiores que 1MB.');
-            }
-        }
-        
-        // Esconder progress bar
-        setTimeout(() => {
-            progressBar.style.display = 'none';
-            progressFill.style.width = '0%';
-        }, 1000);
-        
-        return urlAnexo;
-        
-    } catch (error) {
-        progressBar.style.display = 'none';
-        progressFill.style.width = '0%';
-        throw new Error(`Falha no processamento do anexo: ${error.message}`);
-    }
-}
-
 // Cadastrar um dia específico da solicitação
 async function cadastrarDiaSolicitacao(dados, dia, linkAnexo) {
     // Construir data completa
     const dataCompleta = `${dados.data_base.substring(0, 8)}${dia.toString().padStart(2, '0')}`;
     
-    // Gerar ID único
+    // Gerar ID único - FORMATO MELHORADO: OPM(9) + Composição(var) + AAAAMMDD + HHMM
     const idSolicitacao = `${dados.opm_codigo}${dados.composicao_cod}${dataCompleta.replace(/-/g, '')}${dados.horario_inicial.replace(/:/g, '')}`;
     
-    // Dados para salvar (SEM HISTÓRICO AQUI - será adicionado depois)
+    // Obter nome da composição
+    let composicaoNome = '';
+    let descricao = '';
+    if (composicoesDisponiveis[dados.opm_codigo] && composicoesDisponiveis[dados.opm_codigo][dados.composicao_cod]) {
+        composicaoNome = composicoesDisponiveis[dados.opm_codigo][dados.composicao_cod].composicao || '';
+        descricao = composicoesDisponiveis[dados.opm_codigo][dados.composicao_cod].descricao || '';
+    }
+    
+    // Dados para salvar
     const dadosSolicitacao = {
         data: dataCompleta,
         opm_codigo: dados.opm_codigo,
         opm_nome: dados.opm_nome,
         composicao_cod: dados.composicao_cod,
-        composicao_nome: composicoesDisponiveis[dados.opm_codigo][dados.composicao_cod]?.composicao || '',
-        descricao: composicoesDisponiveis[dados.opm_codigo][dados.composicao_cod]?.descricao || '',
+        composicao_nome: composicaoNome,
+        descricao: descricao,
         horario_inicial: dados.horario_inicial,
         horario_final: dados.horario_final,
         vagas_subten_sgt: dados.vagas_subten_sgt,
@@ -1125,7 +1382,7 @@ async function cadastrarDiaSolicitacao(dados, dia, linkAnexo) {
     
     // Agora adicionar histórico separadamente
     const historicoRef = ref(database, `solicitacoes/${idSolicitacao}/historico`);
-    const entradaHistorico = criarEntradaHistorico('criacao', {
+    const entradaHistorico = criarEntradaHistorico({
         dados_completos: 'Solicitação criada'
     });
     await update(historicoRef, entradaHistorico);
@@ -1134,24 +1391,23 @@ async function cadastrarDiaSolicitacao(dados, dia, linkAnexo) {
 // NOVA FUNÇÃO para criar timestamp válido para Firebase
 function criarTimestampFirebase() {
     const now = new Date();
-    // Formato: YYYYMMDDHHMMSS (sem caracteres especiais)
-    const timestamp = 
+    // Formato: YYYYMMDDHHMMSSmmm (sem caracteres especiais)
+    return (
         now.getFullYear() + 
         String(now.getMonth() + 1).padStart(2, '0') + 
         String(now.getDate()).padStart(2, '0') + 
         String(now.getHours()).padStart(2, '0') + 
         String(now.getMinutes()).padStart(2, '0') + 
         String(now.getSeconds()).padStart(2, '0') + 
-        String(now.getMilliseconds()).padStart(3, '0');
-    return timestamp;
+        String(now.getMilliseconds()).padStart(3, '0')
+    );
 }
 
 // NOVA FUNÇÃO para criar objeto de histórico
-function criarEntradaHistorico(acao, dados = {}) {
+function criarEntradaHistorico(dados = {}) {
     const timestamp = criarTimestampFirebase();
     return {
         [timestamp]: {
-            acao: acao,
             alterado_por_re: userRE,
             alterado_por_nome: userDataCache.nome,
             ...dados
@@ -1162,11 +1418,9 @@ function criarEntradaHistorico(acao, dados = {}) {
 // Limpar formulário
 function limparFormulario() {
     if (confirm('Tem certeza que deseja limpar todos os dados do formulário?')) {
-        document.getElementById('formNovaSolicitacao').reset();
-        document.getElementById('inputHorarioFinal').value = '';
-        document.getElementById('divDiasMes').innerHTML = '<div class="text-muted small">Selecione uma data primeiro</div>';
-        document.getElementById('divAnexo').style.display = 'none';
-        document.getElementById('mensagensForm').innerHTML = '';
+        limparFormularioSilencioso();
+        const mensagensDiv = document.getElementById('mensagensForm');
+        if (mensagensDiv) mensagensDiv.innerHTML = '';
     }
 }
 
@@ -1190,7 +1444,7 @@ function mostrarMensagemFormulario(mensagem, tipo) {
     `;
 }
 
-// Atualizar tabela de solicitações
+// Atualizar tabela de solicitações (LAYOUT MELHORADO)
 async function atualizarTabelaSolicitacoes() {
     const tbody = document.getElementById('tbodySolicitacoes');
     const contador = document.getElementById('contadorSolicitacoes');
@@ -1201,26 +1455,13 @@ async function atualizarTabelaSolicitacoes() {
     }
     
     try {
-        // Mostrar carregando
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="12" class="text-center py-5">
-                    <div class="spinner-border text-primary"></div>
-                    <p class="mt-2 text-muted">Carregando solicitações...</p>
-                </td>
-            </tr>
-        `;
-        
-        // Tentar carregar solicitações
-        await carregarSolicitacoesMes();
-        
         // Atualizar contador
         contador.textContent = solicitacoesCache.length;
         
         if (solicitacoesCache.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="12" class="text-center py-4 text-muted">
+                    <td colspan="14" class="text-center py-4 text-muted">
                         <i class="fas fa-inbox fa-2x mb-3"></i><br>
                         Nenhuma solicitação encontrada para este mês
                     </td>
@@ -1237,24 +1478,53 @@ async function atualizarTabelaSolicitacoes() {
                 return;
             }
             
-            const dataObj = new Date(solicitacao.data);
-            const dataFormatada = isNaN(dataObj.getTime()) ? 'Data inválida' : dataObj.toLocaleDateString('pt-BR');
+            // Formatar data - CORREÇÃO DO FUSO HORÁRIO
+            let dataFormatada;
+            let dataObj;
+            
+            if (solicitacao.data_local) {
+                dataObj = solicitacao.data_local;
+            } else if (solicitacao.data_extraida) {
+                dataObj = new Date(solicitacao.data_extraida);
+                // Ajustar fuso horário
+                dataObj = new Date(dataObj.getTime() - (dataObj.getTimezoneOffset() * 60000));
+            } else {
+                dataObj = new Date(solicitacao.data);
+                // Ajustar fuso horário
+                dataObj = new Date(dataObj.getTime() - (dataObj.getTimezoneOffset() * 60000));
+            }
+            
+            if (isNaN(dataObj.getTime())) {
+                dataFormatada = 'Data inválida';
+            } else {
+                // Formatar como DD/MM/AAAA
+                const dia = dataObj.getDate().toString().padStart(2, '0');
+                const mes = (dataObj.getMonth() + 1).toString().padStart(2, '0');
+                const ano = dataObj.getFullYear();
+                dataFormatada = `${dia}/${mes}/${ano}`;
+            }
             
             // Status
             const statusIcon = getIconeStatus(solicitacao.status);
             const statusClass = getClasseStatus(solicitacao.status);
             
-            // Prioridade
-            const prioridadeIcon = getIconePrioridade(solicitacao.prioridade);
+            // Prioridade (ícones mais destacados)
+            const prioridadeIcon = getIconePrioridadeMelhorado(solicitacao.prioridade);
             
-            // Ações (ícones)
-            const acoesHTML = gerarAcoesHTML(solicitacao);
+            // Ações (ícones) - REMOVIDO "Admin only"
+            const acoesHTML = gerarAcoesHTMLMelhorado(solicitacao);
             
-            // Vagas
-            const vagasSolicitadas = `${solicitacao.vagas_subten_sgt || 0} / ${solicitacao.vagas_cb_sd || 0}`;
+            // Vagas solicitadas (separadas)
+            const vagasSubten = solicitacao.vagas_subten_sgt || 0;
+            const vagasCbSd = solicitacao.vagas_cb_sd || 0;
             
-            // Escalado
-            const escaladoHTML = gerarEscaladoHTML(solicitacao);
+            // Escalado (separado)
+            const escaladoSubten = solicitacao.escalado_subten_sgt || 0;
+            const escaladoCbSd = solicitacao.escalado_cb_sd || 0;
+            
+            // Classes para cores (vermelho se faltando)
+            const subtenClass = (escaladoSubten < vagasSubten) ? 'text-danger fw-bold' : '';
+            const cbSdClass = (escaladoCbSd < vagasCbSd) ? 'text-danger fw-bold' : '';
             
             // Prazo de inscrição
             let prazoHTML = '-';
@@ -1278,28 +1548,36 @@ async function atualizarTabelaSolicitacoes() {
             // ID do sistema
             const idSistema = solicitacao.id_sistema_local || '-';
             
-            // Linha da tabela
+            // Linha da tabela (LAYOUT MELHORADO)
             html += `
-                <tr class="${statusClass} align-middle" id="linha-${solicitacao.id}">
+                <tr class="${statusClass} align-middle text-center" id="linha-${solicitacao.id}">
                     <td class="py-2">${acoesHTML}</td>
-                    <td class="py-2"><strong>${dataFormatada}</strong></td>
-                    <td class="py-2">${solicitacao.composicao_nome || ''}</td>
+                    <td class="py-2">
+                        <a href="#" class="text-primary text-decoration-underline link-reutilizar" 
+                        data-id="${solicitacao.id}" 
+                        title="Clique para reutilizar estes dados em nova solicitação">
+                        <strong>${dataFormatada}</strong>
+                        </a>
+                    </td>
+                    <td class="py-2 text-start">${solicitacao.composicao_nome || ''}</td>
                     <td class="py-2"><code>${solicitacao.composicao_cod || ''}</code></td>
                     <td class="py-2">${solicitacao.horario_inicial || ''} às ${solicitacao.horario_final || ''}</td>
-                    <td class="py-2">${vagasSolicitadas}</td>
-                    <td class="text-center py-2">${prioridadeIcon}</td>
-                    <td class="text-center py-2">
+                    <td class="py-2">${vagasSubten}</td>
+                    <td class="py-2">${vagasCbSd}</td>
+                    <td class="py-2">${prioridadeIcon}</td>
+                    <td class="py-2">
                         <span class="status-icon" data-id="${solicitacao.id}" 
                               data-status="${solicitacao.status || ''}" 
                               style="cursor: ${userDataCache.nivel === 1 ? 'pointer' : 'default'}; 
-                                     font-size: 1.1em;">
+                                     font-size: 1.2em;">
                             ${statusIcon}
                         </span>
                     </td>
                     <td class="py-2"><small>${idSistema}</small></td>
                     <td class="py-2"><small>${prazoHTML}</small></td>
-                    <td class="py-2">${escaladoHTML}</td>
-                    <td class="text-center py-2">
+                    <td class="py-2 ${subtenClass}">${escaladoSubten}</td>
+                    <td class="py-2 ${cbSdClass}">${escaladoCbSd}</td>
+                    <td class="py-2">
                         <button class="btn btn-sm btn-outline-info btn-detalhes" 
                                 data-id="${solicitacao.id}" title="Detalhes">
                             <i class="fas fa-eye"></i>
@@ -1313,12 +1591,13 @@ async function atualizarTabelaSolicitacoes() {
         
         // Adicionar event listeners para ações
         adicionarEventListenersTabela();
+        configurarReutilizacaoDados();
         
     } catch (error) {
         console.error('Erro ao atualizar tabela:', error);
         tbody.innerHTML = `
             <tr>
-                <td colspan="12" class="text-center py-4 text-danger">
+                <td colspan="14" class="text-center py-4 text-danger">
                     <i class="fas fa-exclamation-triangle fa-2x mb-3"></i><br>
                     Erro ao carregar solicitações<br>
                     <small>${error.message}</small>
@@ -1328,27 +1607,11 @@ async function atualizarTabelaSolicitacoes() {
     }
 }
 
-// Gerar HTML das ações
-function gerarAcoesHTML(solicitacao) {
-    // Se tem status 1, 2 ou 3, não mostra ações para usuário normal
-    if ([1, 2, 3].includes(solicitacao.status)) {
-        return userDataCache.nivel === 1 ? 
-            '<small class="text-muted">Admin only</small>' : 
-            '<small class="text-muted">-</small>';
-    }
-    
-    // Status 4 (em edição) - mostra botões de confirmação
+// Gerar HTML das ações MELHORADO (separar botões)
+function gerarAcoesHTMLMelhorado(solicitacao) {
+    // Status 4 (em edição) - não mostra ações
     if (solicitacao.status === 4) {
-        return `
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-warning btn-atualizar" data-id="${solicitacao.id}" title="Atualizar">
-                    <i class="fas fa-redo"></i>
-                </button>
-                <button class="btn btn-secondary btn-cancelar-edicao" data-id="${solicitacao.id}" title="Cancelar">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-        `;
+        return ''; // Nada - admin precisa liberar
     }
     
     // Status 5 (excluído) - mostra botão para reativar (apenas admin)
@@ -1357,34 +1620,27 @@ function gerarAcoesHTML(solicitacao) {
             <button class="btn btn-sm btn-success btn-reativar" data-id="${solicitacao.id}" title="Reativar">
                 <i class="fas fa-undo"></i>
             </button>
-        ` : '<small class="text-muted">Excluído</small>';
+        ` : '';
     }
     
-    // Sem status ou status 0 - mostra ações normais
+    // Status 1, 2, 3 ou vazio - verificar permissão
+    const podeEditar = (
+        userDataCache.nivel === 1 || // Admin (qualquer OPM)
+        (userDataCache.nivel === 2 && opmsPermitidas.includes(solicitacao.opm_codigo))
+    );
+    
+    if (!podeEditar) {
+        return ''; // Nada
+    }
+    
     return `
-        <div class="btn-group btn-group-sm">
-            <button class="btn btn-outline-primary btn-editar" data-id="${solicitacao.id}" title="Editar">
+        <div class="d-flex gap-1 justify-content-center">
+            <button class="btn btn-sm btn-outline-primary btn-editar" data-id="${solicitacao.id}" title="Editar">
                 <i class="fas fa-edit"></i>
             </button>
-            <button class="btn btn-outline-danger btn-excluir" data-id="${solicitacao.id}" title="Excluir">
+            <button class="btn btn-sm btn-outline-danger btn-excluir" data-id="${solicitacao.id}" title="Excluir">
                 <i class="fas fa-trash"></i>
             </button>
-        </div>
-    `;
-}
-
-// Gerar HTML do escalado
-function gerarEscaladoHTML(solicitacao) {
-    const escaladoSubten = solicitacao.escalado_subten_sgt || 0;
-    const escaladoCbSd = solicitacao.escalado_cb_sd || 0;
-    
-    const subtenClass = (escaladoSubten < solicitacao.vagas_subten_sgt) ? 'text-danger' : '';
-    const cbSdClass = (escaladoCbSd < solicitacao.vagas_cb_sd) ? 'text-danger' : '';
-    
-    return `
-        <div class="small">
-            <span class="${subtenClass}">${escaladoSubten}</span> / 
-            <span class="${cbSdClass}">${escaladoCbSd}</span>
         </div>
     `;
 }
@@ -1405,24 +1661,24 @@ function adicionarEventListenersTabela() {
             span.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
                 const status = e.currentTarget.dataset.status;
-                if (['1', '2', '3'].includes(status)) {
+                if (status === '4') { // ⬅️ APENAS se estiver em edição (status 4)
                     liberarParaEdicao(id);
                 }
             });
         });
     }
     
-    // Ações normais (apenas se usuário tiver permissão)
+    // Ações normais (níveis 1 e 2 podem ver/editar)
     if (userDataCache.nivel <= 2) {
-        // Editar
+        // Editar (lápis) - AGORA só transforma em inputs
         document.querySelectorAll('.btn-editar').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
-                iniciarEdicao(id);
+                iniciarEdicao(id); // ⬅️ Só transforma células em inputs
             });
         });
         
-        // Excluir
+        // Excluir (lixeira) - funciona normal
         document.querySelectorAll('.btn-excluir').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
@@ -1430,24 +1686,24 @@ function adicionarEventListenersTabela() {
             });
         });
         
-        // Atualizar (durante edição)
+        // Atualizar (durante edição) - AGORA salva e muda status
         document.querySelectorAll('.btn-atualizar').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
-                confirmarEdicao(id);
+                confirmarEdicao(id); // ⬅️ Salva e muda status para 4
             });
         });
         
-        // Cancelar edição
+        // Cancelar edição (X) - AGORA só reverte visualmente
         document.querySelectorAll('.btn-cancelar-edicao').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
-                cancelarEdicao(id);
+                cancelarEdicao(id); // ⬅️ Só reverte visualmente
             });
         });
     }
     
-    // Reativar (apenas admin)
+    // Reativar (apenas admin) - para status 5
     if (userDataCache.nivel === 1) {
         document.querySelectorAll('.btn-reativar').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -1456,16 +1712,71 @@ function adicionarEventListenersTabela() {
             });
         });
     }
+    
+    // Links para reutilizar dados
+    document.querySelectorAll('.link-reutilizar').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const id = e.currentTarget.dataset.id;
+            reutilizarDadosSolicitacao(id);
+        });
+    });
+}
+
+// Função para reutilizar dados de uma solicitação existente
+function configurarReutilizacaoDados() {
+    document.querySelectorAll('.link-reutilizar').forEach(link => {
+        link.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const id = e.currentTarget.dataset.id;
+            await reutilizarDadosSolicitacao(id);
+        });
+    });
+}
+
+async function reutilizarDadosSolicitacao(id) {
+    const solicitacao = solicitacoesCache.find(s => s.id === id);
+    if (!solicitacao) {
+        mostrarMensagemFormulario('❌ Solicitação não encontrada', 'danger');
+        return;
+    }
+    
+    try {
+        // Preencher formulário com dados da solicitação
+        document.getElementById('selectComposicao').value = solicitacao.composicao_cod;
+        document.getElementById('inputHorarioInicial').value = solicitacao.horario_inicial;
+        document.getElementById('selectPrioridade').value = solicitacao.prioridade;
+        document.getElementById('inputVagasSubten').value = solicitacao.vagas_subten_sgt;
+        document.getElementById('inputVagasCbSd').value = solicitacao.vagas_cb_sd;
+        document.getElementById('inputMotivo').value = solicitacao.motivo || '';
+        document.getElementById('inputObservacoes').value = solicitacao.observacoes || '';
+        
+        // Calcular horário final
+        calcularHorarioFinal();
+        
+        // Atualizar campo anexo conforme prioridade
+        atualizarCampoAnexo(solicitacao.prioridade);
+        
+        // Rolar até o formulário
+        document.getElementById('formNovaSolicitacao').scrollIntoView({ behavior: 'smooth' });
+        
+        // Mostrar mensagem
+        mostrarMensagemFormulario('✅ Dados carregados! Agora selecione uma nova data.', 'success');
+        
+    } catch (error) {
+        console.error('Erro ao reutilizar dados:', error);
+        mostrarMensagemFormulario('❌ Erro ao carregar dados', 'danger');
+    }
 }
 
 // Obter ícone do status
 function getIconeStatus(status) {
     switch(status) {
-        case 1: return '<i class="fas fa-check text-success"></i>'; // ✅
+        case 1: return '<i class="fas fa-check-circle text-success"></i>'; // ✅
         case 2: return '<i class="fas fa-exclamation-triangle text-warning"></i>'; // ⚠️
-        case 3: return '<i class="fas fa-times text-danger"></i>'; // ❌
+        case 3: return '<i class="fas fa-times-circle text-danger"></i>'; // ❌
         case 4: return '<i class="fas fa-hand-paper text-warning"></i>'; // ✋
-        case 5: return '<i class="fas fa-trash text-secondary"></i>'; // 🗑️
+        case 5: return '<i class="fas fa-trash-alt text-secondary"></i>'; // 🗑️
         default: return '';
     }
 }
@@ -1479,80 +1790,263 @@ function getClasseStatus(status) {
     }
 }
 
-// Obter ícone da prioridade
-function getIconePrioridade(prioridade) {
-    if (prioridade === 'minimo_operacional' || prioridade === 'vistoria_tecnica') {
-        return '<i class="fas fa-check text-success"></i>';
+// Obter ícone da prioridade MELHORADO (mais destacado)
+function getIconePrioridadeMelhorado(prioridade) {
+    switch(prioridade) {
+        case 'minimo_operacional':
+            return '<span class="badge bg-success"><i class="fas fa-shield-alt me-1"></i>Mínimo</span>';
+        case 'vistoria_tecnica':
+            return '<span class="badge bg-warning text-dark"><i class="fas fa-clipboard-check me-1"></i>Vistoria</span>';
+        case 'viatura_extra':
+            return '<span class="badge bg-info"><i class="fas fa-car me-1"></i>Extra</span>';
+        default:
+            return '<span class="badge bg-secondary"><i class="fas fa-minus"></i></span>';
     }
-    return '<i class="fas fa-minus text-muted"></i>';
 }
 
-// Mostrar detalhes da solicitação
+// Mostrar detalhes da solicitação (COM CORREÇÃO PARA BASE64)
 async function mostrarDetalhesSolicitacao(id) {
     const solicitacao = solicitacoesCache.find(s => s.id === id);
     if (!solicitacao) return;
     
-    // Preencher modal
-    document.getElementById('modalMotivo').value = solicitacao.motivo || '';
-    document.getElementById('modalObservacoes').value = solicitacao.observacoes || '';
-    document.getElementById('modalAdministracao').value = solicitacao.administracao || '';
-    
-    // Mostrar anexos se existirem
-    const divAnexos = document.getElementById('modalAnexos');
+    // Tratar anexo base64
+    let anexoHTML = '';
     if (solicitacao.comprovante_url) {
-        divAnexos.innerHTML = `
-            <label class="form-label">Anexo:</label>
-            <div>
-                <a href="${solicitacao.comprovante_url}" target="_blank" class="btn btn-sm btn-outline-primary">
-                    <i class="fas fa-external-link-alt me-1"></i>Abrir anexo
-                </a>
-            </div>
-        `;
+        if (solicitacao.comprovante_url.startsWith('data:')) {
+            // É base64 - criar link para download
+            anexoHTML = `
+                <div class="mb-3">
+                    <label class="form-label"><strong>Anexo:</strong></label>
+                    <div>
+                        <a href="#" class="btn btn-sm btn-outline-primary" id="btnDownloadBase64${id}">
+                            <i class="fas fa-download me-1"></i>Baixar anexo
+                        </a>
+                        <small class="text-muted ms-2">(formato base64)</small>
+                    </div>
+                </div>
+            `;
+        } else {
+            // É URL normal
+            anexoHTML = `
+                <div class="mb-3">
+                    <label class="form-label"><strong>Anexo:</strong></label>
+                    <div>
+                        <a href="${solicitacao.comprovante_url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-external-link-alt me-1"></i>Abrir anexo
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
     } else {
-        divAnexos.innerHTML = '<small class="text-muted">Nenhum anexo</small>';
+        anexoHTML = '<small class="text-muted">Nenhum anexo</small>';
     }
     
+    // Criar modal dinâmico
+    const modalHTML = `
+        <div class="modal fade" id="modalDetalhes${id}" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-info text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Detalhes da Solicitação
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <strong>Data:</strong> ${new Date(solicitacao.data).toLocaleDateString('pt-BR')}<br>
+                                <strong>Horário:</strong> ${solicitacao.horario_inicial} às ${solicitacao.horario_final}<br>
+                                <strong>OPM:</strong> ${solicitacao.opm_nome} (${solicitacao.opm_codigo})<br>
+                                <strong>Composição:</strong> ${solicitacao.composicao_nome} (${solicitacao.composicao_cod})
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Vagas:</strong> ${solicitacao.vagas_subten_sgt} Subten/Sgt, ${solicitacao.vagas_cb_sd} Cb/Sd<br>
+                                <strong>Prioridade:</strong> ${solicitacao.prioridade}<br>
+                                <strong>Criado por:</strong> ${solicitacao.criado_por_nome}<br>
+                                <strong>Criado em:</strong> ${new Date(solicitacao.criado_em).toLocaleString('pt-BR')}
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Motivo:</strong></label>
+                            <textarea class="form-control" id="modalMotivo${id}" rows="2">${solicitacao.motivo || ''}</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Observações:</strong></label>
+                            <textarea class="form-control" id="modalObservacoes${id}" rows="2">${solicitacao.observacoes || ''}</textarea>
+                        </div>
+                        
+                        ${anexoHTML}
+                        
+                        ${userDataCache.nivel === 1 ? `
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Administração:</strong></label>
+                            <textarea class="form-control" id="modalAdministracao${id}" rows="2">${solicitacao.administracao || ''}</textarea>
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                        <button type="button" class="btn btn-primary" id="btnSalvarDetalhes${id}">Salvar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Adicionar ao DOM
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalHTML;
+    document.body.appendChild(modalContainer);
+    
     // Configurar botão salvar
-    const btnSalvar = document.getElementById('btnSalvarDetalhes');
-    btnSalvar.onclick = () => salvarDetalhesSolicitacao(id);
+    const btnSalvar = document.getElementById(`btnSalvarDetalhes${id}`);
+    if (btnSalvar) {
+        btnSalvar.onclick = () => salvarDetalhesSolicitacao(id, modalContainer);
+    }
+    
+    // Configurar download de base64 se existir
+    if (solicitacao.comprovante_url && solicitacao.comprovante_url.startsWith('data:')) {
+        const btnDownload = document.getElementById(`btnDownloadBase64${id}`);
+        if (btnDownload) {
+            btnDownload.onclick = (e) => {
+                e.preventDefault();
+                downloadBase64(solicitacao.comprovante_url, `anexo_${id}.pdf`);
+            };
+        }
+    }
     
     // Mostrar modal
-    const modal = new bootstrap.Modal(document.getElementById('modalDetalhes'));
+    const modal = new bootstrap.Modal(document.getElementById(`modalDetalhes${id}`));
     modal.show();
+    
+    // Remover modal do DOM quando fechar
+    const modalElement = document.getElementById(`modalDetalhes${id}`);
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        setTimeout(() => modalContainer.remove(), 300);
+    });
+}
+
+// Função para download de base64
+function downloadBase64(base64Data, filename) {
+    try {
+        // Extrair o tipo MIME e os dados
+        const parts = base64Data.split(';base64,');
+        const mimeType = parts[0].split(':')[1];
+        const data = parts[1];
+        
+        // Converter base64 para blob
+        const byteCharacters = atob(data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {type: mimeType});
+        
+        // Criar link de download
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+    } catch (error) {
+        console.error('Erro ao fazer download:', error);
+        mostrarMensagemFormulario('❌ Erro ao fazer download do anexo', 'danger');
+    }
 }
 
 // Salvar detalhes da solicitação
-async function salvarDetalhesSolicitacao(id) {
+async function salvarDetalhesSolicitacao(id, modalContainer) {
     try {
-        const motivo = document.getElementById('modalMotivo').value;
-        const observacoes = document.getElementById('modalObservacoes').value;
+        const solicitacao = solicitacoesCache.find(s => s.id === id);
+        if (!solicitacao) return;
+        
+        // Verificar permissão
+        const podeEditar = (
+            userDataCache.nivel === 1 || // Admin
+            (userDataCache.nivel === 2 && opmsPermitidas.includes(solicitacao.opm_codigo))
+        );
+        
+        if (!podeEditar) {
+            mostrarMensagemFormulario('❌ Você não tem permissão para editar esta solicitação', 'danger');
+            return;
+        }
+        
+        const motivo = document.getElementById(`modalMotivo${id}`).value;
+        const observacoes = document.getElementById(`modalObservacoes${id}`).value;
         
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
-        // Atualizar no Firebase
-        await update(solicitacaoRef, {
-            motivo: motivo,
-            observacoes: observacoes,
-            historico: {
-                [new Date().toISOString()]: {
-                    acao: 'edicao_detalhes',
-                    campos_alterados: ['motivo', 'observacoes'],
-                    alterado_por_re: userRE,
-                    alterado_por_nome: userDataCache.nome
-                }
+        // Se não está em edição (status 4), mudar para status 4
+        if (!solicitacao.status || solicitacao.status !== 4) {
+            // Salvar dados anteriores no histórico
+            const historicoRef = ref(database, `solicitacoes/${id}/historico`);
+            const entradaHistorico = criarEntradaHistorico({
+                motivo_anterior: solicitacao.motivo || '',
+                observacoes_anteriores: solicitacao.observacoes || ''
+            });
+            await update(historicoRef, entradaHistorico);
+            
+            // Mudar para status 4
+            await update(solicitacaoRef, {
+                status: 4,
+                motivo: motivo,
+                observacoes: observacoes
+            });
+            
+            mostrarMensagemFormulario('✋ Detalhes atualizados. Solicitação em modo de edição.', 'info');
+            
+        } else {
+            // Já está em edição, apenas atualizar
+            const updates = {
+                motivo: motivo,
+                observacoes: observacoes
+            };
+            
+            // Se for admin, salvar também o campo administração
+            if (userDataCache.nivel === 1) {
+                const administracao = document.getElementById(`modalAdministracao${id}`).value;
+                updates.administracao = administracao;
             }
-        });
+            
+            // Atualizar no Firebase (mantém status 4)
+            await update(solicitacaoRef, updates);
+            
+            // Adicionar histórico
+            const historicoRef = ref(database, `solicitacoes/${id}/historico`);
+            const entradaHistorico = criarEntradaHistorico({
+                campos_alterados: Object.keys(updates)
+            });
+            await update(historicoRef, entradaHistorico);
+            
+            mostrarMensagemFormulario('✅ Detalhes atualizados! Solicitação continua em edição.', 'success');
+        }
         
         // Atualizar cache local
         const index = solicitacoesCache.findIndex(s => s.id === id);
         if (index !== -1) {
             solicitacoesCache[index].motivo = motivo;
             solicitacoesCache[index].observacoes = observacoes;
+            if (userDataCache.nivel === 1) {
+                solicitacoesCache[index].administracao = document.getElementById(`modalAdministracao${id}`).value;
+            }
         }
         
-        // Fechar modal e mostrar mensagem
-        bootstrap.Modal.getInstance(document.getElementById('modalDetalhes')).hide();
-        mostrarMensagemFormulario('✅ Detalhes atualizados com sucesso!', 'success');
+        // Fechar modal
+        bootstrap.Modal.getInstance(document.getElementById(`modalDetalhes${id}`)).hide();
+        
+        // Atualizar tabela (vai mostrar status 4 - mão)
+        await carregarSolicitacoesMes();
+        atualizarTabelaSolicitacoes();
         
     } catch (error) {
         console.error('Erro ao salvar detalhes:', error);
@@ -1562,28 +2056,28 @@ async function salvarDetalhesSolicitacao(id) {
 
 // Iniciar edição de solicitação
 async function iniciarEdicao(id) {
-    if (!confirm('Tem certeza que deseja editar esta solicitação?')) return;
+    const solicitacao = solicitacoesCache.find(s => s.id === id);
+    if (!solicitacao) return;
+    
+    // Verificar permissão
+    const podeEditar = (
+        userDataCache.nivel === 1 || // Admin
+        (userDataCache.nivel === 2 && opmsPermitidas.includes(solicitacao.opm_codigo))
+    );
+    
+    if (!podeEditar) {
+        mostrarMensagemFormulario('❌ Você não tem permissão para editar esta solicitação', 'danger');
+        return;
+    }
     
     try {
-        const solicitacaoRef = ref(database, `solicitacoes/${id}`);
+        // Transformar células de vagas em inputs
+        transformarCelulasEmInputs(id, solicitacao);
         
-        // Atualizar status para 4 (em edição)
-        await update(solicitacaoRef, {
-            status: 4,
-            historico: {
-                [new Date().toISOString()]: {
-                    acao: 'inicio_edicao',
-                    alterado_por_re: userRE,
-                    alterado_por_nome: userDataCache.nome
-                }
-            }
-        });
+        // Atualizar botões (mostrar "atualizar" e "cancelar")
+        atualizarBotoesParaModoEdicao(id);
         
-        // Atualizar cache e tabela
-        await carregarSolicitacoesMes();
-        atualizarTabelaSolicitacoes();
-        
-        mostrarMensagemFormulario('✋ Solicitação em modo de edição', 'info');
+        mostrarMensagemFormulario('✋ Editando solicitação - Clique em "Atualizar" para confirmar', 'info');
         
     } catch (error) {
         console.error('Erro ao iniciar edição:', error);
@@ -1591,55 +2085,100 @@ async function iniciarEdicao(id) {
     }
 }
 
+function transformarCelulasEmInputs(id, solicitacao) {
+    const linha = document.getElementById(`linha-${id}`);
+    if (!linha) return;
+    
+    // Célula de vagas Subten/Sgt (coluna 5 - índice 5)
+    const celulaSubten = linha.cells[5];
+    celulaSubten.innerHTML = `
+        <input type="number" class="form-control form-control-sm text-center" 
+               id="editSubten${id}" 
+               value="${solicitacao.vagas_subten_sgt || 0}"
+               min="0" max="99" style="width: 60px;">
+    `;
+    
+    // Célula de vagas Cb/Sd (coluna 6 - índice 6)
+    const celulaCbSd = linha.cells[6];
+    celulaCbSd.innerHTML = `
+        <input type="number" class="form-control form-control-sm text-center" 
+               id="editCbSd${id}" 
+               value="${solicitacao.vagas_cb_sd || 0}"
+               min="0" max="99" style="width: 60px;">
+    `;
+}
+
 // Confirmar edição
 async function confirmarEdicao(id) {
     try {
+        // Obter valores dos inputs
+        const inputSubten = document.getElementById(`editSubten${id}`);
+        const inputCbSd = document.getElementById(`editCbSd${id}`);
+        
+        if (!inputSubten || !inputCbSd) {
+            throw new Error('Não foi possível encontrar os campos de edição');
+        }
+        
+        const novasVagasSubten = parseInt(inputSubten.value) || 0;
+        const novasVagasCbSd = parseInt(inputCbSd.value) || 0;
+        
+        if (novasVagasSubten < 0 || novasVagasCbSd < 0) {
+            mostrarMensagemFormulario('❌ As vagas não podem ser negativas', 'danger');
+            return;
+        }
+        
+        // Buscar dados atuais ANTES de atualizar (para histórico)
+        const solicitacaoAtual = solicitacoesCache.find(s => s.id === id);
+        if (!solicitacaoAtual) return;
+        
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
-        // Remover status (volta para vazio/null)
-        await update(solicitacaoRef, {
-            status: null
-        });
-        
-        // Adicionar entrada de histórico
+        // 1. Criar histórico com dados ANTES da atualização
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
-        const entradaHistorico = criarEntradaHistorico('confirmacao_edicao');
+        const entradaHistorico = criarEntradaHistorico({
+            vagas_anteriores: {
+                subten_sgt: solicitacaoAtual.vagas_subten_sgt,
+                cb_sd: solicitacaoAtual.vagas_cb_sd
+            },
+        });
         await update(historicoRef, entradaHistorico);
         
-        // Atualizar cache e tabela
+        // 2. Atualizar vagas E mudar status para 4
+        await update(solicitacaoRef, {
+            vagas_subten_sgt: novasVagasSubten,
+            vagas_cb_sd: novasVagasCbSd,
+            status: 4  // ⬅️ AGORA muda status aqui
+        });
+        
+        // 3. Atualizar cache local
+        const index = solicitacoesCache.findIndex(s => s.id === id);
+        if (index !== -1) {
+            solicitacoesCache[index].vagas_subten_sgt = novasVagasSubten;
+            solicitacoesCache[index].vagas_cb_sd = novasVagasCbSd;
+            solicitacoesCache[index].status = 4;
+        }
+        
+        // 4. Atualizar tabela COMPLETA (volta botões originais)
         await carregarSolicitacoesMes();
         atualizarTabelaSolicitacoes();
         
-        mostrarMensagemFormulario('✅ Edição confirmada', 'success');
+        mostrarMensagemFormulario('✅ Vagas atualizadas! Solicitação agora está em modo de edição (status 4).', 'success');
         
     } catch (error) {
         console.error('Erro ao confirmar edição:', error);
-        mostrarMensagemFormulario('❌ Erro ao confirmar edição', 'danger');
+        mostrarMensagemFormulario('❌ Erro ao atualizar vagas', 'danger');
     }
 }
 
 // Cancelar edição
 async function cancelarEdicao(id) {
     try {
-        const solicitacaoRef = ref(database, `solicitacoes/${id}`);
-        
-        // Remover status (volta para vazio/null)
-        await update(solicitacaoRef, {
-            status: null,
-            historico: {
-                [new Date().toISOString()]: {
-                    acao: 'cancelamento_edicao',
-                    alterado_por_re: userRE,
-                    alterado_por_nome: userDataCache.nome
-                }
-            }
-        });
-        
-        // Atualizar cache e tabela
+        // Não atualiza Firebase, apenas reverte visualmente
+        // Atualizar tabela (carrega dados originais)
         await carregarSolicitacoesMes();
         atualizarTabelaSolicitacoes();
         
-        mostrarMensagemFormulario('Edição cancelada', 'info');
+        mostrarMensagemFormulario('Edição cancelada - Nenhuma alteração foi salva', 'info');
         
     } catch (error) {
         console.error('Erro ao cancelar edição:', error);
@@ -1649,22 +2188,20 @@ async function cancelarEdicao(id) {
 
 // Excluir solicitação
 async function excluirSolicitacao(id) {
-    if (!confirm('Tem certeza que deseja excluir esta solicitação?')) return;
+    if (!confirm('Tem certeza que deseja excluir esta solicitação?\n\nAtenção: Esta ação pode ser revertida apenas por um administrador.')) return;
     
     try {
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
         // Atualizar status para 5 (excluído)
         await update(solicitacaoRef, {
-            status: 5,
-            historico: {
-                [new Date().toISOString()]: {
-                    acao: 'exclusao',
-                    alterado_por_re: userRE,
-                    alterado_por_nome: userDataCache.nome
-                }
-            }
+            status: 5
         });
+        
+        // Adicionar histórico
+        const historicoRef = ref(database, `solicitacoes/${id}/historico`);
+        const entradaHistorico = criarEntradaHistorico();
+        await update(historicoRef, entradaHistorico);
         
         // Atualizar cache e tabela
         await carregarSolicitacoesMes();
@@ -1685,15 +2222,13 @@ async function reativarSolicitacao(id) {
         
         // Remover status (volta para vazio/null)
         await update(solicitacaoRef, {
-            status: null,
-            historico: {
-                [new Date().toISOString()]: {
-                    acao: 'reativacao_admin',
-                    alterado_por_re: userRE,
-                    alterado_por_nome: userDataCache.nome
-                }
-            }
+            status: null
         });
+        
+        // Adicionar histórico
+        const historicoRef = ref(database, `solicitacoes/${id}/historico`);
+        const entradaHistorico = criarEntradaHistorico();
+        await update(historicoRef, entradaHistorico);
         
         // Atualizar cache e tabela
         await carregarSolicitacoesMes();
@@ -1709,49 +2244,87 @@ async function reativarSolicitacao(id) {
 
 // Liberar para edição (admin clica no status)
 function liberarParaEdicao(id) {
-    // Armazenar ID para usar no modal
-    document.getElementById('btnConfirmarLiberar').dataset.id = id;
+    // Criar modal dinâmico
+    const modalHTML = `
+        <div class="modal fade" id="modalLiberarEdicao${id}" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title">
+                            <i class="fas fa-unlock me-2"></i>
+                            Liberar para Edição
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Tem certeza que deseja liberar esta solicitação para edição?</p>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            A solicitação será desbloqueada e poderá ser editada pelo usuário que a criou.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-warning" id="btnConfirmarLiberar${id}">Liberar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
     
-    const modal = new bootstrap.Modal(document.getElementById('modalLiberarEdicao'));
+    // Adicionar ao DOM
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalHTML;
+    document.body.appendChild(modalContainer);
+    
+    // Configurar botão confirmar
+    const btnConfirmar = document.getElementById(`btnConfirmarLiberar${id}`);
+    if (btnConfirmar) {
+        btnConfirmar.onclick = () => confirmarLiberacao(id, modalContainer);
+    }
+    
+    // Mostrar modal
+    const modal = new bootstrap.Modal(document.getElementById(`modalLiberarEdicao${id}`));
     modal.show();
+    
+    // Remover modal do DOM quando fechar
+    const modalElement = document.getElementById(`modalLiberarEdicao${id}`);
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        setTimeout(() => modalContainer.remove(), 300);
+    });
 }
 
 // Confirmar liberação (admin)
-document.addEventListener('click', async (e) => {
-    if (e.target.id === 'btnConfirmarLiberar') {
-        const id = e.target.dataset.id;
+async function confirmarLiberacao(id, modalContainer) {
+    try {
+        const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
-        try {
-            const solicitacaoRef = ref(database, `solicitacoes/${id}`);
-            
-            // Remover status (volta para vazio/null)
-            await update(solicitacaoRef, {
-                status: null,
-                historico: {
-                    [new Date().toISOString()]: {
-                        acao: 'liberacao_admin',
-                        alterado_por_re: userRE,
-                        alterado_por_nome: userDataCache.nome,
-                        observacao: 'Liberado pelo administrador para edição'
-                    }
-                }
-            });
-            
-            // Atualizar cache e tabela
-            await carregarSolicitacoesMes();
-            atualizarTabelaSolicitacoes();
-            
-            // Fechar modal
-            bootstrap.Modal.getInstance(document.getElementById('modalLiberarEdicao')).hide();
-            
-            mostrarMensagemFormulario('🔓 Solicitação liberada para edição', 'success');
-            
-        } catch (error) {
-            console.error('Erro ao liberar:', error);
-            mostrarMensagemFormulario('❌ Erro ao liberar solicitação', 'danger');
-        }
+        // Remover status (volta para vazio/null)
+        await update(solicitacaoRef, {
+            status: null
+        });
+        
+        // Adicionar histórico
+        const historicoRef = ref(database, `solicitacoes/${id}/historico`);
+        const entradaHistorico = criarEntradaHistorico({
+            observacao: 'Liberado pelo administrador para edição'
+        });
+        await update(historicoRef, entradaHistorico);
+        
+        // Atualizar cache e tabela
+        await carregarSolicitacoesMes();
+        atualizarTabelaSolicitacoes();
+        
+        // Fechar modal
+        bootstrap.Modal.getInstance(document.getElementById(`modalLiberarEdicao${id}`)).hide();
+        
+        mostrarMensagemFormulario('🔓 Solicitação liberada para edição', 'success');
+        
+    } catch (error) {
+        console.error('Erro ao liberar:', error);
+        mostrarMensagemFormulario('❌ Erro ao liberar solicitação', 'danger');
     }
-});
+}
 
 // Exportar CSV (apenas admin)
 async function exportarCSV() {
@@ -1766,6 +2339,10 @@ async function exportarCSV() {
             return;
         }
         
+        if (!confirm(`Exportar ${paraExportar.length} solicitações?\n\nApós exportar, as solicitações serão bloqueadas para edição.`)) {
+            return;
+        }
+        
         // Preparar dados para CSV
         const dadosCSV = paraExportar.map(s => ({
             ID: s.id,
@@ -1774,13 +2351,14 @@ async function exportarCSV() {
             OPM_Nome: s.opm_nome,
             Composicao_Cod: s.composicao_cod,
             Composicao_Nome: s.composicao_nome,
+            Descricao: s.descricao || '',
             Horario_Inicial: s.horario_inicial,
             Horario_Final: s.horario_final,
             Vagas_Subten_Sgt: s.vagas_subten_sgt,
             Vagas_Cb_Sd: s.vagas_cb_sd,
             Prioridade: s.prioridade,
-            Motivo: s.motivo,
-            Observacoes: s.observacoes,
+            Motivo: s.motivo || '',
+            Observacoes: s.observacoes || '',
             Status_Atual: s.status || '',
             Criado_Por: s.criado_por_nome,
             Criado_Em: new Date(s.criado_em).toLocaleString('pt-BR'),
@@ -1804,15 +2382,16 @@ async function exportarCSV() {
         for (const solicitacao of paraExportar) {
             const solicitacaoRef = ref(database, `solicitacoes/${solicitacao.id}`);
             await update(solicitacaoRef, {
-                status: 2,
-                historico: {
-                    [new Date().toISOString()]: {
-                        acao: 'exportacao_csv',
-                        exportado_por_re: userRE,
-                        exportado_por_nome: userDataCache.nome
-                    }
-                }
+                status: 2
             });
+            
+            // Adicionar histórico
+            const historicoRef = ref(database, `solicitacoes/${solicitacao.id}/historico`);
+            const entradaHistorico = criarEntradaHistorico({
+                exportado_por_re: userRE,
+                exportado_por_nome: userDataCache.nome
+            });
+            await update(historicoRef, entradaHistorico);
         }
         
         // Atualizar cache e tabela
@@ -1847,6 +2426,65 @@ function showSolicitacoesError(error) {
             </div>
         </div>
     `;
+}
+
+// Função para converter data do Excel (DD/MM/YY HH:mm) para ISO
+function converterDataExcelParaISO(dataExcel) {
+    if (!dataExcel) return null;
+    
+    try {
+        // Formato: "06/02/26 13:09"
+        const [dataPart, horaPart] = dataExcel.split(' ');
+        const [dia, mes, ano] = dataPart.split('/');
+        const [hora, minuto] = horaPart.split(':');
+        
+        // Ano com 4 dígitos (assume 2000+)
+        const anoCompleto = parseInt(ano) + 2000;
+        
+        // Criar data em UTC
+        const dataUTC = new Date(Date.UTC(
+            anoCompleto, 
+            parseInt(mes) - 1, 
+            parseInt(dia), 
+            parseInt(hora), 
+            parseInt(minuto)
+        ));
+        
+        return dataUTC.toISOString();
+    } catch (error) {
+        console.error('Erro ao converter data Excel:', dataExcel, error);
+        return null;
+    }
+}
+
+function atualizarBotoesParaModoEdicao(id) {
+    const linha = document.getElementById(`linha-${id}`);
+    if (!linha) return;
+    
+    // Substituir botões "lápis" e "lixeira" por "atualizar" e "cancelar"
+    const celulaAcoes = linha.cells[0];
+    celulaAcoes.innerHTML = `
+        <div class="d-flex gap-1 justify-content-center">
+            <button class="btn btn-sm btn-warning btn-atualizar" data-id="${id}" title="Atualizar">
+                <i class="fas fa-redo"></i>
+            </button>
+            <button class="btn btn-sm btn-secondary btn-cancelar-edicao" data-id="${id}" title="Cancelar">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    // Re-adicionar event listeners ESPECÍFICOS para esta linha
+    const btnAtualizar = linha.querySelector('.btn-atualizar');
+    const btnCancelar = linha.querySelector('.btn-cancelar-edicao');
+    
+    if (btnAtualizar) {
+        btnAtualizar.onclick = () => confirmarEdicao(id);
+    }
+    
+    if (btnCancelar) {
+        btnCancelar.onclick = () => cancelarEdicao(id);
+    }
 }
 
 // Se estiver carregando como página normal (não SPA)
