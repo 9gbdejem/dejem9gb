@@ -27,9 +27,6 @@
                     <div class="card-body">
                         <h1 class="h3 mb-4">
                             <i class="fas fa-user-times me-2 text-danger"></i>Exclusões de Escalas
-                            <small class="text-muted ms-2" style="font-size: 0.8rem;">
-                                <i class="fas fa-shield-alt me-1"></i>Acesso Restrito - Nível 1
-                            </small>
                         </h1>
                         
                         <!-- Formulário de filtros -->
@@ -56,25 +53,25 @@
                             <!-- Filtros de data -->
                             <div class="col-md-1">
                                 <select id="filterDay" class="form-select">
-                                    <option value="">Dia</option>
+                                    <option value="">Todos dias</option>
                                 </select>
                             </div>
                             
                             <div class="col-md-2">
                                 <select id="filterMonth" class="form-select">
-                                    <option value="">Mês</option>
+                                    <option value="">Todos mêses</option>
                                 </select>
                             </div>
                             
                             <div class="col-md-1">
                                 <select id="filterYear" class="form-select">
-                                    <option value="">Ano</option>
+                                    <option value="">Todos anos</option>
                                 </select>
                             </div>
                             
                             <div class="col-md-2">
                                 <select id="filterStation" class="form-select">
-                                    <option value="">Estação</option>
+                                    <option value="">Todas estação</option>
                                 </select>
                             </div>
                             
@@ -110,42 +107,47 @@
         <!-- Cards de Estatísticas -->
         <div class="row mb-4">
             <div class="col-md-3">
-                <div class="card bg-danger text-white">
+                <div class="card bg-primary text-white">
                     <div class="card-body">
                         <h6 class="card-title">Total de Exclusões</h6>
-                        <h2 id="totalExclusoes" class="mb-0">0</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-2">
-                <div class="card bg-warning text-white">
-                    <div class="card-body">
-                        <h6 class="card-title">Militares Únicos</h6>
-                        <h2 id="totalMilitares" class="mb-0">0</h2>
+                        <h2 id="totalVagas" class="mb-0">0</h2>
+                        <small class="opacity-75">(contagem de registros)</small>
                     </div>
                 </div>
             </div>
             <div class="col-md-2">
                 <div class="card bg-info text-white">
                     <div class="card-body">
-                        <h6 class="card-title">Estações</h6>
-                        <h2 id="totalEstacoes" class="mb-0">0</h2>
+                        <h6 class="card-title">Total de Escalas</h6>
+                        <h2 id="totalEscalas" class="mb-0">0</h2>
+                        <small class="opacity-75">(IDs diferentes)</small>
                     </div>
                 </div>
             </div>
             <div class="col-md-2">
-                <div class="card bg-secondary text-white">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <h6 class="card-title">Militares</h6>
+                        <h2 id="totalMilitares" class="mb-0">0</h2>
+                        <small class="opacity-75">(REs únicos)</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card bg-success text-white">
                     <div class="card-body">
                         <h6 class="card-title">Mês Atual</h6>
                         <h2 id="mesAtual" class="mb-0">-</h2>
+                        <small class="opacity-75">mês filtrado</small>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-dark text-white">
+                <div class="card bg-secondary text-white">
                     <div class="card-body">
-                        <h6 class="card-title">Período</h6>
-                        <h2 id="periodoAtual" class="mb-0">Todos</h2>
+                        <h6 class="card-title">Ano</h6>
+                        <h2 id="anoAtual" class="mb-0">-</h2>
+                        <small class="opacity-75">ano filtrado</small>
                     </div>
                 </div>
             </div>

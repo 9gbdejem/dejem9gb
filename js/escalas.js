@@ -18,19 +18,16 @@ let userRE = '';
 
 // ==================== FUNÇÕES DE INICIALIZAÇÃO ====================
 export async function initEscalasSPA() {
-    // console.log('📅 Escalas SPA inicializando...');
     await initializeApp();
 }
 
 async function initEscalas() {
-    // console.log('📅 Página de Escalas carregando...');
     await initializeApp();
     await loadNavbar();
 }
 
 async function initializeApp() {
     try {
-        // Verificar autenticação - nível mínimo 3 para ver a página
         const { userData, re } = await checkAuth(3);
         
         userRE = re;
@@ -44,16 +41,13 @@ async function initializeApp() {
             window.updateUserGreetingInSPA();
         }
         
-        // Criar modal dinamicamente
         createModalIfNotExists();
         
-        // Configurar tudo
         setupEventListeners();
         await loadEscalados();
         await loadConfirmacoes();
         populateFilters();
         
-        // Aplicar filtro do dia atual automaticamente
         applyTodayFilter();
         
     } catch (error) {
@@ -97,17 +91,23 @@ async function loadEscalados() {
                 });
             });
             
-            // Ordenar por data (mais recente primeiro)
+            // Ordenar por data (mais recente primeiro) e dentro do mesmo dia por horário
             allEscalas.sort((a, b) => {
                 const dateA = new Date(a.ano, a.mês - 1, a.dia);
                 const dateB = new Date(b.ano, b.mês - 1, b.dia);
-                return dateB - dateA;
+                
+                // Primeiro compara as datas
+                if (dateB.getTime() !== dateA.getTime()) {
+                    return dateB - dateA;
+                }
+                
+                // Se for a mesma data, ordena por horário de início
+                const horaA = a.HorarioInic || 0;
+                const horaB = b.HorarioInic || 0;
+                return horaA - horaB;
             });
             
-            // console.log(`✅ ${allEscalas.length} escalas carregadas`);
-            
         } else {
-            // console.log('📭 Nenhuma escala encontrada');
             allEscalas = [];
             showMessage('Nenhuma escala cadastrada no sistema.', 'info');
         }
@@ -121,10 +121,8 @@ async function loadEscalados() {
 }
 
 function processarEscala(escalaData, year, month, day, escalaKey) {
-    // FILTRAR EXCLUSÕES - NÃO ADICIONAR À LISTA
     if (escalaData.Exclusao === "X" || escalaData.Exclusao === "x") {
-        // console.log(`🚫 Exclusão ignorada: ${escalaData.Id || ''}/${escalaData.RE || ''} - ${escalaData.Militar || 'N/A'}`);
-        return; // NÃO processa, NÃO adiciona ao allEscalas
+        return;
     }
     
     const escalaId = escalaData.Id || '';
@@ -142,7 +140,6 @@ function processarEscala(escalaData, year, month, day, escalaKey) {
         linhaId: `${year}/${month}/${day}/${escalaKey}`
     };
     
-    // Converter horários
     if (escalaData.HorarioInic !== undefined) {
         escala.horarioInicio = decimalToTime(escalaData.HorarioInic);
     }
@@ -151,10 +148,8 @@ function processarEscala(escalaData, year, month, day, escalaKey) {
     }
     escala.horarioFormatado = `${escala.horarioInicio || '--:--'} às ${escala.horarioTermino || '--:--'}`;
     
-    // Corrigir PostoGrad
     escala.PostoGrad = escalaData.PostoGrad || escalaData.Posto_Grad || '-';
     
-    // Adicionar aos conjuntos únicos
     uniqueYears.add(parseInt(year));
     uniqueMonths.add(parseInt(month));
     uniqueDays.add(parseInt(day));
@@ -168,7 +163,6 @@ function processarEscala(escalaData, year, month, day, escalaKey) {
 
 async function loadConfirmacoes() {
     try {
-        // console.log('🔍 Carregando confirmações...');
         const confirmacoesRef = ref(database, 'confirmacoes');
         const snapshot = await get(confirmacoesRef);
         
@@ -189,7 +183,6 @@ async function loadConfirmacoes() {
                     }
                 });
             });
-            // console.log(`✅ Confirmações carregadas: ${Object.keys(confirmacoesCache).length} escalas`);
         }
     } catch (error) {
         console.error('❌ Erro ao carregar confirmações:', error);
@@ -252,6 +245,41 @@ function isValidSEILink(link) {
     return link.startsWith('https://sei.sp.gov.br/') || link.startsWith('http://sei.sp.gov.br/');
 }
 
+// ==================== FUNÇÕES PARA CÁLCULO DE ESTATÍSTICAS ====================
+function countUniqueEscalaIds(escalas) {
+    const uniqueIds = new Set();
+    escalas.forEach(escala => {
+        if (escala.Id) {
+            uniqueIds.add(escala.Id.toString());
+        }
+    });
+    return uniqueIds.size;
+}
+
+function countTotalVagas(escalas) {
+    return escalas.length;
+}
+
+function countUniqueMilitares(escalas) {
+    const uniqueREs = new Set();
+    escalas.forEach(escala => {
+        if (escala.RE) {
+            uniqueREs.add(escala.RE.toString());
+        }
+    });
+    return uniqueREs.size;
+}
+
+function countUniqueEstacoes(escalas) {
+    const stations = new Set();
+    escalas.forEach(escala => {
+        if (escala.Estacao) {
+            stations.add(escala.Estacao);
+        }
+    });
+    return stations.size;
+}
+
 // ==================== FUNÇÕES DE TABELA ====================
 function renderTable() {
     const tbody = document.getElementById('escalasBody');
@@ -281,7 +309,6 @@ function renderTable() {
     
     let html = '';
     
-    // Agrupar escalas por ID para contar e destacar
     const escalasPorId = {};
     filteredEscalas.forEach(escala => {
         if (escala.Id) {
@@ -296,14 +323,11 @@ function renderTable() {
         const globalIndex = startIndex + index + 1;
         const isUserEscala = userRE && escala.RE && escala.RE.toString() === userRE;
         
-        // Verificar confirmação
         const confirmacao = getConfirmacaoStatus(escala.Id, escala.RE);
         const confirmacaoIcon = getConfirmacaoIcon(confirmacao ? confirmacao.status : null, escala.Id, escala.RE);
         
-        // Contar quantos tem mesmo ID
         const countSameId = escala.Id ? (escalasPorId[escala.Id] || []).length : 0;
         
-        // Cor de fundo para grupo de mesma ID
         let rowClass = '';
         if (isUserEscala) rowClass += 'table-info ';
         if (countSameId > 1) {
@@ -311,12 +335,10 @@ function renderTable() {
             rowClass += idNum % 2 === 0 ? 'escala-grupo-par ' : 'escala-grupo-impar ';
         }
         
-        // Gerar link para a escala (só para admin nível 1)
         const escalaLink = getEscalaLink(escala.Id);
         const temConfirmacao = confirmacao !== null;
         const temLinkSEI = temConfirmacao && confirmacoesCache[escala.Id]?.dadosGerais?.sei_link;
 
-        // BOTÃO CLIPE (admin) - SÓ aparece se tiver link SEI
         const adminLinkIcon = (userNivel === 1 && escala.Id && temConfirmacao && temLinkSEI) ? 
             `<a href="${confirmacoesCache[escala.Id].dadosGerais.sei_link}" target="_blank" class="btn btn-sm btn-outline-info ms-1" title="Abrir documento SEI">
                 <i class="fas fa-paperclip"></i>
@@ -344,7 +366,6 @@ function renderTable() {
                     <div class="fw-bold">${escala.Militar || '-'}</div>
                 </td>
                 <td>
-                    <!-- ID SEMPRE abre link do sistema PM -->
                     <a href="${escalaLink}" target="_blank" class="text-primary fw-bold escala-id-link" title="Abrir escala no sistema">
                         ${escala.Id || '-'}
                     </a>
@@ -400,22 +421,38 @@ function renderPagination(totalPages) {
     
     let html = '';
     
+    // Botão Anterior
     html += `
         <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">
-                <i class="fas fa-chevron-left"></i>
+            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})" aria-label="Anterior">
+                <span aria-hidden="true">&laquo;</span>
             </a>
         </li>
     `;
     
+    // Números das páginas
     const maxPagesToShow = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
     let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
     
+    // Ajusta se não mostrar páginas suficientes
     if (endPage - startPage + 1 < maxPagesToShow) {
         startPage = Math.max(1, endPage - maxPagesToShow + 1);
     }
     
+    // Primeira página (se necessário)
+    if (startPage > 1) {
+        html += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changePage(1)">1</a>
+            </li>
+        `;
+        if (startPage > 2) {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+    
+    // Páginas principais
     for (let i = startPage; i <= endPage; i++) {
         html += `
             <li class="page-item ${i === currentPage ? 'active' : ''}">
@@ -424,10 +461,23 @@ function renderPagination(totalPages) {
         `;
     }
     
+    // Última página (se necessário)
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        html += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changePage(${totalPages})">${totalPages}</a>
+            </li>
+        `;
+    }
+    
+    // Botão Próximo
     html += `
         <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">
-                <i class="fas fa-chevron-right"></i>
+            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})" aria-label="Próximo">
+                <span aria-hidden="true">&raquo;</span>
             </a>
         </li>
     `;
@@ -444,7 +494,6 @@ window.changePage = function(page) {
 
 // ==================== FUNÇÕES DE FILTROS ====================
 function setupEventListeners() {
-    // Search input
     const searchInput = document.getElementById('searchRE');
     if (searchInput) {
         searchInput.addEventListener('input', function() {
@@ -459,7 +508,6 @@ function setupEventListeners() {
         });
     }
     
-    // Search type
     const searchTypeSelect = document.getElementById('searchType');
     if (searchTypeSelect) {
         searchTypeSelect.addEventListener('change', function() {
@@ -473,7 +521,6 @@ function setupEventListeners() {
         });
     }
     
-    // Filtros
     const dayFilter = document.getElementById('filterDay');
     if (dayFilter) dayFilter.addEventListener('change', applyFilters);
     
@@ -486,7 +533,6 @@ function setupEventListeners() {
     const stationFilter = document.getElementById('filterStation');
     if (stationFilter) stationFilter.addEventListener('change', applyFilters);
     
-    // Botões
     const clearBtn = document.getElementById('clearFilters');
     if (clearBtn) clearBtn.addEventListener('click', clearFilters);
     
@@ -506,7 +552,6 @@ function setupEventListeners() {
         });
     }
     
-    // Event listener para botões de confirmação
     document.addEventListener('click', function(e) {
         const confirmBtn = e.target.closest('.confirm-btn');
         if (confirmBtn) {
@@ -518,7 +563,6 @@ function setupEventListeners() {
         }
     });
     
-    // Event listener para salvar confirmação
     document.addEventListener('click', function(e) {
         if (e.target && e.target.id === 'saveConfirm') {
             saveConfirmation();
@@ -538,7 +582,6 @@ function getSearchPlaceholder(type) {
 }
 
 function populateFilters() {
-    // Filtro de dias (1-31)
     const dayFilter = document.getElementById('filterDay');
     if (dayFilter) {
         while (dayFilter.options.length > 1) {
@@ -553,7 +596,6 @@ function populateFilters() {
         }
     }
     
-    // Filtro de meses
     const monthFilter = document.getElementById('filterMonth');
     if (monthFilter && uniqueMonths.size > 0) {
         const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
@@ -575,7 +617,6 @@ function populateFilters() {
         });
     }
     
-    // Filtro de anos
     const yearFilter = document.getElementById('filterYear');
     if (yearFilter && uniqueYears.size > 0) {
         const sortedYears = Array.from(uniqueYears).sort((a, b) => b - a);
@@ -592,7 +633,6 @@ function populateFilters() {
         });
     }
     
-    // Filtro de estações
     const stationFilter = document.getElementById('filterStation');
     if (stationFilter && uniqueStations.size > 0) {
         const sortedStations = Array.from(uniqueStations).sort();
@@ -616,24 +656,20 @@ function applyTodayFilter() {
     const month = today.getMonth() + 1;
     const year = today.getFullYear();
     
-    // Aplicar filtro do dia atual
     document.getElementById('filterDay').value = day;
     document.getElementById('filterMonth').value = month;
     document.getElementById('filterYear').value = year;
     
-    // Verificar se há escalas para o dia atual
     const hasEscalasForToday = allEscalas.some(e => 
         e.dia === day && e.mês === month && e.ano === year
     );
     
     if (!hasEscalasForToday) {
-        // Se não tem para o dia, verificar se tem para o mês
         const hasEscalasForMonth = allEscalas.some(e => 
             e.mês === month && e.ano === year
         );
         
         if (!hasEscalasForMonth) {
-            // Se não tem para o mês, mostrar a escala mais recente
             if (allEscalas.length > 0) {
                 const recente = allEscalas[0];
                 document.getElementById('filterDay').value = recente.dia;
@@ -642,7 +678,6 @@ function applyTodayFilter() {
                 showMessage('Mostrando a escala mais recente disponível', 'info');
             }
         } else {
-            // Tem para o mês, remover filtro de dia
             document.getElementById('filterDay').value = '';
             showMessage('Mostrando todas as escalas deste mês', 'info');
         }
@@ -659,7 +694,6 @@ function applyFilters() {
     const stationFilter = document.getElementById('filterStation').value;
     
     filteredEscalas = allEscalas.filter(escala => {
-        // Filtro de busca
         if (searchValue) {
             const searchField = currentSearchType.toLowerCase();
             let fieldValue = '';
@@ -687,28 +721,24 @@ function applyFilters() {
             }
         }
         
-        // Filtro de dia
         if (dayFilter && escala.dia) {
             if (escala.dia.toString() !== dayFilter) {
                 return false;
             }
         }
         
-        // Filtro de mês
         if (monthFilter && escala.mês) {
             if (escala.mês.toString() !== monthFilter) {
                 return false;
             }
         }
         
-        // Filtro de ano
         if (yearFilter && escala.ano) {
             if (escala.ano.toString() !== yearFilter) {
                 return false;
             }
         }
         
-        // Filtro de estação
         if (stationFilter && escala.Estacao) {
             if (escala.Estacao !== stationFilter) {
                 return false;
@@ -746,8 +776,6 @@ function clearFilters() {
 }
 
 function refreshEscalas() {
-    // console.log('🔄 Atualizando escalas...');
-    
     const refreshBtn = document.getElementById('refreshData');
     if (refreshBtn) {
         const originalHTML = refreshBtn.innerHTML;
@@ -759,7 +787,7 @@ function refreshEscalas() {
             loadConfirmacoes()
         ]).then(() => {
             populateFilters();
-            applyTodayFilter(); // Aplicar filtro do dia atual após refresh
+            applyTodayFilter();
         }).finally(() => {
             setTimeout(() => {
                 refreshBtn.innerHTML = originalHTML;
@@ -779,17 +807,25 @@ function refreshEscalas() {
 }
 
 function updateStatistics() {
+    const totalVagas = document.getElementById('totalVagas');
     const totalEscalas = document.getElementById('totalEscalas');
-    const totalEstacoes = document.getElementById('totalEstacoes');
     const totalMilitares = document.getElementById('totalMilitares');
     const mesAtual = document.getElementById('mesAtual');
     const anoAtual = document.getElementById('anoAtual');
     
-    if (!totalEscalas || !totalEstacoes || !totalMilitares || !mesAtual || !anoAtual) return;
+    if (!totalVagas || !totalEscalas || !totalMilitares || !mesAtual || !anoAtual) {
+        console.error('❌ Elementos de estatísticas não encontrados');
+        return;
+    }
     
-    totalEscalas.textContent = filteredEscalas.length;
-    totalEstacoes.textContent = getUniqueStationsCount();
-    totalMilitares.textContent = getUniqueMilitaresCount();
+    const vagasCount = countTotalVagas(filteredEscalas);
+    totalVagas.textContent = vagasCount.toLocaleString('pt-BR');
+    
+    const escalasCount = countUniqueEscalaIds(filteredEscalas);
+    totalEscalas.textContent = escalasCount.toLocaleString('pt-BR');
+    
+    const militaresCount = countUniqueMilitares(filteredEscalas);
+    totalMilitares.textContent = militaresCount.toLocaleString('pt-BR');
     
     const monthFilter = document.getElementById('filterMonth');
     const yearFilter = document.getElementById('filterYear');
@@ -800,33 +836,70 @@ function updateStatistics() {
     if (monthFilter && monthFilter.value) {
         const monthNum = parseInt(monthFilter.value);
         mesAtual.textContent = monthNames[monthNum - 1] || monthNum;
+        mesAtual.title = `Mês: ${monthNames[monthNum - 1] || monthNum}`;
     } else {
-        mesAtual.textContent = '-';
+        mesAtual.textContent = 'Todos';
+        mesAtual.title = 'Todos os meses';
     }
     
     if (yearFilter && yearFilter.value) {
         anoAtual.textContent = yearFilter.value;
+        anoAtual.title = `Ano: ${yearFilter.value}`;
     } else {
-        anoAtual.textContent = '-';
-    }
-}
-
-function getUniqueStationsCount() {
-    const stations = new Set();
-    filteredEscalas.forEach(escala => {
-        if (escala.Estacao) stations.add(escala.Estacao);
-    });
-    return stations.size;
-}
-
-function getUniqueMilitaresCount() {
-    const militares = new Set();
-    filteredEscalas.forEach(escala => {
-        if (escala.RE) {
-            militares.add(escala.RE.toString());
+        const years = Array.from(uniqueYears).sort((a, b) => a - b);
+        if (years.length === 1) {
+            anoAtual.textContent = years[0];
+        } else if (years.length > 1) {
+            anoAtual.textContent = `${years[0]}-${years[years.length-1]}`;
+        } else {
+            anoAtual.textContent = '-';
         }
-    });
-    return militares.size;
+        anoAtual.title = 'Período completo';
+    }
+    
+    addStatisticsTooltips(vagasCount, escalasCount, militaresCount);
+}
+
+function addStatisticsTooltips(vagasCount, escalasCount, militaresCount) {
+    const totalVagasElement = document.getElementById('totalVagas');
+    const totalEscalasElement = document.getElementById('totalEscalas');
+    const totalMilitaresElement = document.getElementById('totalMilitares');
+    
+    if (totalVagasElement) {
+        totalVagasElement.setAttribute('data-bs-toggle', 'tooltip');
+        totalVagasElement.setAttribute('data-bs-placement', 'top');
+        totalVagasElement.setAttribute('title', 
+            `${vagasCount} registros (vagas) no período filtrado`);
+    }
+    
+    if (totalEscalasElement) {
+        totalEscalasElement.setAttribute('data-bs-toggle', 'tooltip');
+        totalEscalasElement.setAttribute('data-bs-placement', 'top');
+        totalEscalasElement.setAttribute('title', 
+            `${escalasCount} escalas com IDs diferentes`);
+    }
+    
+    if (totalMilitaresElement) {
+        totalMilitaresElement.setAttribute('data-bs-toggle', 'tooltip');
+        totalMilitaresElement.setAttribute('data-bs-placement', 'top');
+        totalMilitaresElement.setAttribute('title', 
+            `${militaresCount} militares diferentes (REs únicos)`);
+    }
+    
+    if (typeof bootstrap !== 'undefined') {
+        setTimeout(() => {
+            const tooltipTriggerList = [].slice.call(
+                document.querySelectorAll('[data-bs-toggle="tooltip"]')
+            );
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                try {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                } catch (e) {
+                    return null;
+                }
+            });
+        }, 500);
+    }
 }
 
 // ==================== FUNÇÕES DE MODAL ====================
@@ -851,17 +924,13 @@ function createModalIfNotExists() {
     `;
     
     document.body.insertAdjacentHTML('beforeend', modalHTML);
-    // console.log('✅ Modal criado dinamicamente');
 }
 
 window.openConfirmModal = async function(escalaId, reClicado) {
-    // console.log('Abrindo modal para escala ID:', escalaId, 'RE clicado:', reClicado);
-    
     const escalasComMesmoId = allEscalas.filter(e => e.Id == escalaId);
     const usuarioEstaNaEscala = escalasComMesmoId.some(e => e.RE == userRE);
     const isAdmin = userNivel === 1;
     
-    // VERIFICAÇÃO DE PERMISSÃO
     if (!usuarioEstaNaEscala && !isAdmin) {
         showMessage('Você não tem permissão para confirmar esta escala.', 'warning');
         return;
@@ -905,7 +974,6 @@ window.openConfirmModal = async function(escalaId, reClicado) {
                     <tbody>
     `;
     
-    // Para cada militar, criar linha com status EDITÁVEL
     escalasComMesmoId.forEach((escala, index) => {
         const confirmacaoMilitar = militaresConfirmacoes[escala.RE] || {};
         const isCurrentUser = (escala.RE == userRE);
@@ -1006,13 +1074,11 @@ async function saveConfirmation() {
         return;
     }
     
-    // Validar formato do link SEI
     if (!isValidSEILink(seiLink)) {
         showMessage('O link do SEI deve começar com https://sei.sp.gov.br/ ou http://sei.sp.gov.br/', 'warning');
         return;
     }
     
-    // Coletar status de TODOS os militares
     const statusMilitares = {};
     const militarElements = document.querySelectorAll('.militar-status');
     
@@ -1043,7 +1109,6 @@ async function saveConfirmation() {
         
         const timestamp = Date.now();
         
-        // 1. Salvar dados gerais
         await set(ref(database, `confirmacoes/${escalaId}/dados_gerais`), {
             sei_link: seiLink,
             observacoes: document.getElementById('observacoes')?.value.trim() || '',
@@ -1051,7 +1116,6 @@ async function saveConfirmation() {
             atualizado_por: userRE
         });
         
-        // 2. Salvar status de cada militar que tem status selecionado
         const savePromises = [];
         
         for (const [re, status] of Object.entries(statusMilitares)) {
@@ -1068,7 +1132,6 @@ async function saveConfirmation() {
         
         await Promise.all(savePromises);
         
-        // 3. Atualizar cache
         if (!confirmacoesCache[escalaId]) {
             confirmacoesCache[escalaId] = { dadosGerais: {}, militares: {} };
         }
@@ -1090,7 +1153,6 @@ async function saveConfirmation() {
             }
         }
         
-        // 4. Fechar modal e atualizar
         const modalElement = document.getElementById('confirmModal');
         if (modalElement) {
             const modal = bootstrap.Modal.getInstance(modalElement);

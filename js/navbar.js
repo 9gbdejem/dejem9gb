@@ -245,5 +245,21 @@ window.updateNavbarActiveMenu = function(pageUrl) {
     });
 };
 
+// ✅ NOVA FUNÇÃO: Atualizar navbar baseado no nível do usuário
+export function updateNavbarByLevel(userLevel) {
+    console.log(`🎯 Atualizando navbar para nível ${userLevel}...`);
+    
+    // Ocultar Exclusões para nível 3
+    if (userLevel >= 3) {
+        const exclusoesItem = document.getElementById('navExclusoes');
+        if (exclusoesItem) {
+            const parentLi = exclusoesItem.closest('li.nav-item');
+            if (parentLi) {
+                parentLi.style.display = 'none';
+            }
+        }
+    }
+}
+
 // 10. Exportar funções
 export { updateUserGreeting };

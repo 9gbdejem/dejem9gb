@@ -10,7 +10,7 @@ class AppCore {
         }
         
         this.currentPage = 'dashboard';
-        console.log('🚀 SPA inicializando em app.html...');
+        // console.log('🚀 SPA inicializando em app.html...');
     }
     
     async init() {
@@ -31,7 +31,7 @@ class AppCore {
             this.setupNavbar();
             await this.loadPage('dashboard.html');
             
-            console.log('✅ SPA Inicializado com sucesso!');
+            // console.log('✅ SPA Inicializado com sucesso!');
             
         } catch (error) {
             console.error('❌ Erro ao inicializar SPA:', error);
@@ -172,39 +172,39 @@ class AppCore {
     }
     
     async loadPage(pageUrl) {
-        if (this.currentPage === pageUrl) return;
+    if (this.currentPage === pageUrl) return;
+    
+    const contentDiv = document.getElementById('app-content');
+    if (!contentDiv) return;
+    
+    try {
+        contentDiv.innerHTML = this.getLoadingHTML(pageUrl);
         
-        const contentDiv = document.getElementById('app-content');
-        if (!contentDiv) return;
+        const response = await fetch(pageUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
-        try {
-            contentDiv.innerHTML = this.getLoadingHTML(pageUrl);
+        const html = await response.text();
+        
+        // ESTRATÉGIA DIFERENTE PARA ESCALAS, EXCLUSÕES E PERFIL
+        if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html') {
+            await this.loadSpecialPage(html, pageUrl);
+        } else {
+            const pageContent = this.extractContent(html, pageUrl);
+            contentDiv.innerHTML = pageContent;
             
-            const response = await fetch(pageUrl);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const html = await response.text();
-            
-            // ESTRATÉGIA DIFERENTE PARA ESCALAS E EXCLUSÕES
-            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html') {
-                await this.loadSpecialPage(html, pageUrl);
-            } else {
-                const pageContent = this.extractContent(html, pageUrl);
-                contentDiv.innerHTML = pageContent;
-                
-                if (pageUrl === 'dashboard.html') {
-                    await this.loadDashboardScript();
-                }
+            if (pageUrl === 'dashboard.html') {
+                await this.loadDashboardScript();
             }
-            
-            this.currentPage = pageUrl;
-            this.updateActiveNav(pageUrl);
-            
-        } catch (error) {
-            console.error(`❌ Erro ao carregar ${pageUrl}:`, error);
-            contentDiv.innerHTML = this.getErrorHTML(error, pageUrl);
         }
+        
+        this.currentPage = pageUrl;
+        this.updateActiveNav(pageUrl);
+        
+    } catch (error) {
+        console.error(`❌ Erro ao carregar ${pageUrl}:`, error);
+        contentDiv.innerHTML = this.getErrorHTML(error, pageUrl);
     }
+}
     
     // MÉTODO ÚNICO PARA ESCALAS E EXCLUSÕES
     async loadSpecialPage(html, pageUrl) {
@@ -227,6 +227,10 @@ class AppCore {
                 await this.loadEscalasScript();
             } else if (pageUrl === 'exclusoes.html') {
                 await this.loadExclusoesScript();
+            } else if (pageUrl === 'perfil.html') {
+                await this.loadPerfilScript();
+            } else if (pageUrl === 'solicitacoes.html') {
+                await this.loadSolicitacoesScript();
             }
         } else {
             contentDiv.innerHTML = '<div class="alert alert-danger">Erro: Conteúdo não encontrado</div>';
@@ -275,6 +279,46 @@ class AppCore {
         }
     }
 
+    async loadPerfilScript() {
+        try {
+            await this.loadExternalScripts();
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            const perfilModule = await import('./perfil.js');
+            
+            if (perfilModule && perfilModule.initPerfilSPA) {
+                await perfilModule.initPerfilSPA();
+            } else if (perfilModule && perfilModule.initPerfil) {
+                await perfilModule.initPerfil();
+            }
+            
+            this.addPerfilStyles();
+            
+        } catch (error) {
+            console.error('❌ Erro ao carregar perfil:', error);
+            this.showError(error);
+        }
+    }
+
+    addPerfilStyles() {
+        const styleId = 'perfil-spa-styles';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                .avatar-circle { 
+                    background-color: #8B0000 !important; 
+                    color: white !important; 
+                }
+                .list-group-item.active { 
+                    background-color: #0d6efd !important; 
+                    border-color: #0d6efd !important; 
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
     addEscalasStyles() {
         const styleId = 'escalas-spa-styles';
         if (!document.getElementById(styleId)) {
@@ -299,6 +343,46 @@ class AppCore {
                 .escala-grupo-par { background-color: rgba(220, 53, 69, 0.05) !important; }
                 .escala-grupo-impar { background-color: rgba(108, 117, 125, 0.05) !important; }
                 .badge.bg-info { font-size: 0.7em; padding: 0.2em 0.4em; }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
+    async loadSolicitacoesScript() {
+        try {
+            await this.loadExternalScripts();
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            const solicitacoesModule = await import('./solicitacoes.js');
+            
+            if (solicitacoesModule && solicitacoesModule.initSolicitacoesSPA) {
+                await solicitacoesModule.initSolicitacoesSPA();
+            } else if (solicitacoesModule && solicitacoesModule.initSolicitacoes) {
+                await solicitacoesModule.initSolicitacoes();
+            }
+            
+            this.addSolicitacoesStyles();
+            
+        } catch (error) {
+            console.error('❌ Erro ao carregar solicitações:', error);
+            this.showError(error);
+        }
+    }
+
+    // Adicionar método para estilos das solicitações:
+    addSolicitacoesStyles() {
+        const styleId = 'solicitacoes-spa-styles';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                .solicitacoes-card { 
+                    border-left: 4px solid #0d6efd !important; 
+                }
+                .list-group-item { 
+                    border-left: none; 
+                    border-right: none; 
+                }
             `;
             document.head.appendChild(style);
         }
@@ -480,7 +564,7 @@ class AppCore {
 // SÓ inicializa SPA se for app.html
 if (window.location.pathname.includes('app.html')) {
     document.addEventListener('DOMContentLoaded', () => {
-        console.log('📄 Inicializando SPA em app.html...');
+        // console.log('📄 Inicializando SPA em app.html...');
         window.app = new AppCore();
         
         // Só chama init() se o objeto AppCore foi criado (não retornou null)

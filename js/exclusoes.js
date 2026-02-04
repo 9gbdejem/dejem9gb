@@ -17,20 +17,19 @@ let userRE = '';
 
 // ==================== FUNÇÕES DE INICIALIZAÇÃO ====================
 export async function initExclusoesSPA() {
-    console.log('🚫 Exclusões SPA inicializando...');
+    // console.log('🚫 Exclusões SPA inicializando...');
     await initializeApp();
 }
 
 async function initExclusoes() {
-    console.log('🚫 Página de Exclusões carregando (independente)...');
+    // console.log('🚫 Página de Exclusões carregando (independente)...');
     await initializeApp();
 }
 
 async function initializeApp() {
     try {
-        // Verificar autenticação - nível mínimo 1 (apenas admin)
-        console.log('🔐 Verificando autenticação para exclusões...');
-        const { userData, re } = await checkAuth(1);
+        // Verificar autenticação - nível mínimo 2
+        const { userData, re } = await checkAuth(2);
         
         userRE = re;
         userNivel = userData.nivel || 3;
@@ -38,8 +37,11 @@ async function initializeApp() {
         sessionStorage.setItem('userRE', userRE);
         sessionStorage.setItem('userName', userData.nome);
         sessionStorage.setItem('userNivel', userNivel);
+        sessionStorage.setItem('currentUserLevel', userNivel); // ✅ ADICIONAR
         
-        console.log(`✅ Usuário autenticado: ${userRE}, Nível: ${userNivel}`);
+        if (window.updateUserGreetingInSPA) {
+            window.updateUserGreetingInSPA();
+        }
         
         setupEventListeners();
         await loadExclusoes();
@@ -48,12 +50,13 @@ async function initializeApp() {
         
     } catch (error) {
         console.error('❌ Erro na inicialização:', error);
-        if (error.message.includes('Nível de acesso insuficiente')) {
-            alert('❌ Apenas administradores (nível 1) podem acessar esta página.');
-            window.location.href = 'dashboard.html';
-            return;
+        
+        // ✅ IMPORTANTE: NÃO mostrar erro se for apenas nível insuficiente
+        // O usuário já foi redirecionado e viu o alert
+        if (!error.message.includes('Nível insuficiente')) {
+            showError('Erro ao carregar: ' + error.message);
         }
-        showError('Erro ao carregar: ' + error.message);
+        // Não faz nada mais - já foi redirecionado
     }
 }
 
@@ -105,7 +108,7 @@ async function loadExclusoes() {
                 return dateB - dateA;
             });
             
-            console.log(`✅ ${allExclusoes.length} exclusões carregadas`);
+            // console.log(`✅ ${allExclusoes.length} exclusões carregadas`);
             
         } else {
             console.log('📭 Nenhuma exclusão encontrada');
@@ -634,18 +637,30 @@ function refreshExclusoes() {
 }
 
 function updateStatistics() {
-    const totalExclusoes = document.getElementById('totalExclusoes');
+    const totalVagas = document.getElementById('totalVagas');
+    const totalEscalas = document.getElementById('totalEscalas');
     const totalMilitares = document.getElementById('totalMilitares');
-    const totalEstacoes = document.getElementById('totalEstacoes');
     const mesAtual = document.getElementById('mesAtual');
-    const periodoAtual = document.getElementById('periodoAtual');
+    const anoAtual = document.getElementById('anoAtual');
     
-    if (!totalExclusoes || !totalMilitares || !totalEstacoes || !mesAtual || !periodoAtual) return;
+    if (!totalVagas || !totalEscalas || !totalMilitares || !mesAtual || !anoAtual) {
+        console.error('❌ Elementos de estatísticas não encontrados');
+        return;
+    }
     
-    totalExclusoes.textContent = filteredExclusoes.length;
-    totalMilitares.textContent = getUniqueMilitaresCount();
-    totalEstacoes.textContent = getUniqueStationsCount();
+    // 1. Total de Exclusões (registros)
+    const vagasCount = countTotalVagas(filteredExclusoes);
+    totalVagas.textContent = vagasCount.toLocaleString('pt-BR');
     
+    // 2. Total de Escalas com exclusões (IDs únicos)
+    const escalasCount = countUniqueEscalaIds(filteredExclusoes);
+    totalEscalas.textContent = escalasCount.toLocaleString('pt-BR');
+    
+    // 3. Total de Militares com exclusões (REs únicos)
+    const militaresCount = countUniqueMilitares(filteredExclusoes);
+    totalMilitares.textContent = militaresCount.toLocaleString('pt-BR');
+    
+    // 4. Mês atual (baseado no filtro)
     const monthFilter = document.getElementById('filterMonth');
     const yearFilter = document.getElementById('filterYear');
     
@@ -655,33 +670,31 @@ function updateStatistics() {
     if (monthFilter && monthFilter.value) {
         const monthNum = parseInt(monthFilter.value);
         mesAtual.textContent = monthNames[monthNum - 1] || monthNum;
+        mesAtual.title = `Mês: ${monthNames[monthNum - 1] || monthNum}`;
     } else {
-        mesAtual.textContent = '-';
+        mesAtual.textContent = 'Todos';
+        mesAtual.title = 'Todos os meses';
     }
     
+    // 5. Ano atual (baseado no filtro)
     if (yearFilter && yearFilter.value) {
-        periodoAtual.textContent = yearFilter.value;
+        anoAtual.textContent = yearFilter.value;
+        anoAtual.title = `Ano: ${yearFilter.value}`;
     } else {
-        periodoAtual.textContent = 'Todos';
-    }
-}
-
-function getUniqueStationsCount() {
-    const stations = new Set();
-    filteredExclusoes.forEach(exclusao => {
-        if (exclusao.Estacao) stations.add(exclusao.Estacao);
-    });
-    return stations.size;
-}
-
-function getUniqueMilitaresCount() {
-    const militares = new Set();
-    filteredExclusoes.forEach(exclusao => {
-        if (exclusao.RE) {
-            militares.add(exclusao.RE.toString());
+        // Se não tem filtro, mostrar período completo
+        const years = Array.from(uniqueYears).sort((a, b) => a - b);
+        if (years.length === 1) {
+            anoAtual.textContent = years[0];
+        } else if (years.length > 1) {
+            anoAtual.textContent = `${years[0]}-${years[years.length-1]}`;
+        } else {
+            anoAtual.textContent = '-';
         }
-    });
-    return militares.size;
+        anoAtual.title = 'Período completo';
+    }
+    
+    // Adicionar tooltips detalhados
+    addStatisticsTooltips(vagasCount, escalasCount, militaresCount);
 }
 
 // ==================== FUNÇÕES DE EXPORTAÇÃO ====================
@@ -777,6 +790,92 @@ function showMessage(message, type = 'info') {
 
 function showError(message) {
     showMessage(message, 'danger');
+}
+
+// ==================== FUNÇÕES PARA CÁLCULO DE ESTATÍSTICAS ====================
+
+// Contar IDs únicos (escalas diferentes)
+function countUniqueEscalaIds(exclusoes) {
+    const uniqueIds = new Set();
+    exclusoes.forEach(exclusao => {
+        if (exclusao.Id) {
+            uniqueIds.add(exclusao.Id.toString());
+        }
+    });
+    return uniqueIds.size;
+}
+
+// Contar total de vagas (registros)
+function countTotalVagas(exclusoes) {
+    return exclusoes.length;
+}
+
+// Contar militares únicos (REs diferentes)
+function countUniqueMilitares(exclusoes) {
+    const uniqueREs = new Set();
+    exclusoes.forEach(exclusao => {
+        if (exclusao.RE) {
+            uniqueREs.add(exclusao.RE.toString());
+        }
+    });
+    return uniqueREs.size;
+}
+
+// Contar estações únicas
+function countUniqueEstacoes(exclusoes) {
+    const stations = new Set();
+    exclusoes.forEach(exclusao => {
+        if (exclusao.Estacao) {
+            stations.add(exclusao.Estacao);
+        }
+    });
+    return stations.size;
+}
+
+// Função para adicionar tooltips detalhados
+// Função para adicionar tooltips detalhados (ATUALIZADA - sem estações)
+function addStatisticsTooltips(vagasCount, escalasCount, militaresCount) {
+    const totalVagasElement = document.getElementById('totalVagas');
+    const totalEscalasElement = document.getElementById('totalEscalas');
+    const totalMilitaresElement = document.getElementById('totalMilitares');
+    
+    if (totalVagasElement) {
+        totalVagasElement.setAttribute('data-bs-toggle', 'tooltip');
+        totalVagasElement.setAttribute('data-bs-placement', 'top');
+        totalVagasElement.setAttribute('title', 
+            `${vagasCount} registros de exclusão no período filtrado`);
+    }
+    
+    if (totalEscalasElement) {
+        totalEscalasElement.setAttribute('data-bs-toggle', 'tooltip');
+        totalEscalasElement.setAttribute('data-bs-placement', 'top');
+        totalEscalasElement.setAttribute('title', 
+            `${escalasCount} escalas diferentes com exclusões`);
+    }
+    
+    if (totalMilitaresElement) {
+        totalMilitaresElement.setAttribute('data-bs-toggle', 'tooltip');
+        totalMilitaresElement.setAttribute('data-bs-placement', 'top');
+        totalMilitaresElement.setAttribute('title', 
+            `${militaresCount} militares diferentes com exclusões (REs únicos)`);
+    }
+    
+    // Inicializar tooltips do Bootstrap
+    if (typeof bootstrap !== 'undefined') {
+        setTimeout(() => {
+            const tooltipTriggerList = [].slice.call(
+                document.querySelectorAll('[data-bs-toggle="tooltip"]')
+            );
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                try {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                } catch (e) {
+                    // Ignorar erros de tooltip
+                    return null;
+                }
+            });
+        }, 500);
+    }
 }
 
 // ==================== INICIALIZAÇÃO ====================
