@@ -8,13 +8,43 @@ let filteredEscalas = [];
 let currentPage = 1;
 const itemsPerPage = 15;
 let uniqueStations = new Set();
-let uniqueYears = new Set();
-let uniqueMonths = new Set();
-let uniqueDays = new Set();
-let currentSearchType = 'RE';
-let confirmacoesCache = {};
 let userNivel = 3;
 let userRE = '';
+let confirmacoesCache = {};
+
+// Cache para dias já carregados
+let loadedDaysCache = new Set(); // Formato: "YYYY-MM-DD"
+
+// ==================== HIERARQUIA DE POSTOS/GRADUAÇÕES ====================
+const HIERARQUIA_POSTOS = {
+    'CORONEL PM': 1,
+    'TENENTE CORONEL PM': 2,
+    'MAJOR PM': 3,
+    'CAPITAO PM': 4,
+    '1. TENENTE PM': 5,
+    '2. TENENTE PM': 6,
+    'SUBTENENTE PM': 7,
+    '1. SARGENTO PM': 8,
+    '2. SARGENTO PM': 9,
+    '3. SARGENTO PM': 10,
+    'CABO PM': 11,
+    'SOLDADO PM': 12,
+    'SOLDADO PM 2. CLASSE': 13
+};
+
+// ==================== CONTROLE DE DATAS CARREGADAS ====================
+let currentYear = null;
+let currentMonth = null;
+let currentDay = null;
+
+// ==================== VARIÁVEL DE TIPO DE BUSCA ====================
+let currentSearchType = 'RE';
+
+// ==================== CACHE DE ESTAÇÕES ====================
+let stationsCache = {};
+
+// ==================== TIMEOUT PARA DEBOUNCE ====================
+let filterTimeoutId = null;
 
 // ==================== FUNÇÕES DE INICIALIZAÇÃO ====================
 export async function initEscalasSPA() {
@@ -43,12 +73,14 @@ async function initializeApp() {
         
         createModalIfNotExists();
         
-        setupEventListeners();
-        await loadEscalados();
-        await loadConfirmacoes();
-        populateFilters();
+        // ✅ 1. POPULAR FILTROS
+        await populateFilters();
         
-        applyTodayFilter();
+        // ✅ 2. CONFIGURAR EVENTOS
+        setupEventListeners();
+        
+        // ✅ 3. CARREGAR DATA ATUAL (se houver)
+        await loadTodayIfExists();
         
     } catch (error) {
         console.error('❌ Erro na inicialização:', error);
@@ -56,69 +88,342 @@ async function initializeApp() {
     }
 }
 
-// ==================== FUNÇÕES DE CARREGAMENTO DE DADOS ====================
-async function loadEscalados() {
+// ==================== POPULAÇÃO DE FILTROS ====================
+
+async function populateFilters() {
+    // ✅ DIAS: Sempre 1-31
+    populateDayFilter();
+    
+    // ✅ MESES: Sempre Janeiro-Dezembro
+    populateMonthFilter();
+    
+    // ✅ ANOS: Agora gera localmente (2024 até ano atual + 1)
+    populateYearFilterLocal();
+    
+    // ✅ ESTAÇÕES: Carrega do nó '/local' (apenas uma vez)
+    await populateStationFilter();
+}
+
+// ✅ DIAS: Sempre 1-31
+function populateDayFilter() {
+    const dayFilter = document.getElementById('filterDay');
+    if (!dayFilter) return;
+    
+    const currentValue = dayFilter.value;
+    
+    while (dayFilter.options.length > 1) {
+        dayFilter.remove(1);
+    }
+    
+    // Adicionar dias 1-31
+    for (let day = 1; day <= 31; day++) {
+        const option = document.createElement('option');
+        option.value = day;
+        option.textContent = day.toString().padStart(2, '0');
+        dayFilter.appendChild(option);
+    }
+    
+    if (currentValue) {
+        dayFilter.value = currentValue;
+    }
+}
+
+// ✅ MESES: Sempre Janeiro-Dezembro
+function populateMonthFilter() {
+    const monthFilter = document.getElementById('filterMonth');
+    if (!monthFilter) return;
+    
+    const currentValue = monthFilter.value;
+    const monthNames = [
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    
+    while (monthFilter.options.length > 1) {
+        monthFilter.remove(1);
+    }
+    
+    for (let i = 1; i <= 12; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = monthNames[i - 1];
+        monthFilter.appendChild(option);
+    }
+    
+    if (currentValue) {
+        monthFilter.value = currentValue;
+    }
+}
+
+// ✅ ANOS: Gerado localmente (0 bytes do Firebase!)
+function populateYearFilterLocal() {
+    const yearFilter = document.getElementById('filterYear');
+    if (!yearFilter) return;
+    
+    const currentValue = yearFilter.value;
+    const currentYear = new Date().getFullYear();
+    const startYear = 2024;
+    const endYear = currentYear + 1;
+    
+    while (yearFilter.options.length > 1) {
+        yearFilter.remove(1);
+    }
+    
+    // Adicionar anos do mais recente para o mais antigo
+    for (let year = endYear; year >= startYear; year--) {
+        const option = document.createElement('option');
+        option.value = year;
+        option.textContent = year;
+        yearFilter.appendChild(option);
+    }
+    
+    // Selecionar ano atual por padrão
+    if (!currentValue) {
+        yearFilter.value = currentYear;
+    } else {
+        try { yearFilter.value = currentValue; } catch (e) {}
+    }
+    
+    console.log(`✅ Anos ${startYear}-${endYear} adicionados localmente`);
+}
+
+// ✅ ESTAÇÕES: Carrega do nó '/local'
+async function populateStationFilter() {
+    const stationFilter = document.getElementById('filterStation');
+    if (!stationFilter) return;
+    
+    const currentValue = stationFilter.value;
+    
+    while (stationFilter.options.length > 1) {
+        stationFilter.remove(1);
+    }
+    
     try {
-        showLoading(true);
-        
-        const escaladosRef = ref(database, 'escalados');
-        const snapshot = await get(escaladosRef);
+        const localRef = ref(database, 'local');
+        const snapshot = await get(localRef);
         
         if (snapshot.exists()) {
-            allEscalas = [];
-            uniqueStations.clear();
-            uniqueYears.clear();
-            uniqueMonths.clear();
-            uniqueDays.clear();
+            stationsCache = snapshot.val();
             
-            snapshot.forEach((yearSnapshot) => {
-                const year = yearSnapshot.key;
-                if (isNaN(year)) return;
-                
-                yearSnapshot.forEach((monthSnapshot) => {
-                    const month = monthSnapshot.key;
-                    
-                    monthSnapshot.forEach((daySnapshot) => {
-                        const day = daySnapshot.key;
-                        
-                        daySnapshot.forEach((escalaSnapshot) => {
-                            const escalaKey = escalaSnapshot.key;
-                            const escalaData = escalaSnapshot.val();
-                            
-                            processarEscala(escalaData, year, month, day, escalaKey);
-                        });
-                    });
-                });
+            const sortedStations = Object.entries(stationsCache)
+                .sort(([, nomeA], [, nomeB]) => nomeA.localeCompare(nomeB));
+            
+            sortedStations.forEach(([codigo, nome]) => {
+                const option = document.createElement('option');
+                option.value = nome;
+                option.textContent = nome;
+                stationFilter.appendChild(option);
             });
             
-            // Ordenar por data (mais recente primeiro) e dentro do mesmo dia por horário
-            allEscalas.sort((a, b) => {
-                const dateA = new Date(a.ano, a.mês - 1, a.dia);
-                const dateB = new Date(b.ano, b.mês - 1, b.dia);
-                
-                // Primeiro compara as datas
-                if (dateB.getTime() !== dateA.getTime()) {
-                    return dateB - dateA;
-                }
-                
-                // Se for a mesma data, ordena por horário de início
-                const horaA = a.HorarioInic || 0;
-                const horaB = b.HorarioInic || 0;
-                return horaA - horaB;
-            });
-            
-        } else {
-            allEscalas = [];
-            showMessage('Nenhuma escala cadastrada no sistema.', 'info');
+            console.log(`✅ ${sortedStations.length} estações carregadas`);
         }
         
     } catch (error) {
-        console.error('💥 Erro ao carregar escalas:', error);
-        showError('Erro ao carregar escalas: ' + error.message);
-    } finally {
-        showLoading(false);
+        console.error('❌ Erro ao carregar estações:', error);
+    }
+    
+    if (currentValue) {
+        try { stationFilter.value = currentValue; } catch (e) {}
     }
 }
+
+// ==================== FUNÇÃO PARA CARREGAR HOJE ====================
+
+async function loadTodayIfExists() {
+    const today = new Date();
+    const day = today.getDate();
+    const month = today.getMonth() + 1;
+    const year = today.getFullYear();
+    
+    // Verificar se hoje existe sem carregar todos os dados
+    const exists = await checkIfDayExists(year, month, day);
+    
+    if (exists) {
+        // Se existe, carregar normalmente
+        await loadPeriod(year, month, day);
+    } else {
+        // Se não existe, apenas atualizar os filtros com a data de hoje
+        const dayFilter = document.getElementById('filterDay');
+        const monthFilter = document.getElementById('filterMonth');
+        const yearFilter = document.getElementById('filterYear');
+        
+        if (dayFilter) dayFilter.value = day;
+        if (monthFilter) monthFilter.value = month;
+        if (yearFilter) yearFilter.value = year;
+        
+        // Mostrar mensagem informativa
+        showMessage('Não há escalas para hoje. Selecione uma data com escalas.', 'info');
+        
+        // Tabela vazia
+        allEscalas = [];
+        filteredEscalas = [];
+        renderTable();
+        updateStatistics();
+    }
+}
+
+// ✅ Verifica se um dia existe SEM carregar os dados completos
+async function checkIfDayExists(year, month, day) {
+    try {
+        const monthStr = month.toString().padStart(2, '0');
+        const dayStr = day.toString().padStart(2, '0');
+        const path = `escalados/${year}/${monthStr}/${dayStr}`;
+        
+        const dayRef = ref(database, path);
+        const snapshot = await get(dayRef);
+        
+        return snapshot.exists();
+        
+    } catch (error) {
+        console.error('❌ Erro ao verificar dia:', error);
+        return false;
+    }
+}
+
+// ==================== CARREGAMENTO DE DADOS ====================
+
+// ✅ Carrega apenas UM DIA específico
+async function loadEscalasByDate(year, month, day) {
+    const cacheKey = `${year}-${month}-${day}`;
+    
+    // Se já carregou este dia, usar cache
+    if (loadedDaysCache.has(cacheKey)) {
+        console.log(`📦 Usando cache para ${cacheKey}`);
+        // Filtrar apenas as escalas deste dia
+        filteredEscalas = allEscalas.filter(e => 
+            e.ano === year && e.mês === month && e.dia === day
+        );
+        return filteredEscalas.length > 0;
+    }
+    
+    try {
+        const monthStr = month.toString().padStart(2, '0');
+        const dayStr = day.toString().padStart(2, '0');
+        const path = `escalados/${year}/${monthStr}/${dayStr}`;
+        
+        console.log(`🔍 Carregando APENAS o dia: ${path}`);
+        
+        const escalasRef = ref(database, path);
+        const snapshot = await get(escalasRef);
+        
+        // Marcar como carregado (mesmo sem dados, para evitar buscas repetidas)
+        loadedDaysCache.add(cacheKey);
+        
+        if (snapshot.exists()) {
+            // Remover escalas antigas do mesmo dia
+            allEscalas = allEscalas.filter(e => 
+                !(e.ano === year && e.mês === month && e.dia === day)
+            );
+            
+            // Processar novas escalas
+            snapshot.forEach((escalaSnapshot) => {
+                const escalaKey = escalaSnapshot.key;
+                const escalaData = escalaSnapshot.val();
+                processarEscala(escalaData, year, month, day, escalaKey);
+            });
+            
+            // Ordenar todas as escalas
+            sortAllEscalas();
+            
+            // Filtrar apenas o dia atual
+            filteredEscalas = allEscalas.filter(e => 
+                e.ano === year && e.mês === month && e.dia === day
+            );
+            
+            console.log(`✅ ${filteredEscalas.length} escalas carregadas para ${day}/${month}/${year}`);
+            return filteredEscalas.length > 0;
+        }
+        
+        console.log(`ℹ️ Nenhuma escala encontrada em ${day}/${month}/${year}`);
+        filteredEscalas = [];
+        return false;
+        
+    } catch (error) {
+        console.error(`❌ Erro ao carregar ${year}/${month}/${day}:`, error);
+        return false;
+    }
+}
+
+// ✅ FUNÇÃO PRINCIPAL - Só carrega se tiver DIA!
+window.loadPeriod = async function(year, month, day = null) {
+    // 🚨 Se não tiver dia, NÃO carrega dados e limpa tabela
+    if (!day) {
+        console.log('⚠️ Nenhum dia selecionado. Limpando tabela...');
+        filteredEscalas = [];
+        currentYear = year;
+        currentMonth = month;
+        currentDay = null;
+        currentPage = 1;
+        renderTable();
+        updateStatistics();
+        showMessage('Selecione um dia para visualizar as escalas.', 'info');
+        
+        // ✅ ESCONDER LOADING SE NÃO TEM DIA
+        showLoading(false);
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const hasData = await loadEscalasByDate(year, month, day);
+        
+        if (hasData) {
+            currentYear = year;
+            currentMonth = month;
+            currentDay = day;
+            
+            // Carregar confirmações APENAS para as escalas da página atual
+            await loadConfirmacoesForCurrentPage();
+            
+            currentPage = 1;
+            renderTable();
+            updateStatistics();
+            showMessage('Dia carregado com sucesso!', 'success');
+        } else {
+            allEscalas = allEscalas.filter(e => 
+                !(e.ano === year && e.mês === month && e.dia === day)
+            );
+            filteredEscalas = [];
+            currentYear = year;
+            currentMonth = month;
+            currentDay = day;
+            currentPage = 1;
+            renderTable();
+            updateStatistics();
+            showMessage('Nenhuma escala encontrada para este dia.', 'info');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro ao carregar período:', error);
+        showError('Erro ao carregar período: ' + error.message);
+    } finally {
+        // ✅ ESCONDER LOADING APÓS CARREGAR (SUCESSO OU ERRO)
+        showLoading(false);
+    }
+};
+
+// ✅ Botão "Hoje"
+window.applyTodayFilter = async function() {
+    const today = new Date();
+    const day = today.getDate();
+    const month = today.getMonth() + 1;
+    const year = today.getFullYear();
+    
+    const dayFilter = document.getElementById('filterDay');
+    const monthFilter = document.getElementById('filterMonth');
+    const yearFilter = document.getElementById('filterYear');
+    const stationFilter = document.getElementById('filterStation');
+    
+    if (dayFilter) dayFilter.value = day;
+    if (monthFilter) monthFilter.value = month;
+    if (yearFilter) yearFilter.value = year;
+    if (stationFilter) stationFilter.value = '';
+    
+    await window.loadPeriod(year, month, day);
+};
+
+// ==================== PROCESSAMENTO DE ESCALAS ====================
 
 function processarEscala(escalaData, year, month, day, escalaKey) {
     if (escalaData.Exclusao === "X" || escalaData.Exclusao === "x") {
@@ -134,7 +439,7 @@ function processarEscala(escalaData, year, month, day, escalaKey) {
         ano: parseInt(year),
         mês: parseInt(month),
         dia: parseInt(day),
-        Data: `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`,
+        Data: `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`,
         Id: escalaId,
         RE: escalaRE,
         linhaId: `${year}/${month}/${day}/${escalaKey}`
@@ -150,10 +455,6 @@ function processarEscala(escalaData, year, month, day, escalaKey) {
     
     escala.PostoGrad = escalaData.PostoGrad || escalaData.Posto_Grad || '-';
     
-    uniqueYears.add(parseInt(year));
-    uniqueMonths.add(parseInt(month));
-    uniqueDays.add(parseInt(day));
-    
     if (escalaData.Estacao) {
         uniqueStations.add(escalaData.Estacao);
     }
@@ -161,35 +462,313 @@ function processarEscala(escalaData, year, month, day, escalaKey) {
     allEscalas.push(escala);
 }
 
-async function loadConfirmacoes() {
-    try {
-        const confirmacoesRef = ref(database, 'confirmacoes');
-        const snapshot = await get(confirmacoesRef);
+function sortAllEscalas() {
+    allEscalas.sort((a, b) => {
+        // 1. DATA (mais nova primeiro)
+        const dateA = new Date(a.ano, a.mês - 1, a.dia);
+        const dateB = new Date(b.ano, b.mês - 1, b.dia);
+        if (dateB.getTime() !== dateA.getTime()) {
+            return dateB - dateA;
+        }
         
-        confirmacoesCache = {};
+        // 2. HORÁRIO (mais cedo primeiro)
+        const horaA = a.HorarioInic || 0;
+        const horaB = b.HorarioInic || 0;
+        if (horaA !== horaB) {
+            return horaA - horaB;
+        }
+        
+        // 3. ID (agrupar IDs iguais)
+        if (a.Id !== b.Id) {
+            const idA = String(a.Id || '');
+            const idB = String(b.Id || '');
+            return idA.localeCompare(idB);
+        }
+        
+        // 4. POSTO/GRAD
+        const postoA = HIERARQUIA_POSTOS[a.PostoGrad] || 999;
+        const postoB = HIERARQUIA_POSTOS[b.PostoGrad] || 999;
+        if (postoA !== postoB) {
+            return postoA - postoB;
+        }
+        
+        // 5. RE
+        const reA = parseInt(a.RE) || 0;
+        const reB = parseInt(b.RE) || 0;
+        return reA - reB;
+    });
+}
+
+// ✅ Carrega confirmações APENAS para a página atual
+async function loadConfirmacoesForCurrentPage() {
+    confirmacoesCache = {};
+    
+    // Pegar IDs das escalas da página atual
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = Math.min(startIndex + itemsPerPage, filteredEscalas.length);
+    const pageEscalas = filteredEscalas.slice(startIndex, endIndex);
+    
+    const escalaIds = new Set();
+    pageEscalas.forEach(escala => {
+        if (escala.Id) {
+            escalaIds.add(escala.Id.toString());
+        }
+    });
+    
+    if (escalaIds.size === 0) return;
+    
+    console.log(`🔍 Carregando confirmações para ${escalaIds.size} IDs da página ${currentPage}`);
+    
+    const promises = Array.from(escalaIds).map(id => 
+        loadConfirmacaoById(id).catch(err => {
+            console.warn(`⚠️ Erro ao carregar confirmação ${id}:`, err);
+            return null;
+        })
+    );
+    
+    await Promise.all(promises);
+}
+
+// ✅ Carrega UMA confirmação específica
+async function loadConfirmacaoById(escalaId) {
+    try {
+        const confirmacaoRef = ref(database, `confirmacoes/${escalaId}`);
+        const snapshot = await get(confirmacaoRef);
         
         if (snapshot.exists()) {
-            snapshot.forEach((idSnapshot) => {
-                const escalaId = idSnapshot.key;
-                confirmacoesCache[escalaId] = {
-                    dadosGerais: idSnapshot.child('dados_gerais').val() || {},
-                    militares: {}
-                };
-                
-                idSnapshot.forEach((militarSnapshot) => {
-                    if (militarSnapshot.key !== 'dados_gerais') {
-                        const re = militarSnapshot.key.replace('RE_', '');
-                        confirmacoesCache[escalaId].militares[re] = militarSnapshot.val();
-                    }
-                });
+            confirmacoesCache[escalaId] = {
+                dadosGerais: snapshot.child('dados_gerais').val() || {},
+                militares: {}
+            };
+            
+            snapshot.forEach((militarSnapshot) => {
+                if (militarSnapshot.key !== 'dados_gerais') {
+                    const re = militarSnapshot.key.replace('RE_', '');
+                    confirmacoesCache[escalaId].militares[re] = militarSnapshot.val();
+                }
             });
         }
+        
+        return true;
+        
     } catch (error) {
-        console.error('❌ Erro ao carregar confirmações:', error);
+        console.error(`❌ Erro ao carregar confirmação ${escalaId}:`, error);
+        return false;
+    }
+}
+
+// ==================== CONFIGURAÇÃO DE EVENTOS ====================
+
+function setupEventListeners() {
+    // Busca
+    const searchInput = document.getElementById('searchRE');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            if (currentSearchType === 'RE') {
+                this.value = this.value.replace(/\D/g, '').slice(0, 6);
+            }
+            applyFilters();
+        });
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') applyFilters();
+        });
+    }
+    
+    // Tipo de busca
+    const searchTypeSelect = document.getElementById('searchType');
+    if (searchTypeSelect) {
+        searchTypeSelect.addEventListener('change', function() {
+            currentSearchType = this.value;
+            const searchInput = document.getElementById('searchRE');
+            if (searchInput) {
+                searchInput.placeholder = `Filtrar por ${getSearchPlaceholder(currentSearchType)}`;
+                searchInput.value = '';
+                applyFilters();
+            }
+        });
+    }
+    
+    // ✅ FILTROS DE DATA COM DEBOUNCE
+    setupFilterChangeEvents();
+    
+    // ✅ ESTAÇÃO - Apenas filtra localmente
+    const stationFilter = document.getElementById('filterStation');
+    if (stationFilter) {
+        stationFilter.addEventListener('change', applyFilters);
+    }
+    
+    // Botões
+    const clearBtn = document.getElementById('clearFilters');
+    if (clearBtn) clearBtn.addEventListener('click', clearFilters);
+    
+    const refreshBtn = document.getElementById('refreshData');
+    if (refreshBtn) refreshBtn.addEventListener('click', refreshEscalas);
+    
+    const exportBtn = document.getElementById('exportExcel');
+    if (exportBtn) exportBtn.addEventListener('click', exportToExcel);
+    
+    // ✅ BOTÃO HOJE
+    const todayBtn = document.getElementById('todayFilter');
+    if (todayBtn) {
+        todayBtn.addEventListener('click', window.applyTodayFilter);
+    }
+    
+    const tutorialBtn = document.getElementById('tutorialBtn');
+    if (tutorialBtn) {
+        tutorialBtn.addEventListener('click', function() { 
+            window.open('https://www.youtube.com/', '_blank'); 
+        });
+    }
+    
+    // Botões de confirmação
+    document.addEventListener('click', function(e) {
+        const confirmBtn = e.target.closest('.confirm-btn');
+        if (confirmBtn) {
+            const escalaId = confirmBtn.getAttribute('data-escala-id');
+            const re = confirmBtn.getAttribute('data-re');
+            if (escalaId && re) openConfirmModal(escalaId, re);
+        }
+    });
+    
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.id === 'saveConfirm') saveConfirmation();
+    });
+}
+
+// ✅ FILTROS DE DATA COM DEBOUNCE
+function setupFilterChangeEvents() {
+    const dayFilter = document.getElementById('filterDay');
+    const monthFilter = document.getElementById('filterMonth');
+    const yearFilter = document.getElementById('filterYear');
+    
+    const onFilterChange = function() {
+        const year = yearFilter?.value;
+        const month = monthFilter?.value;
+        const day = dayFilter?.value;
+        
+        if (!year || !month) return;
+        
+        // 🎯 DEBOUNCE: Cancela o timeout anterior
+        if (filterTimeoutId) {
+            console.log('⏱️ Debounce: cancelando busca anterior');
+            clearTimeout(filterTimeoutId);
+        }
+        
+        // ✅ MOSTRAR LOADING IMEDIATAMENTE
+        showLoading(true);
+        
+        // 🎯 DEBOUNCE: Agenda nova busca após 5 segundos
+        filterTimeoutId = setTimeout(async () => {
+            console.log(`🚀 Debounce finalizado! Carregando: ${day ? day + '/' : ''}${month}/${year}`);
+            
+            if (day) {
+                await window.loadPeriod(parseInt(year), parseInt(month), parseInt(day));
+            } else {
+                // Se não tem dia, limpa a tabela
+                filteredEscalas = [];
+                currentYear = parseInt(year);
+                currentMonth = parseInt(month);
+                currentDay = null;
+                currentPage = 1;
+                renderTable();
+                updateStatistics();
+                showMessage('Selecione um dia para visualizar as escalas.', 'info');
+                
+                // ✅ ESCONDER LOADING
+                showLoading(false);
+            }
+            
+            filterTimeoutId = null;
+        }, 5000); // ⏱️ 5 SEGUNDOS DE DEBOUNCE
+    };
+    
+    if (dayFilter) dayFilter.addEventListener('change', onFilterChange);
+    if (monthFilter) monthFilter.addEventListener('change', onFilterChange);
+    if (yearFilter) yearFilter.addEventListener('change', onFilterChange);
+}
+
+// ==================== FUNÇÕES DE FILTRO LOCAL ====================
+
+function applyFilters() {
+    const searchValue = document.getElementById('searchRE').value.trim();
+    const dayFilter = document.getElementById('filterDay').value;
+    const monthFilter = document.getElementById('filterMonth').value;
+    const yearFilter = document.getElementById('filterYear').value;
+    const stationFilter = document.getElementById('filterStation').value;
+    
+    // Filtrar apenas as escalas do dia atual (se houver)
+    let baseEscalas = allEscalas;
+    if (currentYear && currentMonth && currentDay) {
+        baseEscalas = allEscalas.filter(e => 
+            e.ano === currentYear && e.mês === currentMonth && e.dia === currentDay
+        );
+    }
+    
+    filteredEscalas = baseEscalas.filter(escala => {
+        // Filtro de busca
+        if (searchValue) {
+            let fieldValue = '';
+            
+            switch(currentSearchType) {
+                case 'RE': fieldValue = escala.RE ? escala.RE.toString() : ''; break;
+                case 'Militar': fieldValue = escala.Militar || ''; break;
+                case 'Estacao': fieldValue = escala.Estacao || ''; break;
+                case 'Composicao': fieldValue = escala.Composicao || ''; break;
+                case 'ID': fieldValue = escala.Id ? escala.Id.toString() : ''; break;
+            }
+            
+            if (!fieldValue.toLowerCase().includes(searchValue.toLowerCase())) {
+                return false;
+            }
+        }
+        
+        // Filtro de estação
+        if (stationFilter && escala.Estacao) {
+            const nomeEstacao = stationsCache[escala.Estacao] || escala.Estacao;
+            if (nomeEstacao !== stationFilter) return false;
+        }
+        
+        return true;
+    });
+    
+    currentPage = 1;
+    renderTable();
+    updateStatistics();
+    
+    // Recarregar confirmações para a nova página
+    loadConfirmacoesForCurrentPage();
+}
+
+function clearFilters() {
+    // Limpar campos de busca
+    document.getElementById('searchRE').value = '';
+    
+    // Limpar estação
+    const stationFilter = document.getElementById('filterStation');
+    if (stationFilter) stationFilter.value = '';
+    
+    // Resetar tipo de busca
+    currentSearchType = 'RE';
+    const searchTypeSelect = document.getElementById('searchType');
+    if (searchTypeSelect) searchTypeSelect.value = 'RE';
+    
+    const searchInput = document.getElementById('searchRE');
+    if (searchInput) searchInput.placeholder = 'Filtrar por RE (6 dígitos)';
+    
+    // Aplicar filtros na lista atual
+    applyFilters();
+    
+    showMessage('Filtros de busca limpos com sucesso.', 'success');
+}
+
+function refreshEscalas() {
+    if (currentYear && currentMonth && currentDay) {
+        window.loadPeriod(currentYear, currentMonth, currentDay);
     }
 }
 
 // ==================== FUNÇÕES DE UTILIDADE ====================
+
 function decimalToTime(decimal) {
     if (decimal === undefined || decimal === null) return '--:--';
     const totalMinutes = Math.round(decimal * 24 * 60);
@@ -217,21 +796,12 @@ function getMonthName(monthNumber) {
 
 function getComposicaoColor(composicao) {
     if (!composicao) return 'bg-secondary';
-    
     const composicaoUpper = composicao.toUpperCase();
-    
-    if (composicaoUpper.includes('INCÊNDIO') || composicaoUpper.includes('RESGATE')) {
-        return 'bg-danger';
-    } else if (composicaoUpper.includes('SALVAMENTO')) {
-        return 'bg-success';
-    } else if (composicaoUpper.includes('GUARNIÇÃO')) {
-        return 'bg-warning';
-    } else if (composicaoUpper.includes('SOCORRO')) {
-        return 'bg-info';
-    } else if (composicaoUpper.includes('EMERGÊNCIA')) {
-        return 'bg-primary';
-    }
-    
+    if (composicaoUpper.includes('INCÊNDIO') || composicaoUpper.includes('RESGATE')) return 'bg-danger';
+    if (composicaoUpper.includes('SALVAMENTO')) return 'bg-success';
+    if (composicaoUpper.includes('GUARNIÇÃO')) return 'bg-warning';
+    if (composicaoUpper.includes('SOCORRO')) return 'bg-info';
+    if (composicaoUpper.includes('EMERGÊNCIA')) return 'bg-primary';
     return 'bg-secondary';
 }
 
@@ -245,42 +815,44 @@ function isValidSEILink(link) {
     return link.startsWith('https://sei.sp.gov.br/') || link.startsWith('http://sei.sp.gov.br/');
 }
 
-// ==================== FUNÇÕES PARA CÁLCULO DE ESTATÍSTICAS ====================
-function countUniqueEscalaIds(escalas) {
-    const uniqueIds = new Set();
-    escalas.forEach(escala => {
-        if (escala.Id) {
-            uniqueIds.add(escala.Id.toString());
-        }
-    });
-    return uniqueIds.size;
+function getConfirmacaoStatus(escalaId, re) {
+    if (!escalaId || !re || !confirmacoesCache[escalaId]) return null;
+    return confirmacoesCache[escalaId].militares[re] || null;
 }
 
-function countTotalVagas(escalas) {
-    return escalas.length;
+function getConfirmacaoIcon(status, escalaId, re) {
+    const baseClass = 'btn btn-sm confirm-btn';
+    const dataAttrs = `data-escala-id="${escalaId}" data-re="${re}"`;
+    
+    switch(status) {
+        case 'concluida':
+            return `<button class="${baseClass} btn-success" title="Concluída" ${dataAttrs}>
+                      <i class="fas fa-check"></i>
+                    </button>`;
+        case 'novidade':
+            return `<button class="${baseClass} btn-danger" title="Novidade" ${dataAttrs}>
+                      <i class="fas fa-times"></i>
+                    </button>`;
+        default:
+            return `<button class="${baseClass} btn-outline-secondary" title="Confirmar escala" ${dataAttrs}>
+                      <i class="far fa-clock"></i>
+                    </button>`;
+    }
 }
 
-function countUniqueMilitares(escalas) {
-    const uniqueREs = new Set();
-    escalas.forEach(escala => {
-        if (escala.RE) {
-            uniqueREs.add(escala.RE.toString());
-        }
-    });
-    return uniqueREs.size;
-}
-
-function countUniqueEstacoes(escalas) {
-    const stations = new Set();
-    escalas.forEach(escala => {
-        if (escala.Estacao) {
-            stations.add(escala.Estacao);
-        }
-    });
-    return stations.size;
+function getSearchPlaceholder(type) {
+    const placeholders = {
+        'RE': 'RE (6 dígitos)',
+        'Militar': 'Nome do militar',
+        'Estacao': 'Estação',
+        'Composicao': 'Composição',
+        'ID': 'ID da escala'
+    };
+    return placeholders[type] || 'Buscar...';
 }
 
 // ==================== FUNÇÕES DE TABELA ====================
+
 function renderTable() {
     const tbody = document.getElementById('escalasBody');
     const noDataDiv = document.getElementById('noData');
@@ -312,15 +884,12 @@ function renderTable() {
     const escalasPorId = {};
     filteredEscalas.forEach(escala => {
         if (escala.Id) {
-            if (!escalasPorId[escala.Id]) {
-                escalasPorId[escala.Id] = [];
-            }
+            if (!escalasPorId[escala.Id]) escalasPorId[escala.Id] = [];
             escalasPorId[escala.Id].push(escala);
         }
     });
     
     pageEscalas.forEach((escala, index) => {
-        const globalIndex = startIndex + index + 1;
         const isUserEscala = userRE && escala.RE && escala.RE.toString() === userRE;
         
         const confirmacao = getConfirmacaoStatus(escala.Id, escala.RE);
@@ -344,6 +913,8 @@ function renderTable() {
                 <i class="fas fa-paperclip"></i>
             </a>` : '';
 
+        const estacaoNome = stationsCache[escala.Estacao] || escala.Estacao || '-';
+
         html += `
             <tr class="${rowClass.trim()}" data-escala-id="${escala.Id}" data-escala-re="${escala.RE}">
                 <td>
@@ -353,7 +924,9 @@ function renderTable() {
                 <td>${escala.horarioFormatado}</td>
                 <td>${escala.OPM || '-'}</td>
                 <td>
-                    <span class="badge bg-secondary">${escala.Estacao || '-'}</span>
+                    <span class="badge bg-secondary" title="${estacaoNome}">
+                        ${estacaoNome}
+                    </span>
                 </td>
                 <td>
                     <span class="badge ${getComposicaoColor(escala.Composicao)}">
@@ -386,31 +959,6 @@ function renderTable() {
     renderPagination(totalPages);
 }
 
-function getConfirmacaoStatus(escalaId, re) {
-    if (!escalaId || !re || !confirmacoesCache[escalaId]) return null;
-    return confirmacoesCache[escalaId].militares[re] || null;
-}
-
-function getConfirmacaoIcon(status, escalaId, re) {
-    const baseClass = 'btn btn-sm confirm-btn';
-    const dataAttrs = `data-escala-id="${escalaId}" data-re="${re}"`;
-    
-    switch(status) {
-        case 'concluida':
-            return `<button class="${baseClass} btn-success" title="Concluída" ${dataAttrs}>
-                      <i class="fas fa-check"></i>
-                    </button>`;
-        case 'novidade':
-            return `<button class="${baseClass} btn-danger" title="Novidade" ${dataAttrs}>
-                      <i class="fas fa-times"></i>
-                    </button>`;
-        default:
-            return `<button class="${baseClass} btn-outline-secondary" title="Confirmar escala" ${dataAttrs}>
-                      <i class="far fa-clock"></i>
-                    </button>`;
-    }
-}
-
 function renderPagination(totalPages) {
     const pagination = document.getElementById('pagination');
     
@@ -421,7 +969,6 @@ function renderPagination(totalPages) {
     
     let html = '';
     
-    // Botão Anterior
     html += `
         <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
             <a class="page-link" href="#" onclick="changePage(${currentPage - 1})" aria-label="Anterior">
@@ -430,50 +977,30 @@ function renderPagination(totalPages) {
         </li>
     `;
     
-    // Números das páginas
     const maxPagesToShow = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
     let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
     
-    // Ajusta se não mostrar páginas suficientes
     if (endPage - startPage + 1 < maxPagesToShow) {
         startPage = Math.max(1, endPage - maxPagesToShow + 1);
     }
     
-    // Primeira página (se necessário)
     if (startPage > 1) {
-        html += `
-            <li class="page-item">
-                <a class="page-link" href="#" onclick="changePage(1)">1</a>
-            </li>
-        `;
-        if (startPage > 2) {
-            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
-        }
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(1)">1</a></li>`;
+        if (startPage > 2) html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
     }
     
-    // Páginas principais
     for (let i = startPage; i <= endPage; i++) {
-        html += `
-            <li class="page-item ${i === currentPage ? 'active' : ''}">
-                <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
-            </li>
-        `;
+        html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                    <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+                </li>`;
     }
     
-    // Última página (se necessário)
     if (endPage < totalPages) {
-        if (endPage < totalPages - 1) {
-            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
-        }
-        html += `
-            <li class="page-item">
-                <a class="page-link" href="#" onclick="changePage(${totalPages})">${totalPages}</a>
-            </li>
-        `;
+        if (endPage < totalPages - 1) html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${totalPages})">${totalPages}</a></li>`;
     }
     
-    // Botão Próximo
     html += `
         <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
             <a class="page-link" href="#" onclick="changePage(${currentPage + 1})" aria-label="Próximo">
@@ -490,320 +1017,25 @@ window.changePage = function(page) {
     currentPage = page;
     renderTable();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    // Carregar confirmações para a nova página
+    loadConfirmacoesForCurrentPage();
 };
 
-// ==================== FUNÇÕES DE FILTROS ====================
-function setupEventListeners() {
-    const searchInput = document.getElementById('searchRE');
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            if (currentSearchType === 'RE') {
-                this.value = this.value.replace(/\D/g, '').slice(0, 6);
-            }
-            applyFilters();
-        });
-        
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') applyFilters();
-        });
-    }
-    
-    const searchTypeSelect = document.getElementById('searchType');
-    if (searchTypeSelect) {
-        searchTypeSelect.addEventListener('change', function() {
-            currentSearchType = this.value;
-            const searchInput = document.getElementById('searchRE');
-            if (searchInput) {
-                searchInput.placeholder = `Filtrar por ${getSearchPlaceholder(currentSearchType)}`;
-                searchInput.value = '';
-                applyFilters();
-            }
-        });
-    }
-    
-    const dayFilter = document.getElementById('filterDay');
-    if (dayFilter) dayFilter.addEventListener('change', applyFilters);
-    
-    const monthFilter = document.getElementById('filterMonth');
-    if (monthFilter) monthFilter.addEventListener('change', applyFilters);
-    
-    const yearFilter = document.getElementById('filterYear');
-    if (yearFilter) yearFilter.addEventListener('change', applyFilters);
-    
-    const stationFilter = document.getElementById('filterStation');
-    if (stationFilter) stationFilter.addEventListener('change', applyFilters);
-    
-    const clearBtn = document.getElementById('clearFilters');
-    if (clearBtn) clearBtn.addEventListener('click', clearFilters);
-    
-    const refreshBtn = document.getElementById('refreshData');
-    if (refreshBtn) refreshBtn.addEventListener('click', refreshEscalas);
-    
-    const exportBtn = document.getElementById('exportExcel');
-    if (exportBtn) exportBtn.addEventListener('click', exportToExcel);
-    
-    const todayBtn = document.getElementById('todayFilter');
-    if (todayBtn) todayBtn.addEventListener('click', applyTodayFilter);
-    
-    const tutorialBtn = document.getElementById('tutorialBtn');
-    if (tutorialBtn) {
-        tutorialBtn.addEventListener('click', function() {
-            window.open('https://www.youtube.com/', '_blank');
-        });
-    }
-    
-    document.addEventListener('click', function(e) {
-        const confirmBtn = e.target.closest('.confirm-btn');
-        if (confirmBtn) {
-            const escalaId = confirmBtn.getAttribute('data-escala-id');
-            const re = confirmBtn.getAttribute('data-re');
-            if (escalaId && re) {
-                openConfirmModal(escalaId, re);
-            }
-        }
-    });
-    
-    document.addEventListener('click', function(e) {
-        if (e.target && e.target.id === 'saveConfirm') {
-            saveConfirmation();
-        }
-    });
+// ==================== FUNÇÕES DE ESTATÍSTICAS ====================
+
+function countUniqueEscalaIds(escalas) {
+    const uniqueIds = new Set();
+    escalas.forEach(escala => { if (escala.Id) uniqueIds.add(escala.Id.toString()); });
+    return uniqueIds.size;
 }
 
-function getSearchPlaceholder(type) {
-    const placeholders = {
-        'RE': 'RE (6 dígitos)',
-        'Militar': 'Nome do militar',
-        'Estacao': 'Estação',
-        'Composicao': 'Composição',
-        'ID': 'ID da escala'
-    };
-    return placeholders[type] || 'Buscar...';
-}
+function countTotalVagas(escalas) { return escalas.length; }
 
-function populateFilters() {
-    const dayFilter = document.getElementById('filterDay');
-    if (dayFilter) {
-        while (dayFilter.options.length > 1) {
-            dayFilter.remove(1);
-        }
-        
-        for (let day = 1; day <= 31; day++) {
-            const option = document.createElement('option');
-            option.value = day;
-            option.textContent = day.toString().padStart(2, '0');
-            dayFilter.appendChild(option);
-        }
-    }
-    
-    const monthFilter = document.getElementById('filterMonth');
-    if (monthFilter && uniqueMonths.size > 0) {
-        const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
-                           'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-        
-        const sortedMonths = Array.from(uniqueMonths).sort((a, b) => a - b);
-        
-        while (monthFilter.options.length > 1) {
-            monthFilter.remove(1);
-        }
-        
-        sortedMonths.forEach(month => {
-            if (month >= 1 && month <= 12) {
-                const option = document.createElement('option');
-                option.value = month;
-                option.textContent = monthNames[month - 1];
-                monthFilter.appendChild(option);
-            }
-        });
-    }
-    
-    const yearFilter = document.getElementById('filterYear');
-    if (yearFilter && uniqueYears.size > 0) {
-        const sortedYears = Array.from(uniqueYears).sort((a, b) => b - a);
-        
-        while (yearFilter.options.length > 1) {
-            yearFilter.remove(1);
-        }
-        
-        sortedYears.forEach(year => {
-            const option = document.createElement('option');
-            option.value = year;
-            option.textContent = year;
-            yearFilter.appendChild(option);
-        });
-    }
-    
-    const stationFilter = document.getElementById('filterStation');
-    if (stationFilter && uniqueStations.size > 0) {
-        const sortedStations = Array.from(uniqueStations).sort();
-        
-        while (stationFilter.options.length > 1) {
-            stationFilter.remove(1);
-        }
-        
-        sortedStations.forEach(station => {
-            const option = document.createElement('option');
-            option.value = station;
-            option.textContent = station;
-            stationFilter.appendChild(option);
-        });
-    }
-}
-
-function applyTodayFilter() {
-    const today = new Date();
-    const day = today.getDate();
-    const month = today.getMonth() + 1;
-    const year = today.getFullYear();
-    
-    document.getElementById('filterDay').value = day;
-    document.getElementById('filterMonth').value = month;
-    document.getElementById('filterYear').value = year;
-    
-    const hasEscalasForToday = allEscalas.some(e => 
-        e.dia === day && e.mês === month && e.ano === year
-    );
-    
-    if (!hasEscalasForToday) {
-        const hasEscalasForMonth = allEscalas.some(e => 
-            e.mês === month && e.ano === year
-        );
-        
-        if (!hasEscalasForMonth) {
-            if (allEscalas.length > 0) {
-                const recente = allEscalas[0];
-                document.getElementById('filterDay').value = recente.dia;
-                document.getElementById('filterMonth').value = recente.mês;
-                document.getElementById('filterYear').value = recente.ano;
-                showMessage('Mostrando a escala mais recente disponível', 'info');
-            }
-        } else {
-            document.getElementById('filterDay').value = '';
-            showMessage('Mostrando todas as escalas deste mês', 'info');
-        }
-    }
-    
-    applyFilters();
-}
-
-function applyFilters() {
-    const searchValue = document.getElementById('searchRE').value.trim();
-    const dayFilter = document.getElementById('filterDay').value;
-    const monthFilter = document.getElementById('filterMonth').value;
-    const yearFilter = document.getElementById('filterYear').value;
-    const stationFilter = document.getElementById('filterStation').value;
-    
-    filteredEscalas = allEscalas.filter(escala => {
-        if (searchValue) {
-            const searchField = currentSearchType.toLowerCase();
-            let fieldValue = '';
-            
-            switch(currentSearchType) {
-                case 'RE':
-                    fieldValue = escala.RE ? escala.RE.toString() : '';
-                    break;
-                case 'Militar':
-                    fieldValue = escala.Militar || '';
-                    break;
-                case 'Estacao':
-                    fieldValue = escala.Estacao || '';
-                    break;
-                case 'Composicao':
-                    fieldValue = escala.Composicao || '';
-                    break;
-                case 'ID':
-                    fieldValue = escala.Id ? escala.Id.toString() : '';
-                    break;
-            }
-            
-            if (!fieldValue.toLowerCase().includes(searchValue.toLowerCase())) {
-                return false;
-            }
-        }
-        
-        if (dayFilter && escala.dia) {
-            if (escala.dia.toString() !== dayFilter) {
-                return false;
-            }
-        }
-        
-        if (monthFilter && escala.mês) {
-            if (escala.mês.toString() !== monthFilter) {
-                return false;
-            }
-        }
-        
-        if (yearFilter && escala.ano) {
-            if (escala.ano.toString() !== yearFilter) {
-                return false;
-            }
-        }
-        
-        if (stationFilter && escala.Estacao) {
-            if (escala.Estacao !== stationFilter) {
-                return false;
-            }
-        }
-        
-        return true;
-    });
-    
-    currentPage = 1;
-    renderTable();
-    updateStatistics();
-}
-
-function clearFilters() {
-    document.getElementById('searchRE').value = '';
-    document.getElementById('filterDay').value = '';
-    document.getElementById('filterMonth').value = '';
-    document.getElementById('filterYear').value = '';
-    document.getElementById('filterStation').value = '';
-    
-    currentSearchType = 'RE';
-    const searchTypeSelect = document.getElementById('searchType');
-    if (searchTypeSelect) searchTypeSelect.value = 'RE';
-    
-    const searchInput = document.getElementById('searchRE');
-    if (searchInput) searchInput.placeholder = 'Filtrar por RE (6 dígitos)';
-    
-    filteredEscalas = [...allEscalas];
-    currentPage = 1;
-    renderTable();
-    updateStatistics();
-    
-    showMessage('Filtros limpos com sucesso.', 'success');
-}
-
-function refreshEscalas() {
-    const refreshBtn = document.getElementById('refreshData');
-    if (refreshBtn) {
-        const originalHTML = refreshBtn.innerHTML;
-        refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Atualizando...';
-        refreshBtn.disabled = true;
-        
-        Promise.all([
-            loadEscalados(),
-            loadConfirmacoes()
-        ]).then(() => {
-            populateFilters();
-            applyTodayFilter();
-        }).finally(() => {
-            setTimeout(() => {
-                refreshBtn.innerHTML = originalHTML;
-                refreshBtn.disabled = false;
-                showMessage('Dados atualizados com sucesso', 'success');
-            }, 500);
-        });
-    } else {
-        Promise.all([
-            loadEscalados(),
-            loadConfirmacoes()
-        ]).then(() => {
-            populateFilters();
-            applyTodayFilter();
-        });
-    }
+function countUniqueMilitares(escalas) {
+    const uniqueREs = new Set();
+    escalas.forEach(escala => { if (escala.RE) uniqueREs.add(escala.RE.toString()); });
+    return uniqueREs.size;
 }
 
 function updateStatistics() {
@@ -813,100 +1045,33 @@ function updateStatistics() {
     const mesAtual = document.getElementById('mesAtual');
     const anoAtual = document.getElementById('anoAtual');
     
-    if (!totalVagas || !totalEscalas || !totalMilitares || !mesAtual || !anoAtual) {
-        console.error('❌ Elementos de estatísticas não encontrados');
-        return;
-    }
+    if (!totalVagas || !totalEscalas || !totalMilitares || !mesAtual || !anoAtual) return;
     
-    const vagasCount = countTotalVagas(filteredEscalas);
-    totalVagas.textContent = vagasCount.toLocaleString('pt-BR');
-    
-    const escalasCount = countUniqueEscalaIds(filteredEscalas);
-    totalEscalas.textContent = escalasCount.toLocaleString('pt-BR');
-    
-    const militaresCount = countUniqueMilitares(filteredEscalas);
-    totalMilitares.textContent = militaresCount.toLocaleString('pt-BR');
+    totalVagas.textContent = countTotalVagas(filteredEscalas).toLocaleString('pt-BR');
+    totalEscalas.textContent = countUniqueEscalaIds(filteredEscalas).toLocaleString('pt-BR');
+    totalMilitares.textContent = countUniqueMilitares(filteredEscalas).toLocaleString('pt-BR');
     
     const monthFilter = document.getElementById('filterMonth');
     const yearFilter = document.getElementById('filterYear');
-    
-    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
-                       'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     
     if (monthFilter && monthFilter.value) {
-        const monthNum = parseInt(monthFilter.value);
-        mesAtual.textContent = monthNames[monthNum - 1] || monthNum;
-        mesAtual.title = `Mês: ${monthNames[monthNum - 1] || monthNum}`;
+        mesAtual.textContent = monthNames[parseInt(monthFilter.value) - 1];
     } else {
-        mesAtual.textContent = 'Todos';
-        mesAtual.title = 'Todos os meses';
+        mesAtual.textContent = currentMonth ? monthNames[currentMonth - 1] : 'Todos';
     }
     
     if (yearFilter && yearFilter.value) {
         anoAtual.textContent = yearFilter.value;
-        anoAtual.title = `Ano: ${yearFilter.value}`;
     } else {
-        const years = Array.from(uniqueYears).sort((a, b) => a - b);
-        if (years.length === 1) {
-            anoAtual.textContent = years[0];
-        } else if (years.length > 1) {
-            anoAtual.textContent = `${years[0]}-${years[years.length-1]}`;
-        } else {
-            anoAtual.textContent = '-';
-        }
-        anoAtual.title = 'Período completo';
-    }
-    
-    addStatisticsTooltips(vagasCount, escalasCount, militaresCount);
-}
-
-function addStatisticsTooltips(vagasCount, escalasCount, militaresCount) {
-    const totalVagasElement = document.getElementById('totalVagas');
-    const totalEscalasElement = document.getElementById('totalEscalas');
-    const totalMilitaresElement = document.getElementById('totalMilitares');
-    
-    if (totalVagasElement) {
-        totalVagasElement.setAttribute('data-bs-toggle', 'tooltip');
-        totalVagasElement.setAttribute('data-bs-placement', 'top');
-        totalVagasElement.setAttribute('title', 
-            `${vagasCount} registros (vagas) no período filtrado`);
-    }
-    
-    if (totalEscalasElement) {
-        totalEscalasElement.setAttribute('data-bs-toggle', 'tooltip');
-        totalEscalasElement.setAttribute('data-bs-placement', 'top');
-        totalEscalasElement.setAttribute('title', 
-            `${escalasCount} escalas com IDs diferentes`);
-    }
-    
-    if (totalMilitaresElement) {
-        totalMilitaresElement.setAttribute('data-bs-toggle', 'tooltip');
-        totalMilitaresElement.setAttribute('data-bs-placement', 'top');
-        totalMilitaresElement.setAttribute('title', 
-            `${militaresCount} militares diferentes (REs únicos)`);
-    }
-    
-    if (typeof bootstrap !== 'undefined') {
-        setTimeout(() => {
-            const tooltipTriggerList = [].slice.call(
-                document.querySelectorAll('[data-bs-toggle="tooltip"]')
-            );
-            tooltipTriggerList.map(function (tooltipTriggerEl) {
-                try {
-                    return new bootstrap.Tooltip(tooltipTriggerEl);
-                } catch (e) {
-                    return null;
-                }
-            });
-        }, 500);
+        anoAtual.textContent = currentYear || '-';
     }
 }
 
 // ==================== FUNÇÕES DE MODAL ====================
+
 function createModalIfNotExists() {
-    if (document.getElementById('confirmModal')) {
-        return;
-    }
+    if (document.getElementById('confirmModal')) return;
     
     const modalHTML = `
         <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
@@ -936,6 +1101,10 @@ window.openConfirmModal = async function(escalaId, reClicado) {
         return;
     }
     
+    if (!confirmacoesCache[escalaId]) {
+        await loadConfirmacaoById(escalaId);
+    }
+    
     const confirmacoesEscala = confirmacoesCache[escalaId] || {};
     const dadosGerais = confirmacoesEscala.dadosGerais || {};
     const militaresConfirmacoes = confirmacoesEscala.militares || {};
@@ -956,7 +1125,7 @@ window.openConfirmModal = async function(escalaId, reClicado) {
                     <p><strong><i class="fas fa-clock me-1"></i> Horário:</strong> ${primeiraEscala.horarioFormatado}</p>
                 </div>
                 <div class="col-md-6">
-                    <p><strong><i class="fas fa-map-marker-alt me-1"></i> Estação:</strong> ${primeiraEscala.Estacao || '-'}</p>
+                    <p><strong><i class="fas fa-map-marker-alt me-1"></i> Estação:</strong> ${stationsCache[primeiraEscala.Estacao] || primeiraEscala.Estacao || '-'}</p>
                     <p><strong><i class="fas fa-car me-1"></i> Composição:</strong> ${primeiraEscala.Composicao || '-'}</p>
                 </div>
             </div>
@@ -1045,10 +1214,7 @@ window.openConfirmModal = async function(escalaId, reClicado) {
     `;
     
     const confirmContent = document.getElementById('confirmContent');
-    if (!confirmContent) {
-        console.error('❌ Elemento #confirmContent não encontrado');
-        return;
-    }
+    if (!confirmContent) return;
     
     confirmContent.innerHTML = modalHTML;
     
@@ -1103,7 +1269,6 @@ async function saveConfirmation() {
     
     try {
         const saveBtn = document.getElementById('saveConfirm');
-        const originalText = saveBtn.innerHTML;
         saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Salvando...';
         saveBtn.disabled = true;
         
@@ -1132,9 +1297,7 @@ async function saveConfirmation() {
         
         await Promise.all(savePromises);
         
-        if (!confirmacoesCache[escalaId]) {
-            confirmacoesCache[escalaId] = { dadosGerais: {}, militares: {} };
-        }
+        if (!confirmacoesCache[escalaId]) confirmacoesCache[escalaId] = { dadosGerais: {}, militares: {} };
         
         confirmacoesCache[escalaId].dadosGerais = {
             sei_link: seiLink,
@@ -1160,7 +1323,6 @@ async function saveConfirmation() {
         }
         
         renderTable();
-        
         showMessage('Confirmação salva com sucesso!', 'success');
         
     } catch (error) {
@@ -1175,7 +1337,8 @@ async function saveConfirmation() {
     }
 }
 
-// ==================== FUNÇÕES DE EXPORTAÇÃO ====================
+// ==================== EXPORTAÇÃO ====================
+
 function exportToExcel() {
     try {
         if (filteredEscalas.length === 0) {
@@ -1185,12 +1348,14 @@ function exportToExcel() {
         
         const wsData = filteredEscalas.map(escala => {
             const confirmacao = getConfirmacaoStatus(escala.Id, escala.RE);
+            const estacaoNome = stationsCache[escala.Estacao] || escala.Estacao || '';
             
             return {
                 'Data': escala.Data || '',
                 'Horário': escala.horarioFormatado || '',
                 'OPM': escala.OPM || '',
-                'Estação': escala.Estacao || '',
+                'Estação': estacaoNome,
+                'Código Estação': escala.Estacao || '',
                 'Composição': escala.Composicao || '',
                 'Posto/Grad': escala.PostoGrad || '',
                 'RE': escala.RE || '',
@@ -1205,9 +1370,8 @@ function exportToExcel() {
         });
         
         const ws = XLSX.utils.json_to_sheet(wsData);
-        
         const wscols = [
-            {wch: 10}, {wch: 15}, {wch: 10}, {wch: 15}, {wch: 20},
+            {wch: 10}, {wch: 15}, {wch: 10}, {wch: 25}, {wch: 15}, {wch: 20},
             {wch: 12}, {wch: 8}, {wch: 25}, {wch: 10}, {wch: 10},
             {wch: 20}, {wch: 5}, {wch: 6}
         ];
@@ -1220,7 +1384,6 @@ function exportToExcel() {
         const fileName = `escalas_${today}.xlsx`;
         
         XLSX.writeFile(wb, fileName);
-        
         showMessage(`Arquivo ${fileName} gerado com sucesso!`, 'success');
         
     } catch (error) {
@@ -1229,7 +1392,8 @@ function exportToExcel() {
     }
 }
 
-// ==================== FUNÇÕES DE UI/HELPERS ====================
+// ==================== FUNÇÕES DE UI ====================
+
 function showLoading(show) {
     const tbody = document.getElementById('escalasBody');
     const noDataDiv = document.getElementById('noData');
@@ -1285,6 +1449,7 @@ async function loadNavbar() {
 }
 
 // ==================== INICIALIZAÇÃO ====================
+
 if (!window.location.pathname.includes('app.html')) {
     document.addEventListener('DOMContentLoaded', initEscalas);
 }

@@ -49,6 +49,29 @@ export async function initPerfil() {
     }
 }
 
+function addPermissoesStyles() {
+    const styleId = 'permissoes-additional-styles';
+    if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            .opm-codigo {
+                font-family: monospace;
+                font-size: 0.85em;
+            }
+            .campo-modificado {
+                border: 2px solid #ffc107 !important;
+                box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
+            }
+            .opms-container {
+                max-height: 300px;
+                overflow-y: auto;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
 // Função para gerar avatar com iniciais
 function generateAvatar(nomeCompleto) {
     if (!nomeCompleto || nomeCompleto.trim() === '') {
@@ -151,7 +174,14 @@ function renderPerfil(userData, re) {
                             <a href="#" class="list-group-item list-group-item-action active" id="link-alterar-senha">
                                 <i class="fas fa-key me-2"></i>Alterar Senha
                             </a>
-                            <!-- Futuros links podem ser adicionados aqui -->
+                            
+                            <!-- ✅ NOVO LINK: Permissões (somente para admin) -->
+                            ${userData.nivel === 1 ? `
+                                <a href="#" class="list-group-item list-group-item-action" id="link-permissoes">
+                                    <i class="fas fa-user-shield me-2"></i>Gerenciar Permissões
+                                    <span class="badge bg-primary float-end">Admin</span>
+                                </a>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -665,6 +695,25 @@ function setupEventListeners() {
             });
             e.target.closest('#link-alterar-senha').classList.add('active');
         }
+        
+        // ✅ NOVO: Link "Permissões" (somente para admin)
+        if (e.target.closest('#link-permissoes')) {
+            e.preventDefault();
+            
+            // Verificar novamente se é admin (segurança)
+            if (!userDataCache || userDataCache.nivel !== 1) {
+                alert('Acesso restrito a administradores');
+                return;
+            }
+            
+            carregarPermissoes();
+            
+            // Ativar visualmente o link
+            document.querySelectorAll('.list-group-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            e.target.closest('#link-permissoes').classList.add('active');
+        }
     });
 }
 
@@ -702,6 +751,51 @@ if (!window.location.pathname.includes('app.html') &&
         
         await initPerfil();
     });
+}
+
+// ✅ NOVA FUNÇÃO: Carregar interface de permissões
+async function carregarPermissoes() {
+    const conteudoDinamico = document.getElementById('perfil-conteudo-dinamico');
+    if (!conteudoDinamico) return;
+    
+    // Mostrar loading
+    conteudoDinamico.innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3"></div>
+            <h5>Carregando sistema de permissões...</h5>
+            <p class="text-muted">Verificando credenciais de administrador</p>
+        </div>
+    `;
+    
+    try {
+        addPermissoesStyles();
+        
+        // Importar e inicializar o módulo de permissões
+        const permissoesModule = await import('./perfil-permissao.js');
+        
+        if (permissoesModule && permissoesModule.initPermissoesSPA) {
+            await permissoesModule.initPermissoesSPA();
+        } else if (permissoesModule && permissoesModule.initPermissoes) {
+            await permissoesModule.initPermissoes();
+        } else {
+            throw new Error('Módulo de permissões não carregado corretamente');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro ao carregar permissões:', error);
+        
+        conteudoDinamico.innerHTML = `
+            <div class="alert alert-danger">
+                <h5><i class="fas fa-exclamation-triangle me-2"></i>Erro no Sistema de Permissões</h5>
+                <p>${error.message}</p>
+                <div class="mt-3">
+                    <button class="btn btn-primary" onclick="window.app ? window.app.loadPage('perfil.html') : location.reload()">
+                        <i class="fas fa-redo me-1"></i>Tentar Novamente
+                    </button>
+                </div>
+            </div>
+        `;
+    }
 }
 
 // Exportar função para SPA

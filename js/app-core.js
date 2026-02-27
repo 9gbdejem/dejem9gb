@@ -6,15 +6,13 @@ class AppCore {
         // VERIFICAR ANTES DE TUDO: Só inicializa em app.html
         if (!window.location.pathname.includes('app.html')) {
             console.log(`🚫 ${window.location.pathname.split('/').pop()} - Não é SPA, ignorando app-core.js`);
-            return null; // Retorna null para páginas não-SPA
+            return null;
         }
         
         this.currentPage = 'dashboard';
-        // console.log('🚀 SPA inicializando em app.html...');
     }
     
     async init() {
-        // SE não for app.html, NÃO EXECUTA
         if (!window.location.pathname.includes('app.html')) {
             console.log('📄 Página não-SPA - SPA não inicializado');
             return;
@@ -30,8 +28,6 @@ class AppCore {
             
             this.setupNavbar();
             await this.loadPage('dashboard.html');
-            
-            // console.log('✅ SPA Inicializado com sucesso!');
             
         } catch (error) {
             console.error('❌ Erro ao inicializar SPA:', error);
@@ -172,69 +168,61 @@ class AppCore {
     }
     
     async loadPage(pageUrl) {
-    if (this.currentPage === pageUrl) return;
-    
-    const contentDiv = document.getElementById('app-content');
-    if (!contentDiv) return;
-    
-    try {
-        contentDiv.innerHTML = this.getLoadingHTML(pageUrl);
+        if (this.currentPage === pageUrl) return;
         
-        const response = await fetch(pageUrl);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const contentDiv = document.getElementById('app-content');
+        if (!contentDiv) return;
         
-        const html = await response.text();
-        
-        // ESTRATÉGIA DIFERENTE PARA ESCALAS, EXCLUSÕES E PERFIL
-        if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html') {
-            await this.loadSpecialPage(html, pageUrl);
-        } else {
-            const pageContent = this.extractContent(html, pageUrl);
-            contentDiv.innerHTML = pageContent;
+        try {
+            contentDiv.innerHTML = this.getLoadingHTML(pageUrl);
             
-            if (pageUrl === 'dashboard.html') {
-                await this.loadDashboardScript();
+            const response = await fetch(pageUrl);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const html = await response.text();
+            
+            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html') {
+                await this.loadSpecialPage(html, pageUrl);
+            } else {
+                const pageContent = this.extractContent(html, pageUrl);
+                contentDiv.innerHTML = pageContent;
+                
+                if (pageUrl === 'dashboard.html') {
+                    await this.loadDashboardScript();
+                }
             }
+            
+            this.currentPage = pageUrl;
+            this.updateActiveNav(pageUrl);
+            
+        } catch (error) {
+            console.error(`❌ Erro ao carregar ${pageUrl}:`, error);
+            contentDiv.innerHTML = this.getErrorHTML(error, pageUrl);
         }
-        
-        this.currentPage = pageUrl;
-        this.updateActiveNav(pageUrl);
-        
-    } catch (error) {
-        console.error(`❌ Erro ao carregar ${pageUrl}:`, error);
-        contentDiv.innerHTML = this.getErrorHTML(error, pageUrl);
     }
-}
     
-    // MÉTODO ÚNICO PARA ESCALAS E EXCLUSÕES
     async loadSpecialPage(html, pageUrl) {
         const contentDiv = document.getElementById('app-content');
         
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         
-        // Remover navbar duplicado
         const navbar = doc.querySelector('#navbar');
         if (navbar) navbar.remove();
         
-        // Pegar apenas o main
         const mainContent = doc.querySelector('main');
         if (mainContent) {
             contentDiv.innerHTML = mainContent.innerHTML;
             
-            // Carregar o script específico
             if (pageUrl === 'escalas.html') {
                 await this.loadEscalasScript();
             } else if (pageUrl === 'exclusoes.html') {
                 await this.loadExclusoesScript();
             } else if (pageUrl === 'perfil.html') {
                 await this.loadPerfilScript();
-            }
-            // ⬇️⬇️⬇️ ADICIONE ESTAS LINHAS AQUI ⬇️⬇️⬇️
-            else if (pageUrl === 'solicitacoes.html') {
+            } else if (pageUrl === 'solicitacoes.html') {
                 await this.loadSolicitacoesScript();
             }
-            // ⬆️⬆️⬆️ ADICIONE ESTAS LINHAS AQUI ⬆️⬆️⬆️
         } else {
             contentDiv.innerHTML = '<div class="alert alert-danger">Erro: Conteúdo não encontrado</div>';
         }
@@ -303,14 +291,13 @@ class AppCore {
         }
     }
 
-    // Método para carregar solicitacoes
     async loadSolicitacoesScript() {
         try {
             await this.loadExternalScripts();
             await this.loadDatepicker();
-            await this.loadGoogleDriveAPI(); // ⬅️ ADICIONE ESTA LINHA
+            await this.loadGoogleDriveAPI();
             
-            await new Promise(resolve => setTimeout(resolve, 500)); // Aguardar carregamento
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             const solicitacoesModule = await import('./solicitacoes.js');
             
@@ -330,69 +317,59 @@ class AppCore {
 
     async loadGoogleDriveAPI() {
         return new Promise((resolve) => {
-            // Verificar se já está carregado
             if (window.gapi && window.gapi.load) {
                 console.log('✅ Google Drive API já carregada');
                 resolve();
                 return;
             }
             
-            // Carregar apenas se não estiver carregado
             if (!document.querySelector('script[src*="apis.google.com"]')) {
                 const script = document.createElement('script');
                 script.src = 'https://apis.google.com/js/api.js';
                 script.onload = () => {
                     console.log('✅ Google Drive API carregada pelo SPA');
-                    // Aguardar para garantir inicialização
                     setTimeout(resolve, 1000);
                 };
                 script.onerror = () => {
                     console.warn('⚠️ Não foi possível carregar Google Drive API');
-                    resolve(); // Não falhar o sistema
+                    resolve();
                 };
                 document.head.appendChild(script);
             } else {
-                // Já existe, apenas aguardar
                 setTimeout(resolve, 1000);
             }
         });
     }
 
-    // Método para carregar datepicker
     async loadDatepicker() {
         return new Promise((resolve) => {
-            // Verificar se já está carregado
             if (document.querySelector('link[href*="flatpickr"]') && 
                 document.querySelector('script[src*="flatpickr"]')) {
                 resolve();
                 return;
             }
             
-            // Carregar CSS
             const linkCSS = document.createElement('link');
             linkCSS.rel = 'stylesheet';
             linkCSS.href = 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css';
             linkCSS.onload = () => {
-                // Carregar JS principal
                 const scriptMain = document.createElement('script');
                 scriptMain.src = 'https://cdn.jsdelivr.net/npm/flatpickr';
                 scriptMain.onload = () => {
-                    // Carregar locale
                     const scriptLocale = document.createElement('script');
                     scriptLocale.src = 'https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/pt.js';
                     scriptLocale.onload = resolve;
-                    scriptLocale.onerror = resolve; // Não falhar se locale não carregar
+                    scriptLocale.onerror = resolve;
                     document.head.appendChild(scriptLocale);
                 };
-                scriptMain.onerror = resolve; // Não falhar se não carregar
+                scriptMain.onerror = resolve;
                 document.head.appendChild(scriptMain);
             };
-            linkCSS.onerror = resolve; // Não falhar se CSS não carregar
+            linkCSS.onerror = resolve;
             document.head.appendChild(linkCSS);
         });
     }
 
-    // Adicionar estilos específicos das solicitações
     addSolicitacoesStyles() {
         const styleId = 'solicitacoes-spa-styles';
         if (!document.getElementById(styleId)) {
@@ -557,7 +534,6 @@ class AppCore {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         
-        // Remover elementos duplicados
         const elementsToRemove = [
             '#navbar',
             'nav',
@@ -572,7 +548,6 @@ class AppCore {
             doc.querySelectorAll(selector).forEach(el => el.remove());
         });
         
-        // Para dashboard, pegar card-body
         if (pageUrl === 'dashboard.html') {
             const cardBody = doc.querySelector('.card-body');
             if (cardBody) {
@@ -592,7 +567,6 @@ class AppCore {
             }
         }
         
-        // Para outras páginas, pegar main
         const mainContent = doc.querySelector('main, .container-fluid');
         return mainContent ? mainContent.innerHTML : doc.body.innerHTML;
     }
@@ -636,14 +610,10 @@ class AppCore {
     }
 }
 
-// ==================== INICIALIZAÇÃO GLOBAL ====================
-// SÓ inicializa SPA se for app.html
 if (window.location.pathname.includes('app.html')) {
     document.addEventListener('DOMContentLoaded', () => {
-        // console.log('📄 Inicializando SPA em app.html...');
         window.app = new AppCore();
         
-        // Só chama init() se o objeto AppCore foi criado (não retornou null)
         if (window.app) {
             window.app.init();
         }

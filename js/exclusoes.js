@@ -1,3 +1,4 @@
+// js/exclusoes.js - Versão Otimizada (Carrega apenas mês/ano corrente)
 import { database } from './firebase-config.js';
 import { checkAuth } from './auth-check.js';
 import { ref, get } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
@@ -10,25 +11,29 @@ const itemsPerPage = 15;
 let uniqueStations = new Set();
 let uniqueYears = new Set();
 let uniqueMonths = new Set();
-let uniqueDays = new Set();
 let currentSearchType = 'RE';
 let userNivel = 3;
 let userRE = '';
 
+// Variáveis de filtro
+let currentYear = new Date().getFullYear();
+let currentMonth = new Date().getMonth() + 1;
+let currentStation = '';
+let currentSearch = '';
+let loadingTimer = null;
+let isDataLoaded = false;
+
 // ==================== FUNÇÕES DE INICIALIZAÇÃO ====================
 export async function initExclusoesSPA() {
-    // console.log('🚫 Exclusões SPA inicializando...');
     await initializeApp();
 }
 
 async function initExclusoes() {
-    // console.log('🚫 Página de Exclusões carregando (independente)...');
     await initializeApp();
 }
 
 async function initializeApp() {
     try {
-        // Verificar autenticação - nível mínimo 2
         const { userData, re } = await checkAuth(2);
         
         userRE = re;
@@ -37,104 +42,189 @@ async function initializeApp() {
         sessionStorage.setItem('userRE', userRE);
         sessionStorage.setItem('userName', userData.nome);
         sessionStorage.setItem('userNivel', userNivel);
-        sessionStorage.setItem('currentUserLevel', userNivel); // ✅ ADICIONAR
+        sessionStorage.setItem('currentUserLevel', userNivel);
         
         if (window.updateUserGreetingInSPA) {
             window.updateUserGreetingInSPA();
         }
         
         setupEventListeners();
-        await loadExclusoes();
+        
+        // Preencher filtros
         populateFilters();
+        
+        // Carregar dados do mês/ano atual
+        await loadExclusoesMesAtual();
+        
+        // Aplicar filtros iniciais
         applyFilters();
         
     } catch (error) {
         console.error('❌ Erro na inicialização:', error);
-        
-        // ✅ IMPORTANTE: NÃO mostrar erro se for apenas nível insuficiente
-        // O usuário já foi redirecionado e viu o alert
         if (!error.message.includes('Nível insuficiente')) {
             showError('Erro ao carregar: ' + error.message);
         }
-        // Não faz nada mais - já foi redirecionado
     }
 }
 
 // ==================== FUNÇÕES DE CARREGAMENTO DE DADOS ====================
-async function loadExclusoes() {
+async function loadExclusoesMesAtual() {
     try {
+        // Mostrar loading imediatamente
         showLoading(true);
         
-        const escaladosRef = ref(database, 'escalados');
-        const snapshot = await get(escaladosRef);
+        // Determinar mês e ano atual
+        const hoje = new Date();
+        const ano = hoje.getFullYear();
+        const mes = (hoje.getMonth() + 1).toString().padStart(2, '0');
+        
+        console.log(`📅 Carregando exclusões de ${mes}/${ano}...`);
+        
+        // Atualizar selects com mês/ano atual
+        const monthSelect = document.getElementById('filterMonth');
+        const yearSelect = document.getElementById('filterYear');
+        
+        if (monthSelect) monthSelect.value = parseInt(mes);
+        if (yearSelect) yearSelect.value = ano;
+        
+        // Buscar apenas o nó específico: escalados/ANO/MÊS
+        const caminho = `escalados/${ano}/${mes}`;
+        const exclusoesRef = ref(database, caminho);
+        const snapshot = await get(exclusoesRef);
+        
+        allExclusoes = [];
+        uniqueStations.clear();
+        uniqueYears.clear();
+        uniqueMonths.clear();
         
         if (snapshot.exists()) {
-            allExclusoes = [];
-            uniqueStations.clear();
-            uniqueYears.clear();
-            uniqueMonths.clear();
-            uniqueDays.clear();
-            
-            let totalExclusoesEncontradas = 0;
-            
-            snapshot.forEach((yearSnapshot) => {
-                const year = yearSnapshot.key;
-                if (isNaN(year)) return;
+            snapshot.forEach((daySnapshot) => {
+                const dia = daySnapshot.key;
                 
-                yearSnapshot.forEach((monthSnapshot) => {
-                    const month = monthSnapshot.key;
+                daySnapshot.forEach((escalaSnapshot) => {
+                    const escalaKey = escalaSnapshot.key;
+                    const escalaData = escalaSnapshot.val();
                     
-                    monthSnapshot.forEach((daySnapshot) => {
-                        const day = daySnapshot.key;
-                        
-                        daySnapshot.forEach((escalaSnapshot) => {
-                            const escalaKey = escalaSnapshot.key;
-                            const escalaData = escalaSnapshot.val();
-                            
-                            // FILTRAR APENAS EXCLUSÕES (Exclusao === "X")
-                            if (escalaData.Exclusao === "X" || escalaData.Exclusao === "x") {
-                                totalExclusoesEncontradas++;
-                                processarExclusao(escalaData, year, month, day, escalaKey);
-                            }
-                        });
-                    });
+                    // FILTRAR APENAS EXCLUSÕES (Exclusao === "X")
+                    if (escalaData.Exclusao === "X" || escalaData.Exclusao === "x") {
+                        processarExclusao(escalaData, ano, mes, dia, escalaKey);
+                    }
                 });
             });
             
-            // Ordenar por data (mais recente primeiro)
-            allExclusoes.sort((a, b) => {
-                const dateA = new Date(a.ano, a.mês - 1, a.dia);
-                const dateB = new Date(b.ano, b.mês - 1, b.dia);
-                return dateB - dateA;
-            });
-            
-            // console.log(`✅ ${allExclusoes.length} exclusões carregadas`);
-            
+            console.log(`✅ ${allExclusoes.length} exclusões carregadas para ${mes}/${ano}`);
         } else {
-            console.log('📭 Nenhuma exclusão encontrada');
+            console.log(`📭 Nenhuma exclusão encontrada em ${mes}/${ano}`);
             allExclusoes = [];
-            showMessage('Nenhuma exclusão registrada no sistema.', 'info');
         }
+        
+        // Adicionar ano/mês aos conjuntos únicos
+        uniqueYears.add(parseInt(ano));
+        uniqueMonths.add(parseInt(mes));
+        
+        // Ordenar por data (mais recente primeiro)
+        allExclusoes.sort((a, b) => {
+            if (a.ano !== b.ano) return b.ano - a.ano;
+            if (a.mês !== b.mês) return b.mês - a.mês;
+            return b.dia - a.dia;
+        });
+        
+        isDataLoaded = true;
         
     } catch (error) {
         console.error('💥 Erro ao carregar exclusões:', error);
         showError('Erro ao carregar exclusões: ' + error.message);
+        allExclusoes = [];
     } finally {
         showLoading(false);
     }
 }
 
+// ✅ FUNÇÃO CORRIGIDA: Carregar mês específico (sem erro de padStart)
+async function loadExclusoesPorMesAno(ano, mes) {
+    try {
+        // Mostrar loading imediatamente
+        showLoading(true);
+        
+        // ✅ CORREÇÃO: Converter para string com padStart apenas se for número
+        const anoStr = ano.toString();
+        const mesNum = parseInt(mes);
+        const mesStr = mesNum.toString().padStart(2, '0');
+        
+        console.log(`📅 Carregando exclusões de ${mesStr}/${anoStr}...`);
+        
+        const caminho = `escalados/${anoStr}/${mesStr}`;
+        const exclusoesRef = ref(database, caminho);
+        const snapshot = await get(exclusoesRef);
+        
+        allExclusoes = [];
+        uniqueStations.clear();
+        uniqueYears.clear();
+        uniqueMonths.clear();
+        
+        if (snapshot.exists()) {
+            snapshot.forEach((daySnapshot) => {
+                const dia = daySnapshot.key;
+                
+                daySnapshot.forEach((escalaSnapshot) => {
+                    const escalaKey = escalaSnapshot.key;
+                    const escalaData = escalaSnapshot.val();
+                    
+                    if (escalaData.Exclusao === "X" || escalaData.Exclusao === "x") {
+                        processarExclusao(escalaData, anoStr, mesStr, dia, escalaKey);
+                    }
+                });
+            });
+            
+            console.log(`✅ ${allExclusoes.length} exclusões carregadas`);
+        } else {
+            console.log(`📭 Nenhuma exclusão encontrada`);
+            allExclusoes = [];
+        }
+        
+        // Adicionar ano/mês aos conjuntos únicos
+        uniqueYears.add(parseInt(anoStr));
+        uniqueMonths.add(parseInt(mesStr));
+        
+        // Ordenar
+        allExclusoes.sort((a, b) => {
+            if (a.ano !== b.ano) return b.ano - a.ano;
+            if (a.mês !== b.mês) return b.mês - a.mês;
+            return b.dia - a.dia;
+        });
+        
+        isDataLoaded = true;
+        
+        // Atualizar filtros com os novos dados
+        populateFilters();
+        applyFilters();
+        
+    } catch (error) {
+        console.error('💥 Erro ao carregar exclusões:', error);
+        showError('Erro ao carregar exclusões: ' + error.message);
+        allExclusoes = [];
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ✅ FUNÇÃO CORRIGIDA: processarExclusao (sem erro de padStart)
 function processarExclusao(escalaData, year, month, day, escalaKey) {
+    // ✅ CORREÇÃO: Garantir que year, month, day sejam strings
+    const yearStr = year.toString();
+    const monthStr = month.toString().padStart(2, '0');
+    const dayStr = day.toString().padStart(2, '0');
+    
     const exclusao = {
         ...escalaData,
         escalaKey: escalaKey,
-        ano: parseInt(year),
-        mês: parseInt(month),
-        dia: parseInt(day),
-        Data: `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`,
+        ano: parseInt(yearStr),
+        mês: parseInt(monthStr),
+        dia: parseInt(dayStr),
+        Data: `${dayStr}/${monthStr}/${yearStr}`,
         Id: escalaData.Id || '',
         RE: escalaData.RE || '',
-        linhaId: `${year}/${month}/${day}/${escalaKey}`
+        linhaId: `${yearStr}/${monthStr}/${dayStr}/${escalaKey}`
     };
     
     // Converter horários
@@ -153,9 +243,8 @@ function processarExclusao(escalaData, year, month, day, escalaKey) {
     exclusao.Documento = escalaData.Documento || '';
     
     // Adicionar aos conjuntos únicos
-    uniqueYears.add(parseInt(year));
-    uniqueMonths.add(parseInt(month));
-    uniqueDays.add(parseInt(day));
+    uniqueYears.add(parseInt(yearStr));
+    uniqueMonths.add(parseInt(monthStr));
     
     if (escalaData.Estacao) {
         uniqueStations.add(escalaData.Estacao);
@@ -224,6 +313,11 @@ function renderTable() {
     
     if (!tbody || !noDataDiv || !infoText || !pagination) {
         console.error('❌ Elementos da tabela não encontrados');
+        return;
+    }
+    
+    // Se ainda não carregou dados, não renderizar
+    if (!isDataLoaded) {
         return;
     }
     
@@ -332,7 +426,7 @@ function renderPagination(totalPages) {
     
     html += `
         <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">
+            <a class="page-link" href="#" onclick="window.changePage(${currentPage - 1})">
                 <i class="fas fa-chevron-left"></i>
             </a>
         </li>
@@ -349,14 +443,14 @@ function renderPagination(totalPages) {
     for (let i = startPage; i <= endPage; i++) {
         html += `
             <li class="page-item ${i === currentPage ? 'active' : ''}">
-                <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+                <a class="page-link" href="#" onclick="window.changePage(${i})">${i}</a>
             </li>
         `;
     }
     
     html += `
         <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">
+            <a class="page-link" href="#" onclick="window.changePage(${currentPage + 1})">
                 <i class="fas fa-chevron-right"></i>
             </a>
         </li>
@@ -374,18 +468,26 @@ window.changePage = function(page) {
 
 // ==================== FUNÇÕES DE FILTROS ====================
 function setupEventListeners() {
-    // Search input
+    // Search input com debounce
     const searchInput = document.getElementById('searchRE');
     if (searchInput) {
         searchInput.addEventListener('input', function() {
             if (currentSearchType === 'RE') {
                 this.value = this.value.replace(/\D/g, '').slice(0, 6);
             }
-            applyFilters();
+            
+            // Debounce de 500ms para busca
+            if (loadingTimer) clearTimeout(loadingTimer);
+            loadingTimer = setTimeout(() => {
+                applyFilters();
+            }, 500);
         });
         
         searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') applyFilters();
+            if (e.key === 'Enter') {
+                if (loadingTimer) clearTimeout(loadingTimer);
+                applyFilters();
+            }
         });
     }
     
@@ -403,18 +505,45 @@ function setupEventListeners() {
         });
     }
     
-    // Filtros
-    const dayFilter = document.getElementById('filterDay');
-    if (dayFilter) dayFilter.addEventListener('change', applyFilters);
-    
+    // ✅ FILTROS DE MÊS/ANO COM DEBOUNCE DE 3 SEGUNDOS E LOADING
     const monthFilter = document.getElementById('filterMonth');
-    if (monthFilter) monthFilter.addEventListener('change', applyFilters);
+    if (monthFilter) {
+        monthFilter.addEventListener('change', function() {
+            if (loadingTimer) clearTimeout(loadingTimer);
+            
+            // Mostrar loading imediatamente
+            showLoading(true);
+            
+            loadingTimer = setTimeout(() => {
+                aplicarFiltrosData();
+            }, 3000);
+        });
+    }
     
     const yearFilter = document.getElementById('filterYear');
-    if (yearFilter) yearFilter.addEventListener('change', applyFilters);
+    if (yearFilter) {
+        yearFilter.addEventListener('change', function() {
+            if (loadingTimer) clearTimeout(loadingTimer);
+            
+            // Mostrar loading imediatamente
+            showLoading(true);
+            
+            loadingTimer = setTimeout(() => {
+                aplicarFiltrosData();
+            }, 3000);
+        });
+    }
     
+    // Filtro de estação (filtragem local)
     const stationFilter = document.getElementById('filterStation');
-    if (stationFilter) stationFilter.addEventListener('change', applyFilters);
+    if (stationFilter) {
+        stationFilter.addEventListener('change', function() {
+            if (loadingTimer) clearTimeout(loadingTimer);
+            loadingTimer = setTimeout(() => {
+                applyFilters();
+            }, 500);
+        });
+    }
     
     // Botões
     const clearBtn = document.getElementById('clearFilters');
@@ -425,6 +554,67 @@ function setupEventListeners() {
     
     const exportBtn = document.getElementById('exportExcel');
     if (exportBtn) exportBtn.addEventListener('click', exportToExcel);
+}
+
+// ✅ FUNÇÃO CORRIGIDA: Aplicar filtros de data com recarregamento
+async function aplicarFiltrosData() {
+    const monthFilter = document.getElementById('filterMonth');
+    const yearFilter = document.getElementById('filterYear');
+    
+    // Obter valores dos filtros
+    const monthValue = monthFilter ? monthFilter.value : null;
+    const yearValue = yearFilter ? yearFilter.value : null;
+    
+    // 🚨 VERIFICAR SE OS FILTROS ESTÃO EM BRANCO OU COM VALORES INVÁLIDOS
+    const mesInvalido = !monthValue || monthValue === "" || monthValue === "Selecionar mês";
+    const anoInvalido = !yearValue || yearValue === "" || yearValue === "Selecionar ano";
+    
+    // Se algum filtro estiver inválido, NÃO CARREGA NADA
+    if (mesInvalido || anoInvalido) {
+        console.log('⚠️ Filtro inválido detectado - exibindo noData');
+        
+        // Limpar dados
+        filteredExclusoes = [];
+        allExclusoes = [];
+        
+        // Esconder loading (se estiver visível)
+        showLoading(false);
+        
+        // Mostrar noData
+        const tbody = document.getElementById('exclusoesBody');
+        const noDataDiv = document.getElementById('noData');
+        const infoText = document.getElementById('infoText');
+        const pagination = document.getElementById('pagination');
+        
+        if (tbody) tbody.innerHTML = '';
+        if (noDataDiv) noDataDiv.classList.remove('d-none');
+        if (infoText) infoText.textContent = 'Mostrando 0 de 0 registros';
+        if (pagination) pagination.innerHTML = '';
+        
+        // Atualizar estatísticas com zero
+        updateStatistics();
+        
+        return; // ⛔ SAI DA FUNÇÃO SEM CARREGAR DADOS
+    }
+    
+    // Converter para números apenas se forem válidos
+    const novoMes = parseInt(monthValue);
+    const novoAno = parseInt(yearValue);
+    
+    // Se mudou mês ou ano, recarregar dados
+    if (novoMes !== currentMonth || novoAno !== currentYear) {
+        console.log(`📅 Mudança de data detectada: ${currentMonth}/${currentYear} → ${novoMes}/${novoAno}`);
+        
+        currentMonth = novoMes;
+        currentYear = novoAno;
+        
+        await loadExclusoesPorMesAno(currentYear, currentMonth);
+        // populateFilters já é chamado dentro de loadExclusoesPorMesAno
+    } else {
+        // Se não mudou, apenas aplicar filtros locais e esconder loading
+        showLoading(false);
+        applyFilters();
+    }
 }
 
 function getSearchPlaceholder(type) {
@@ -440,89 +630,111 @@ function getSearchPlaceholder(type) {
 }
 
 function populateFilters() {
-    // Filtro de dias (1-31)
-    const dayFilter = document.getElementById('filterDay');
-    if (dayFilter) {
-        while (dayFilter.options.length > 1) {
-            dayFilter.remove(1);
-        }
-        
-        for (let day = 1; day <= 31; day++) {
-            const option = document.createElement('option');
-            option.value = day;
-            option.textContent = day.toString().padStart(2, '0');
-            dayFilter.appendChild(option);
-        }
-    }
-    
-    // Filtro de meses
+    // ✅ FILTRO DE MÊS - SEM opção "Todos"
     const monthFilter = document.getElementById('filterMonth');
-    if (monthFilter && uniqueMonths.size > 0) {
-        const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
-                           'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-        
-        const sortedMonths = Array.from(uniqueMonths).sort((a, b) => a - b);
+    if (monthFilter) {
+        // Preservar o valor atual antes de recriar as opções
+        const currentValue = monthFilter.value;
         
         while (monthFilter.options.length > 1) {
             monthFilter.remove(1);
         }
         
-        sortedMonths.forEach(month => {
-            if (month >= 1 && month <= 12) {
-                const option = document.createElement('option');
-                option.value = month;
-                option.textContent = monthNames[month - 1];
-                monthFilter.appendChild(option);
-            }
-        });
+        const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+                           'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        
+        // Adicionar meses (1-12) - SEM opção "Todos"
+        for (let month = 1; month <= 12; month++) {
+            const option = document.createElement('option');
+            option.value = month;
+            option.textContent = monthNames[month - 1];
+            monthFilter.appendChild(option);
+        }
+        
+        // Restaurar o valor selecionado ou usar o mês atual
+        if (currentValue && currentValue !== "0") {
+            try { monthFilter.value = currentValue; } catch (e) {}
+        } else {
+            monthFilter.value = currentMonth;
+        }
     }
     
-    // Filtro de anos
+    // ✅ FILTRO DE ANOS - SEM opção "Todos"
     const yearFilter = document.getElementById('filterYear');
-    if (yearFilter && uniqueYears.size > 0) {
-        const sortedYears = Array.from(uniqueYears).sort((a, b) => b - a);
+    if (yearFilter) {
+        // Preservar o valor atual antes de recriar as opções
+        const currentValue = yearFilter.value;
         
         while (yearFilter.options.length > 1) {
             yearFilter.remove(1);
         }
         
-        sortedYears.forEach(year => {
+        const anoAtual = new Date().getFullYear();
+        const anos = [];
+        
+        // Anos de 2020 até ano atual + 1
+        for (let ano = 2020; ano <= anoAtual + 1; ano++) {
+            anos.push(ano);
+        }
+        
+        anos.sort((a, b) => b - a); // Mais recente primeiro
+        
+        anos.forEach(ano => {
             const option = document.createElement('option');
-            option.value = year;
-            option.textContent = year;
+            option.value = ano;
+            option.textContent = ano;
             yearFilter.appendChild(option);
         });
+        
+        // Restaurar o valor selecionado ou usar o ano atual
+        if (currentValue && currentValue !== "0") {
+            try { yearFilter.value = currentValue; } catch (e) {}
+        } else {
+            yearFilter.value = currentYear;
+        }
     }
     
-    // Filtro de estações
+    // ✅ FILTRO DE ESTAÇÕES (apenas se houver dados)
     const stationFilter = document.getElementById('filterStation');
-    if (stationFilter && uniqueStations.size > 0) {
-        const sortedStations = Array.from(uniqueStations).sort();
+    if (stationFilter) {
+        // Preservar o valor atual antes de recriar as opções
+        const currentValue = stationFilter.value;
         
         while (stationFilter.options.length > 1) {
             stationFilter.remove(1);
         }
         
-        sortedStations.forEach(station => {
-            const option = document.createElement('option');
-            option.value = station;
-            option.textContent = station;
-            stationFilter.appendChild(option);
-        });
+        // // Opção "Todas as estações" (valor vazio)
+        // const allOption = document.createElement('option');
+        // allOption.value = "";
+        // allOption.textContent = "Todas as estações";
+        // stationFilter.appendChild(allOption);
+        
+        if (uniqueStations.size > 0) {
+            const sortedStations = Array.from(uniqueStations).sort();
+            
+            sortedStations.forEach(station => {
+                const option = document.createElement('option');
+                option.value = station;
+                option.textContent = station;
+                stationFilter.appendChild(option);
+            });
+        }
+        
+        // Restaurar o valor selecionado
+        if (currentValue) {
+            try { stationFilter.value = currentValue; } catch (e) {}
+        }
     }
 }
 
 function applyFilters() {
     const searchValue = document.getElementById('searchRE').value.trim();
-    const dayFilter = document.getElementById('filterDay').value;
-    const monthFilter = document.getElementById('filterMonth').value;
-    const yearFilter = document.getElementById('filterYear').value;
     const stationFilter = document.getElementById('filterStation').value;
     
     filteredExclusoes = allExclusoes.filter(exclusao => {
         // Filtro de busca
         if (searchValue) {
-            const searchField = currentSearchType.toLowerCase();
             let fieldValue = '';
             
             switch(currentSearchType) {
@@ -551,27 +763,6 @@ function applyFilters() {
             }
         }
         
-        // Filtro de dia
-        if (dayFilter && exclusao.dia) {
-            if (exclusao.dia.toString() !== dayFilter) {
-                return false;
-            }
-        }
-        
-        // Filtro de mês
-        if (monthFilter && exclusao.mês) {
-            if (exclusao.mês.toString() !== monthFilter) {
-                return false;
-            }
-        }
-        
-        // Filtro de ano
-        if (yearFilter && exclusao.ano) {
-            if (exclusao.ano.toString() !== yearFilter) {
-                return false;
-            }
-        }
-        
         // Filtro de estação
         if (stationFilter && exclusao.Estacao) {
             if (exclusao.Estacao !== stationFilter) {
@@ -589,10 +780,15 @@ function applyFilters() {
 
 function clearFilters() {
     document.getElementById('searchRE').value = '';
-    document.getElementById('filterDay').value = '';
-    document.getElementById('filterMonth').value = '';
-    document.getElementById('filterYear').value = '';
     document.getElementById('filterStation').value = '';
+    
+    // Voltar para mês/ano atual
+    const hoje = new Date();
+    const monthFilter = document.getElementById('filterMonth');
+    const yearFilter = document.getElementById('filterYear');
+    
+    if (monthFilter) monthFilter.value = hoje.getMonth() + 1;
+    if (yearFilter) yearFilter.value = hoje.getFullYear();
     
     currentSearchType = 'RE';
     const searchTypeSelect = document.getElementById('searchType');
@@ -601,12 +797,13 @@ function clearFilters() {
     const searchInput = document.getElementById('searchRE');
     if (searchInput) searchInput.placeholder = 'Buscar...';
     
-    filteredExclusoes = [...allExclusoes];
-    currentPage = 1;
-    renderTable();
-    updateStatistics();
+    // Recarregar dados do mês atual
+    currentMonth = hoje.getMonth() + 1;
+    currentYear = hoje.getFullYear();
     
-    showMessage('Filtros limpos com sucesso.', 'success');
+    loadExclusoesPorMesAno(currentYear, currentMonth).then(() => {
+        showMessage('Filtros limpos com sucesso.', 'success');
+    });
 }
 
 function refreshExclusoes() {
@@ -618,10 +815,10 @@ function refreshExclusoes() {
         refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Atualizando...';
         refreshBtn.disabled = true;
         
-        loadExclusoes().then(() => {
-            populateFilters();
-            applyFilters();
-        }).finally(() => {
+        // Mostrar loading na tabela
+        showLoading(true);
+        
+        loadExclusoesPorMesAno(currentYear, currentMonth).finally(() => {
             setTimeout(() => {
                 refreshBtn.innerHTML = originalHTML;
                 refreshBtn.disabled = false;
@@ -629,10 +826,8 @@ function refreshExclusoes() {
             }, 500);
         });
     } else {
-        loadExclusoes().then(() => {
-            populateFilters();
-            applyFilters();
-        });
+        showLoading(true);
+        loadExclusoesPorMesAno(currentYear, currentMonth);
     }
 }
 
@@ -660,40 +855,33 @@ function updateStatistics() {
     const militaresCount = countUniqueMilitares(filteredExclusoes);
     totalMilitares.textContent = militaresCount.toLocaleString('pt-BR');
     
-    // 4. Mês atual (baseado no filtro)
+    // 4. Mês atual
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+                       'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    
     const monthFilter = document.getElementById('filterMonth');
+    const selectedMonth = monthFilter ? parseInt(monthFilter.value) : null;
+    
+    if (selectedMonth && selectedMonth > 0) {
+        mesAtual.textContent = monthNames[selectedMonth - 1] || selectedMonth;
+        mesAtual.title = `Mês: ${monthNames[selectedMonth - 1] || selectedMonth}`;
+    } else {
+        mesAtual.textContent = '-';
+        mesAtual.title = 'Mês não selecionado';
+    }
+    
+    // 5. Ano atual
     const yearFilter = document.getElementById('filterYear');
+    const selectedYear = yearFilter ? parseInt(yearFilter.value) : null;
     
-    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
-                       'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    
-    if (monthFilter && monthFilter.value) {
-        const monthNum = parseInt(monthFilter.value);
-        mesAtual.textContent = monthNames[monthNum - 1] || monthNum;
-        mesAtual.title = `Mês: ${monthNames[monthNum - 1] || monthNum}`;
+    if (selectedYear && selectedYear > 0) {
+        anoAtual.textContent = selectedYear;
+        anoAtual.title = `Ano: ${selectedYear}`;
     } else {
-        mesAtual.textContent = 'Todos';
-        mesAtual.title = 'Todos os meses';
+        anoAtual.textContent = '-';
+        anoAtual.title = 'Ano não selecionado';
     }
     
-    // 5. Ano atual (baseado no filtro)
-    if (yearFilter && yearFilter.value) {
-        anoAtual.textContent = yearFilter.value;
-        anoAtual.title = `Ano: ${yearFilter.value}`;
-    } else {
-        // Se não tem filtro, mostrar período completo
-        const years = Array.from(uniqueYears).sort((a, b) => a - b);
-        if (years.length === 1) {
-            anoAtual.textContent = years[0];
-        } else if (years.length > 1) {
-            anoAtual.textContent = `${years[0]}-${years[years.length-1]}`;
-        } else {
-            anoAtual.textContent = '-';
-        }
-        anoAtual.title = 'Período completo';
-    }
-    
-    // Adicionar tooltips detalhados
     addStatisticsTooltips(vagasCount, escalasCount, militaresCount);
 }
 
@@ -763,6 +951,8 @@ function showLoading(show) {
             </tr>
         `;
         if (noDataDiv) noDataDiv.classList.add('d-none');
+    } else {
+        // Não limpa o tbody aqui, só esconde o loading quando os dados chegarem
     }
 }
 
@@ -775,7 +965,7 @@ function showMessage(message, type = 'info') {
     alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
     alertDiv.innerHTML = `
         <div class="d-flex align-items-center">
-            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} me-2"></i>
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : type === 'danger' ? 'exclamation-circle' : 'info-circle'} me-2"></i>
             <div>${message}</div>
             <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
         </div>
@@ -793,8 +983,6 @@ function showError(message) {
 }
 
 // ==================== FUNÇÕES PARA CÁLCULO DE ESTATÍSTICAS ====================
-
-// Contar IDs únicos (escalas diferentes)
 function countUniqueEscalaIds(exclusoes) {
     const uniqueIds = new Set();
     exclusoes.forEach(exclusao => {
@@ -805,12 +993,10 @@ function countUniqueEscalaIds(exclusoes) {
     return uniqueIds.size;
 }
 
-// Contar total de vagas (registros)
 function countTotalVagas(exclusoes) {
     return exclusoes.length;
 }
 
-// Contar militares únicos (REs diferentes)
 function countUniqueMilitares(exclusoes) {
     const uniqueREs = new Set();
     exclusoes.forEach(exclusao => {
@@ -821,19 +1007,6 @@ function countUniqueMilitares(exclusoes) {
     return uniqueREs.size;
 }
 
-// Contar estações únicas
-function countUniqueEstacoes(exclusoes) {
-    const stations = new Set();
-    exclusoes.forEach(exclusao => {
-        if (exclusao.Estacao) {
-            stations.add(exclusao.Estacao);
-        }
-    });
-    return stations.size;
-}
-
-// Função para adicionar tooltips detalhados
-// Função para adicionar tooltips detalhados (ATUALIZADA - sem estações)
 function addStatisticsTooltips(vagasCount, escalasCount, militaresCount) {
     const totalVagasElement = document.getElementById('totalVagas');
     const totalEscalasElement = document.getElementById('totalEscalas');
@@ -870,7 +1043,6 @@ function addStatisticsTooltips(vagasCount, escalasCount, militaresCount) {
                 try {
                     return new bootstrap.Tooltip(tooltipTriggerEl);
                 } catch (e) {
-                    // Ignorar erros de tooltip
                     return null;
                 }
             });
@@ -896,3 +1068,7 @@ if (!window.location.pathname.includes('app.html')) {
 
 // Adicionar função global para SPA
 window.initExclusoesPage = initExclusoes;
+
+// Exportar funções para SPA
+export { initExclusoes };
+export default initExclusoes;

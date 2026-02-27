@@ -5,6 +5,26 @@
     --danger-color: #e74c3c;
     --light-color: #ecf0f1;
     --dark-color: #2c3e50;
+    
+    /* CORES DA TABELA */
+    --table-header-bg: #f8f9fa;
+    --table-border: #dee2e6;
+    --table-hover: rgba(0, 123, 255, 0.05);
+    --table-row-even: #f8f9fa;
+    
+    /* LARGURAS DAS COLUNAS (AJUSTE FÁCIL AQUI) */
+    --col-acoes: 80px;      /* AÇÕES */
+    --col-data: 70px;       /* DATA */
+    --col-composicao: 180px;/* COMPOSIÇÃO */
+    --col-cod: 40px;        /* COD */
+    --col-horario: 120px;   /* HORÁRIO */
+    --col-vagas: 65px;      /* VAGAS Sub/Sgt e Cb/Sd (cada) */
+    --col-prioridade: 100px;/* PRIORIDADE */
+    --col-status: 60px;     /* STATUS */
+    --col-id: 80px;         /* ID */
+    --col-prazo: 120px;     /* PRAZO */
+    --col-escalado: 65px;   /* ESCALADO Sub/Sgt e Cb/Sd (cada) */
+    --col-detalhes: 50px;   /* DETALHES */
 }
 
 body {
@@ -16,7 +36,6 @@ body {
 }
 
 /* ================= LOGIN ================= */
-
 .login-container {
     display: flex;
     justify-content: center;
@@ -106,7 +125,6 @@ body {
 }
 
 /* ================= NAVBAR ================= */
-
 .navbar {
     background-color: var(--primary-color) !important;
     padding: 0.5rem 1rem;
@@ -152,7 +170,6 @@ body {
 }
 
 /* ================= DROPDOWN ================= */
-
 #userGreetingDropdown {
     border: 1px solid rgba(255,255,255,0.5);
     color: white;
@@ -178,43 +195,7 @@ body {
     background-color: #f8f9fa !important;
 }
 
-/* ================= TABELAS ================= */
-
-.table-responsive {
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-#escalasTable th {
-    position: sticky;
-    top: 0;
-    background-color: #f8f9fa;
-    font-size: 0.9rem;
-}
-
-#escalasTable td {
-    vertical-align: middle;
-    font-size: 0.9rem;
-}
-
-/* ================= BADGES ================= */
-
-.badge {
-    font-size: 0.75em;
-    padding: 0.35em 0.65em;
-    font-weight: 500;
-}
-
-.badge.bg-danger { background-color: #dc3545 !important; }
-.badge.bg-success { background-color: #198754 !important; }
-.badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
-.badge.bg-info { background-color: #0dcaf0 !important; }
-.badge.bg-primary { background-color: #0d6efd !important; }
-.badge.bg-secondary { background-color: #6c757d !important; }
-.badge.bg-dark { background-color: #6c757d !important; }
-
 /* ================= CARDS ================= */
-
 .card {
     border: none;
     border-radius: 8px;
@@ -234,7 +215,6 @@ body {
 .card.bg-dark { background: linear-gradient(45deg, #343a40, #23272b); }
 
 /* ================= MODAL ================= */
-
 .modal-content {
     border-radius: 10px;
     border: none;
@@ -247,7 +227,6 @@ body {
 }
 
 /* ================= UTIL ================= */
-
 .spinner-border {
     width: 1.5rem;
     height: 1.5rem;
@@ -259,7 +238,6 @@ body {
 }
 
 /* ================= ANIMAÇÕES ================= */
-
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -269,31 +247,7 @@ body {
     animation: fadeIn 0.3s ease-in;
 }
 
-/* ================= ESCALAS ================= */
-
-.escala-grupo-par {
-    background-color: rgba(0,123,255,0.03) !important;
-}
-
-.escala-grupo-impar {
-    background-color: rgba(108,117,125,0.03) !important;
-}
-
-.escala-id-link {
-    text-decoration: none;
-    font-weight: bold;
-    color: #0d6efd !important;
-    padding: 3px 8px;
-    border-radius: 4px;
-    background-color: rgba(13,110,253,0.1);
-}
-
-.escala-id-link:hover {
-    background-color: rgba(13,110,253,0.2);
-}
-
 /* ================= DOCUMENTO ================= */
-
 .documento-text {
     max-width: 300px;
     overflow: hidden;
@@ -313,10 +267,408 @@ body {
     z-index: 1000;
 }
 
-/* ================= RESPONSIVO ================= */
-
+/* ================= RESPONSIVO GERAL ================= */
 @media (max-width: 768px) {
     .login-box { padding: 25px; }
     .navbar-logo { height: 28px; }
     #userGreeting { display: none; }
+}
+
+/* ================= TABELA DE SOLICITAÇÕES - NOVO LAYOUT ================= */
+#tabelaSolicitacoes-container {
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid var(--table-border);
+    background: white;
+    margin-bottom: 1rem;
+}
+
+#tabelaSolicitacoes {
+    width: 100%;
+    min-width: 1300px; /* Largura mínima para evitar quebra */
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* CABEÇALHO DA TABELA */
+#tabelaSolicitacoes thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--table-header-bg);
+}
+
+#tabelaSolicitacoes thead tr:first-child th {
+    border-bottom: 2px solid var(--table-border);
+    font-weight: 600;
+    color: #495057;
+    padding: 10px 4px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#tabelaSolicitacoes thead tr:last-child th {
+    font-size: 0.8rem;
+    color: #6c757d;
+    font-weight: 500;
+    padding: 4px 4px 8px 4px;
+    background-color: #e9ecef;
+}
+
+/* APLICAÇÃO DAS LARGURAS NAS COLUNAS */
+#tabelaSolicitacoes th:nth-child(1),
+#tabelaSolicitacoes td:nth-child(1) {
+    width: var(--col-acoes);
+    min-width: var(--col-acoes);
+    max-width: var(--col-acoes);
+}
+
+#tabelaSolicitacoes th:nth-child(2),
+#tabelaSolicitacoes td:nth-child(2) {
+    width: var(--col-data);
+    min-width: var(--col-data);
+    max-width: var(--col-data);
+}
+
+#tabelaSolicitacoes th:nth-child(3),
+#tabelaSolicitacoes td:nth-child(3) {
+    width: var(--col-composicao);
+    min-width: var(--col-composicao);
+    max-width: var(--col-composicao);
+}
+
+#tabelaSolicitacoes th:nth-child(4),
+#tabelaSolicitacoes td:nth-child(4) {
+    width: var(--col-cod);
+    min-width: var(--col-cod);
+    max-width: var(--col-cod);
+}
+
+#tabelaSolicitacoes th:nth-child(5),
+#tabelaSolicitacoes td:nth-child(5) {
+    width: var(--col-horario);
+    min-width: var(--col-horario);
+    max-width: var(--col-horario);
+}
+
+/* VAGAS (colunas 6 e 7) */
+#tabelaSolicitacoes th:nth-child(6),
+#tabelaSolicitacoes td:nth-child(6),
+#tabelaSolicitacoes th:nth-child(7),
+#tabelaSolicitacoes td:nth-child(7) {
+    width: var(--col-vagas);
+    min-width: var(--col-vagas);
+    max-width: var(--col-vagas);
+}
+
+#tabelaSolicitacoes th:nth-child(8),
+#tabelaSolicitacoes td:nth-child(8) {
+    width: var(--col-prioridade);
+    min-width: var(--col-prioridade);
+    max-width: var(--col-prioridade);
+}
+
+#tabelaSolicitacoes th:nth-child(9),
+#tabelaSolicitacoes td:nth-child(9) {
+    width: var(--col-status);
+    min-width: var(--col-status);
+    max-width: var(--col-status);
+}
+
+#tabelaSolicitacoes th:nth-child(10),
+#tabelaSolicitacoes td:nth-child(10) {
+    width: var(--col-id);
+    min-width: var(--col-id);
+    max-width: var(--col-id);
+}
+
+#tabelaSolicitacoes th:nth-child(11),
+#tabelaSolicitacoes td:nth-child(11) {
+    width: var(--col-prazo);
+    min-width: var(--col-prazo);
+    max-width: var(--col-prazo);
+}
+
+/* ESCALADO (colunas 12 e 13) */
+#tabelaSolicitacoes th:nth-child(12),
+#tabelaSolicitacoes td:nth-child(12),
+#tabelaSolicitacoes th:nth-child(13),
+#tabelaSolicitacoes td:nth-child(13) {
+    width: var(--col-escalado);
+    min-width: var(--col-escalado);
+    max-width: var(--col-escalado);
+}
+
+#tabelaSolicitacoes th:nth-child(14),
+#tabelaSolicitacoes td:nth-child(14) {
+    width: var(--col-detalhes);
+    min-width: var(--col-detalhes);
+    max-width: var(--col-detalhes);
+}
+
+/* CORPO DA TABELA */
+#tabelaSolicitacoes tbody td {
+    padding: 8px 4px;
+    vertical-align: middle;
+    border-top: 1px solid var(--table-border);
+    transition: background-color 0.2s ease;
+    position: relative; /* Para tooltip */
+}
+
+#tabelaSolicitacoes tbody tr:hover td {
+    background-color: var(--table-hover) !important;
+}
+
+/* Cores de status */
+#tabelaSolicitacoes tbody tr.table-warning td {
+    background-color: rgba(255, 193, 7, 0.08);
+}
+
+#tabelaSolicitacoes tbody tr.table-danger td {
+    background-color: rgba(220, 53, 69, 0.05);
+}
+
+/* TOOLTIP PARA TEXTO TRUNCADO */
+.truncate-text {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+    vertical-align: middle;
+    width: 100%; /* Garante que ocupa toda a célula */
+    box-sizing: border-box;
+}
+
+/* Para links que são também truncados */
+.truncate-link {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Tooltip aparece APENAS quando tem "..." (texto truncado) */
+.truncate-text:hover::after,
+.truncate-link:hover::after {
+    content: attr(data-fulltext);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 100%;
+    background: #333;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    white-space: normal;
+    max-width: 300px;
+    word-wrap: break-word;
+    z-index: 1000;
+    margin-bottom: 5px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.truncate-text:hover::before,
+.truncate-link:hover::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(100% - 5px);
+    border: 5px solid transparent;
+    border-top-color: #333;
+    z-index: 1000;
+}
+
+/* Exceção para coluna de AÇÕES - não tem tooltip */
+#tabelaSolicitacoes td:nth-child(1) .truncate-text,
+#tabelaSolicitacoes td:nth-child(14) .truncate-text {
+    cursor: default;
+}
+
+#tabelaSolicitacoes td:nth-child(1) .truncate-text:hover::after,
+#tabelaSolicitacoes td:nth-child(14) .truncate-text:hover::after {
+    display: none;
+}
+
+/* Badges */
+.badge {
+    font-size: 0.75em;
+    padding: 0.35em 0.65em;
+    font-weight: 500;
+}
+
+.badge.bg-danger { background-color: #dc3545 !important; }
+.badge.bg-success { background-color: #198754 !important; }
+.badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
+.badge.bg-info { background-color: #0dcaf0 !important; }
+.badge.bg-primary { background-color: #0d6efd !important; }
+.badge.bg-secondary { background-color: #6c757d !important; }
+
+/* Botões compactos */
+#tabelaSolicitacoes .btn-sm {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    min-width: 32px;
+}
+
+/* Links da tabela */
+#tabelaSolicitacoes .link-reutilizar {
+    color: #495057;
+    transition: all 0.2s ease;
+    display: block;
+}
+
+#tabelaSolicitacoes .link-reutilizar:hover {
+    color: #0d6efd;
+    transform: translateY(-1px);
+}
+
+#tabelaSolicitacoes .link-id-escala {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: rgba(13, 110, 253, 0.08);
+    transition: all 0.2s ease;
+    display: inline-block;
+    white-space: nowrap;
+}
+
+#tabelaSolicitacoes .link-id-escala:hover {
+    background-color: rgba(13, 110, 253, 0.15);
+    text-decoration: none;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Scrollbar personalizada */
+#tabelaSolicitacoes-container::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+#tabelaSolicitacoes-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+#tabelaSolicitacoes-container::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+#tabelaSolicitacoes-container::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Animações suaves */
+#tbodySolicitacoes tr {
+    animation: fadeInRow 0.3s ease forwards;
+    animation-delay: calc(var(--row-index, 0) * 0.05s);
+    opacity: 0;
+}
+
+@keyframes fadeInRow {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ================= RESPONSIVIDADE DA TABELA ================= */
+@media (max-width: 1400px) {
+    #tabelaSolicitacoes {
+        font-size: 0.85rem;
+    }
+    
+    /* Ajustar larguras em telas médias */
+    :root {
+        --col-acoes: 70px;
+        --col-data: 80px;
+        --col-composicao: 120px;
+        --col-cod: 50px;
+        --col-horario: 110px;
+        --col-vagas: 60px;
+        --col-prioridade: 90px;
+        --col-status: 50px;
+        --col-id: 70px;
+        --col-prazo: 110px;
+        --col-escalado: 60px;
+        --col-detalhes: 45px;
+    }
+}
+
+@media (max-width: 1200px) {
+    #tabelaSolicitacoes-container {
+        overflow-x: auto;
+    }
+    
+    #tabelaSolicitacoes {
+        min-width: 1200px;
+    }
+    
+    :root {
+        --col-acoes: 65px;
+        --col-data: 75px;
+        --col-composicao: 110px;
+        --col-cod: 45px;
+        --col-horario: 100px;
+        --col-vagas: 55px;
+        --col-prioridade: 85px;
+        --col-status: 45px;
+        --col-id: 65px;
+        --col-prazo: 100px;
+        --col-escalado: 55px;
+        --col-detalhes: 40px;
+    }
+}
+
+@media (max-width: 768px) {
+    #tabelaSolicitacoes {
+        min-width: 1100px;
+        font-size: 0.8rem;
+    }
+    
+    :root {
+        --col-acoes: 60px;
+        --col-data: 70px;
+        --col-composicao: 100px;
+        --col-cod: 40px;
+        --col-horario: 90px;
+        --col-vagas: 50px;
+        --col-prioridade: 80px;
+        --col-status: 40px;
+        --col-id: 60px;
+        --col-prazo: 90px;
+        --col-escalado: 50px;
+        --col-detalhes: 35px;
+    }
+    
+    #tabelaSolicitacoes tbody td {
+        padding: 6px 3px;
+    }
+    
+    #tabelaSolicitacoes .btn-sm {
+        padding: 3px 6px;
+        font-size: 0.75rem;
+        min-width: 28px;
+    }
+}
+
+/* Células de vagas */
+#tabelaSolicitacoes .vagas-cell {
+    font-size: 1.1rem;
+    min-width: var(--col-vagas);
+    max-width: var(--col-vagas);
 }

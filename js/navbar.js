@@ -190,7 +190,28 @@ function styleDropdownToggle() {
     });
 }
 
-// 7. INICIALIZAÇÃO
+// 7. ✅ FUNÇÃO CORRIGIDA: Atualizar navbar baseado no nível do usuário
+export function updateNavbarByLevel(userLevel) {
+    console.log(`🎯 Atualizando navbar para nível ${userLevel}...`);
+    
+    // Ocultar Exclusões para nível 3
+    if (userLevel >= 3) {
+        const exclusoesItem = document.getElementById('navExclusoes');
+        if (exclusoesItem) {
+            // Tenta encontrar o li pai
+            const parentLi = exclusoesItem.closest('li.nav-item');
+            if (parentLi) {
+                parentLi.style.display = 'none';
+            } else {
+                // Fallback: ocultar o próprio elemento
+                exclusoesItem.style.display = 'none';
+            }
+            console.log('🔒 Menu Exclusões ocultado para nível 3+');
+        }
+    }
+}
+
+// 8. INICIALIZAÇÃO
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🏁 Navbar inicializando...');
     
@@ -217,13 +238,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Verificar nível do usuário e atualizar navbar
+    const userNivel = sessionStorage.getItem('userNivel');
+    if (userNivel) {
+        updateNavbarByLevel(parseInt(userNivel));
+    }
+    
     console.log('✅ Navbar inicializado');
 });
 
-// 8. Função global para forçar atualização
+// 9. Função global para forçar atualização
 window.updateNavbarUserGreeting = updateUserGreeting;
 
-// 9. Função para atualizar menu ativo quando SPA carrega página
+// 10. Função para atualizar menu ativo quando SPA carrega página
 window.updateNavbarActiveMenu = function(pageUrl) {
     // Remover active de todos
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -245,21 +272,5 @@ window.updateNavbarActiveMenu = function(pageUrl) {
     });
 };
 
-// ✅ NOVA FUNÇÃO: Atualizar navbar baseado no nível do usuário
-export function updateNavbarByLevel(userLevel) {
-    console.log(`🎯 Atualizando navbar para nível ${userLevel}...`);
-    
-    // Ocultar Exclusões para nível 3
-    if (userLevel >= 3) {
-        const exclusoesItem = document.getElementById('navExclusoes');
-        if (exclusoesItem) {
-            const parentLi = exclusoesItem.closest('li.nav-item');
-            if (parentLi) {
-                parentLi.style.display = 'none';
-            }
-        }
-    }
-}
-
-// 10. Exportar funções
+// 11. Exportar funções
 export { updateUserGreeting };
