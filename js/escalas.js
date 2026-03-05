@@ -559,6 +559,135 @@ async function loadConfirmacaoById(escalaId) {
 
 // ==================== CONFIGURAÇÃO DE EVENTOS ====================
 
+
+function setupAdminRangeFilter() {
+    const adminRangeFilter = document.getElementById('adminRangeFilter');
+    const startDateInput = document.getElementById('rangeStartDate');
+    const endDateInput = document.getElementById('rangeEndDate');
+    const searchRangeBtn = document.getElementById('searchRangeBtn');
+
+    if (!adminRangeFilter || !startDateInput || !endDateInput || !searchRangeBtn) return;
+
+    if (userNivel !== 1) {
+        adminRangeFilter.classList.add('d-none');
+        return;
+    }
+
+    adminRangeFilter.classList.remove('d-none');
+
+    const fillDateFromFilters = () => {
+        const yearValue = document.getElementById('filterYear')?.value;
+        const monthValue = document.getElementById('filterMonth')?.value;
+        const dayValue = document.getElementById('filterDay')?.value;
+
+        if (yearValue && monthValue && dayValue) {
+            const formatted = `${yearValue}-${monthValue.toString().padStart(2, '0')}-${dayValue.toString().padStart(2, '0')}`;
+            if (!startDateInput.value) startDateInput.value = formatted;
+            if (!endDateInput.value) endDateInput.value = formatted;
+        }
+    };
+
+    fillDateFromFilters();
+
+    searchRangeBtn.addEventListener('click', async function() {
+        await applyAdminRangeFilter();
+    });
+
+    [startDateInput, endDateInput].forEach(input => {
+        input.addEventListener('keypress', async function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                await applyAdminRangeFilter();
+            }
+        });
+    });
+}
+
+async function applyAdminRangeFilter() {
+    const startDateInput = document.getElementById('rangeStartDate');
+    const endDateInput = document.getElementById('rangeEndDate');
+
+    if (!startDateInput || !endDateInput) return;
+
+    if (userNivel !== 1) {
+        showMessage('Filtro de período disponível apenas para administrador.', 'warning');
+        return;
+    }
+
+    const startValue = startDateInput.value;
+    const endValue = endDateInput.value;
+
+    if (!startValue || !endValue) {
+        showMessage('Selecione data inicial e final para pesquisar.', 'warning');
+        return;
+    }
+
+    const startDate = new Date(`${startValue}T00:00:00`);
+    const endDate = new Date(`${endValue}T00:00:00`);
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        showMessage('Período inválido. Verifique as datas selecionadas.', 'warning');
+        return;
+    }
+
+    if (startDate > endDate) {
+        showMessage('A data inicial não pode ser maior que a data final.', 'warning');
+        return;
+    }
+
+    showLoading(true);
+
+    try {
+        await loadEscalasByRange(startDate, endDate);
+
+        if (filteredEscalas.length > 0) {
+            showMessage('Período carregado com sucesso!', 'success');
+        } else {
+            showMessage('Nenhuma escala encontrada no período selecionado.', 'info');
+        }
+    } catch (error) {
+        console.error('❌ Erro ao pesquisar período:', error);
+        showError('Erro ao pesquisar período: ' + error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function loadEscalasByRange(startDate, endDate) {
+    allEscalas = [];
+    filteredEscalas = [];
+    loadedDaysCache.clear();
+    currentPage = 1;
+
+    const stationFilter = document.getElementById('filterStation');
+    if (stationFilter) stationFilter.value = '';
+
+    let cursor = new Date(startDate.getTime());
+
+    while (cursor <= endDate) {
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth() + 1;
+        const day = cursor.getDate();
+
+        await loadEscalasByDate(year, month, day);
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    currentYear = null;
+    currentMonth = null;
+    currentDay = null;
+
+    applyFilters();
+
+    const yearFilter = document.getElementById('filterYear');
+    const monthFilter = document.getElementById('filterMonth');
+    const dayFilter = document.getElementById('filterDay');
+
+    if (yearFilter) yearFilter.value = '';
+    if (monthFilter) monthFilter.value = '';
+    if (dayFilter) dayFilter.value = '';
+}
+
 function setupEventListeners() {
     // Busca
     const searchInput = document.getElementById('searchRE');
@@ -591,6 +720,9 @@ function setupEventListeners() {
     // ✅ FILTROS DE DATA COM DEBOUNCE
     setupFilterChangeEvents();
     
+    // ✅ FILTRO DE PERÍODO PARA ADMIN
+    setupAdminRangeFilter();
+
     // ✅ ESTAÇÃO - Apenas filtra localmente
     const stationFilter = document.getElementById('filterStation');
     if (stationFilter) {
@@ -642,11 +774,16 @@ function setupFilterChangeEvents() {
     const yearFilter = document.getElementById('filterYear');
     
     const onFilterChange = function() {
+        const startDateInput = document.getElementById('rangeStartDate');
+        const endDateInput = document.getElementById('rangeEndDate');
         const year = yearFilter?.value;
         const month = monthFilter?.value;
         const day = dayFilter?.value;
         
         if (!year || !month) return;
+
+        if (startDateInput) startDateInput.value = '';
+        if (endDateInput) endDateInput.value = '';
         
         // 🎯 DEBOUNCE: Cancela o timeout anterior
         if (filterTimeoutId) {
@@ -654,6 +791,7 @@ function setupFilterChangeEvents() {
             clearTimeout(filterTimeoutId);
         }
         
+
         // ✅ MOSTRAR LOADING IMEDIATAMENTE
         showLoading(true);
         
@@ -755,6 +893,11 @@ function clearFilters() {
     const searchInput = document.getElementById('searchRE');
     if (searchInput) searchInput.placeholder = 'Filtrar por RE (6 dígitos)';
     
+    const startDateInput = document.getElementById('rangeStartDate');
+    const endDateInput = document.getElementById('rangeEndDate');
+    if (startDateInput) startDateInput.value = '';
+    if (endDateInput) endDateInput.value = '';
+
     // Aplicar filtros na lista atual
     applyFilters();
     
