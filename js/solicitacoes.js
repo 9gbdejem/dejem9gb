@@ -1616,7 +1616,7 @@ function renderInterface() {
                         <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros</h6>
                     </div>
                     <div class="card-body py-2">
-                        <div class="row g-2 align-items-center">
+                        <div class="row g-2 align-items-end">
                             <div class="col-xl-2 col-lg-3 col-md-4">
                                 <label class="form-label small mb-1">OPM / Estação</label>
                                 <select class="form-select form-select-sm" id="selectOpm">
@@ -1668,9 +1668,20 @@ function renderInterface() {
                                     <i class="fas fa-sync me-1"></i>Atualizar
                                 </button>
                             </div>
+                            <div class="col-xl-2 col-lg-2 col-md-3">
+                                <label class="form-label small mb-1 d-none d-md-block">&nbsp;</label>
+                                <a class="btn btn-info btn-sm w-100" 
+                                   id="btnTutorial"
+                                   href="https://www.youtube.com/playlist?list=PL-_9SSH-2eArJx7k8AZDLrd8e8UbTAl5Q"
+                                   target="_blank"
+                                   rel="noopener noreferrer">
+                                    <i class="fas fa-book-open me-1"></i>Tutorial
+                                </a>
+                            </div>
                             ${userDataCache.nivel === 1 ? `
-                            <div class="col-xl-4 col-lg-3 col-md-6">
-                                <div class="d-flex gap-2">
+                            <div class="col-xl-2 col-lg-3 col-md-3">
+                                <label class="form-label small mb-1 d-none d-md-block">&nbsp;</label>
+                                <div class="d-flex gap-2 align-items-stretch">
                                     <button class="btn btn-success btn-sm flex-grow-1" id="btnExportarCSV">
                                         <i class="fas fa-file-export me-1"></i>Exportar CSV
                                     </button>
@@ -3518,7 +3529,7 @@ async function exportarCSV() {
         }
         
         const dadosCSV = paraExportar.map(s => ({
-            ID: s.id,
+            ID: (s.id || '').replaceAll('/', ''),
             Data: new Date(s.data).toLocaleDateString('pt-BR'),
             OPM_Codigo: s.opm_codigo,
             OPM_Nome: s.opm_nome,
@@ -3532,10 +3543,7 @@ async function exportarCSV() {
             Prioridade: s.prioridade,
             Motivo: s.motivo || '',
             Observacoes: s.observacoes || '',
-            Status_Atual: s.status || '',
-            Criado_Por: s.criado_por_nome,
-            Criado_Em: new Date(s.criado_em).toLocaleString('pt-BR'),
-            Historico: JSON.stringify(s.historico || {})
+            Status_Atual: s.status || ''
         }));
         
         const ws = XLSX.utils.json_to_sheet(dadosCSV);
