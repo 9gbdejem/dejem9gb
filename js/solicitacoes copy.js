@@ -19,6 +19,7 @@ let anoFiltro = null;
 
 // ✅ Constantes do sistema
 const BASE_URL_ANEXOS = 'https://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/';
+const DIAS_LIMITE_VISTORIA_TECNICA = 40;
 
 // ✅ Variáveis de controle de anexos
 let anexosExistentesCache = {};
@@ -726,7 +727,9 @@ function montarListaAnexosDisponiveis(anexosInfo) {
         </div>
         
         <div class="mb-3">
-            <label class="form-label fw-bold">A justificativa já consta em algum desses anexos?</label>
+            <label class="form-label fw-bold">
+                Para esta solicitação, a justificativa consta no(s) anexo(s) existentes?
+            </label>
             <div class="form-check">
                 <input class="form-check-input" type="radio" name="usarAnexoExistente" 
                        id="usarAnexoSim" value="sim" checked>
@@ -1175,6 +1178,68 @@ async function atualizarCampoAnexo(prioridade) {
     );
 }
 
+// ✅ FUNÇÃO: Mostrar alerta vistoria técnica
+function mostrarAlertaVistoriaTecnica() {
+    return new Promise((resolve) => {
+        const modalHTML = `
+            <div class="modal fade" id="modalAlertaVistoria" tabindex="-1" data-bs-backdrop="static">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header bg-warning">
+                            <h5 class="modal-title">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                ATENÇÃO - Vistoria Técnica
+                            </h5>
+                        </div>
+                        <div class="modal-body">
+                            <p class="mb-3">
+                                <strong>Para vistoria técnica com horário final após 19:00,</strong>
+                                é obrigatório informar no campo "Motivo" o porquê da necessidade 
+                                de avançar o horário expediente.
+                            </p>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Por favor, adicione essa informação antes de continuar.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-primary" id="btnEntendiAlerta">
+                                <i class="fas fa-check me-1"></i>Entendi, vou adicionar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = modalHTML;
+        document.body.appendChild(modalContainer);
+        
+        const modalElement = document.getElementById('modalAlertaVistoria');
+        if (!modalElement) return resolve();
+        
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+        
+        const btnEntendi = document.getElementById('btnEntendiAlerta');
+        if (btnEntendi) {
+            btnEntendi.onclick = () => {
+                modal.hide();
+                setTimeout(() => {
+                    modalContainer.remove();
+                    resolve();
+                }, 300);
+            };
+        }
+        
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            const inputMotivo = document.getElementById('inputMotivo');
+            if (inputMotivo) inputMotivo.focus();
+        });
+    });
+}
+
 // ✅ FUNÇÃO: Verificar duplicidade
 async function verificarDuplicidade(dados) {
     const diasDuplicados = [];
@@ -1247,7 +1312,10 @@ async function cadastrarSolicitacao() {
             const usarAnexoExistenteAtual = radioSim ? radioSim.checked : false;
             
             if (anexosInfo.temAnexos && usarAnexoExistenteAtual) {
-                console.log('📎 Solicitação cadastrada sem novo anexo (justificativa já consta em anexo existente).');
+                urlAnexo = anexosInfo.anexos[0].url;
+                numeroAnexo = anexosInfo.anexos[0].numero;
+                nomeSistema = anexosInfo.anexos[0].nome_sistema;
+                console.log(`📎 Usando anexo existente: ${numeroAnexo}`);
             } else {
                 if (!inputAnexo || inputAnexo.files.length === 0) {
                     mostrarMensagemFormulario('❌ Selecione um arquivo PDF para anexar.', 'danger');
@@ -1382,7 +1450,27 @@ async function cadastrarDiaSolicitacao(dados, dia, numeroAnexo, urlAnexo, nomeSi
     const solicitacaoRef = ref(database, `solicitacoes/${idSolicitacao}`);
     await set(solicitacaoRef, dadosSolicitacao);
     
-    await registrarPendenciaSolicitacao(dados.opm_codigo, dados.opm_nome, ano, mes);
+    try {
+        const anoMes = `${ano}${mes}`;
+        const pendenteRef = ref(database, `SolicPendentes/${dados.opm_codigo}/${anoMes}`);
+        const pendenteSnapshot = await get(pendenteRef);
+        
+        if (!pendenteSnapshot.exists()) {
+            await set(pendenteRef, {
+                tituloOPM: dados.opm_nome,
+                criado_em: new Date().toISOString(),
+                total: 1
+            });
+        } else {
+            const dadosAtuais = pendenteSnapshot.val();
+            await update(pendenteRef, {
+                total: (dadosAtuais.total || 1) + 1,
+                atualizado_em: new Date().toISOString()
+            });
+        }
+    } catch (pendenteError) {
+        console.warn('⚠️ Erro ao registrar pendência:', pendenteError);
+    }
     
     const historicoRef = ref(database, `solicitacoes/${idSolicitacao}/historico`);
     const entradaHistorico = criarEntradaHistorico({
@@ -1986,6 +2074,23 @@ function calcularHorarioFinal() {
         inputFinal.value = `${horasFinais.toString().padStart(2, '0')}:${minutosArredondados.toString().padStart(2, '0')}`;
     }
     
+    const prioridadeSelect = document.getElementById('selectPrioridade');
+    if (prioridadeSelect) {
+        const prioridade = prioridadeSelect.value;
+        if (prioridade === 'vistoria_tecnica') {
+            const horarioFinal = new Date();
+            horarioFinal.setHours(horasFinais, minutosArredondados, 0, 0);
+            const limite = new Date();
+            limite.setHours(19, 0, 0, 0);
+            
+            if (horarioFinal > limite) {
+                mostrarAlertaVistoriaTecnica().then(() => {
+                    const inputMotivo = document.getElementById('inputMotivo');
+                    if (inputMotivo) inputMotivo.focus();
+                });
+            }
+        }
+    }
 }
 
 // ✅ FUNÇÃO: Atualizar dias do mês
@@ -2015,8 +2120,14 @@ function atualizarDiasMes() {
         
         const isDiaRetroativo = dia < diaSelecionado;
         
+        const prioridadeSelect = document.getElementById('selectPrioridade');
+        const prioridade = prioridadeSelect ? prioridadeSelect.value : '';
         let disabledPorVistoria = false;
         let title = '';
+        
+        if (prioridade === 'vistoria_tecnica') {
+            const diffDias = DIAS_LIMITE_VISTORIA_TECNICA;
+        }
         
         const disabled = isDiaRetroativo || disabledPorVistoria;
         const checked = dia === diaSelecionado;
@@ -2062,33 +2173,27 @@ function inicializarEventListeners() {
             }
             
             opmSelecionada = valorSelecionado;
-            await atualizarTabelaComDelay();
+            await carregarSolicitacoesMes();
+            atualizarTabelaSolicitacoes();
             atualizarComposicoesDropdown();
-            
-            const prioridade = document.getElementById('selectPrioridade')?.value;
-            if (prioridade === 'minimo_operacional' || prioridade === 'vistoria_tecnica') {
-                await atualizarCampoAnexo(prioridade);
-            }
         });
     }
     
     const selectMes = document.getElementById('selectMes');
     if (selectMes) {
-        selectMes.addEventListener('change', async (e) => {
+        selectMes.addEventListener('change', (e) => {
             mesFiltro = parseInt(e.target.value);
             anexosExistentesCache = {};
             usarAnexoExistente = false;
-            await atualizarTabelaComDelay();
         });
     }
     
     const selectAno = document.getElementById('selectAno');
     if (selectAno) {
-        selectAno.addEventListener('change', async (e) => {
+        selectAno.addEventListener('change', (e) => {
             anoFiltro = parseInt(e.target.value);
             anexosExistentesCache = {};
             usarAnexoExistente = false;
-            await atualizarTabelaComDelay();
         });
     }
     
@@ -2175,85 +2280,6 @@ function inicializarEventListeners() {
                 }
             }, 2000);
         }, 500);
-    }
-}
-
-function exibirAtualizandoTabela() {
-    const tbody = document.getElementById('tbodySolicitacoes');
-    if (!tbody) return;
-
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="14" class="text-center py-4 text-primary">
-                <i class="fas fa-spinner fa-spin me-2"></i>Atualizando
-            </td>
-        </tr>
-    `;
-}
-
-async function atualizarTabelaComDelay() {
-    const selectOpm = document.getElementById('selectOpm');
-    const selectMes = document.getElementById('selectMes');
-    const selectAno = document.getElementById('selectAno');
-
-    if (!selectOpm?.value || !selectMes?.value || !selectAno?.value) {
-        return;
-    }
-
-    exibirAtualizandoTabela();
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    await carregarSolicitacoesMes();
-    atualizarTabelaSolicitacoes();
-}
-
-async function registrarPendenciaSolicitacao(opmCodigo, opmNome, ano, mes) {
-    try {
-        const anoMes = `${ano}${mes}`;
-        const pendenteRef = ref(database, `SolicPendentes/${opmCodigo}/${anoMes}`);
-        const pendenteSnapshot = await get(pendenteRef);
-
-        if (!pendenteSnapshot.exists()) {
-            await set(pendenteRef, {
-                tituloOPM: opmNome || opmCodigo,
-                criado_em: new Date().toISOString(),
-                total: 1
-            });
-            return;
-        }
-
-        const dadosAtuais = pendenteSnapshot.val() || {};
-        await update(pendenteRef, {
-            total: (dadosAtuais.total || 0) + 1,
-            atualizado_em: new Date().toISOString()
-        });
-    } catch (pendenteError) {
-        console.warn('⚠️ Erro ao registrar pendência:', pendenteError);
-    }
-}
-
-async function removerPendenciaSolicitacao(opmCodigo, ano, mes) {
-    try {
-        const anoMes = `${ano}${mes}`;
-        const pendenteRef = ref(database, `SolicPendentes/${opmCodigo}/${anoMes}`);
-        const pendenteSnapshot = await get(pendenteRef);
-
-        if (!pendenteSnapshot.exists()) return;
-
-        const dadosAtuais = pendenteSnapshot.val() || {};
-        const totalAtual = Number(dadosAtuais.total || 0);
-        const novoTotal = totalAtual - 1;
-
-        if (novoTotal <= 0) {
-            await remove(pendenteRef);
-            return;
-        }
-
-        await update(pendenteRef, {
-            total: novoTotal,
-            atualizado_em: new Date().toISOString()
-        });
-    } catch (pendenteError) {
-        console.warn('⚠️ Erro ao remover pendência:', pendenteError);
     }
 }
 
@@ -2937,10 +2963,6 @@ async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
             mostrarMensagemFormulario('✅ Detalhes atualizados! Solicitação continua em edição.', 'success');
         }
         
-        const [ano, mes, opmCodigo] = id.split('/');
-        const opmNome = opmsNomes[opmCodigo] || solicitacao.opm_nome || opmCodigo;
-        await registrarPendenciaSolicitacao(opmCodigo, opmNome, ano, mes);
-
         const index = solicitacoesCache.findIndex(s => s.id === id);
         if (index !== -1) {
             solicitacoesCache[index].motivo = motivo;
@@ -3075,10 +3097,6 @@ async function confirmarEdicao(id) {
             status: 4
         });
         
-        const [ano, mes, opmCodigo] = id.split('/');
-        const opmNome = opmsNomes[opmCodigo] || solicitacaoAtual.opm_nome || opmCodigo;
-        await registrarPendenciaSolicitacao(opmCodigo, opmNome, ano, mes);
-
         const index = solicitacoesCache.findIndex(s => s.id === id);
         if (index !== -1) {
             solicitacoesCache[index].vagas_subten_sgt = novasVagasSubten;
@@ -3121,10 +3139,6 @@ async function excluirSolicitacao(id) {
             status: 5
         });
         
-        const [ano, mes, opmCodigo] = id.split('/');
-        const opmNome = opmsNomes[opmCodigo] || opmCodigo;
-        await registrarPendenciaSolicitacao(opmCodigo, opmNome, ano, mes);
-
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
         const entradaHistorico = criarEntradaHistorico();
         await update(historicoRef, entradaHistorico);
@@ -3148,9 +3162,6 @@ async function reativarSolicitacao(id) {
         await update(solicitacaoRef, {
             status: 4
         });
-        
-        const [ano, mes, opmCodigo] = id.split('/');
-        await removerPendenciaSolicitacao(opmCodigo, ano, mes);
         
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
         const entradaHistorico = criarEntradaHistorico({
