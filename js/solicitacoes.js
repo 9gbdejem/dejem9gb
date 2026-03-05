@@ -23,6 +23,7 @@ const BASE_URL_ANEXOS = 'https://sistemasadmin.intranet.policiamilitar.sp.gov.br
 // ✅ Variáveis de controle de anexos
 let anexosExistentesCache = {};
 let usarAnexoExistente = false;
+let anexoExistenteSelecionado = null;
 
 // Hierarquia militar para ordenação
 const HIERARQUIA_MILITAR = {
@@ -726,6 +727,21 @@ function montarListaAnexosDisponiveis(anexosInfo) {
         </div>
         
         <div class="mb-3">
+            <label class="form-label fw-bold" for="selectAnexoExistente">Anexo de referência:</label>
+            <select class="form-select" id="selectAnexoExistente">
+                <option value="">Selecione o anexo de referência...</option>
+    `;
+
+    anexosInfo.anexos.forEach((anexo) => {
+        html += `<option value="${anexo.numero}">Anexo ${anexo.numero} - ${anexo.nome_sistema}.pdf</option>`;
+    });
+
+    html += `
+            </select>
+            <small class="text-muted">Este anexo será gravado como referência em <strong>comprovante_anexo</strong>.</small>
+        </div>
+        
+        <div class="mb-3">
             <label class="form-label fw-bold">A justificativa já consta em algum desses anexos?</label>
             <div class="form-check">
                 <input class="form-check-input" type="radio" name="usarAnexoExistente" 
@@ -787,48 +803,7 @@ async function salvarMetadadosAnexo(ano, mes, opmCodigo, composicaoCod, numeroAn
 
 // ✅ FUNÇÃO: Mostrar modal para visualizar anexo (MODIFICADA - usa URL)
 function mostrarModalVisualizarAnexo(url) {
-    const modalId = `modalAnexo-${Date.now()}`;
-    
-    const modalHTML = `
-        <div class="modal fade" id="${modalId}" tabindex="-1">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header bg-info text-white">
-                        <h5 class="modal-title">
-                            <i class="fas fa-file-pdf me-2"></i>
-                            Visualizar Anexo
-                        </h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="text-center mb-3">
-                            <a href="${url}" target="_blank" class="btn btn-primary">
-                                <i class="fas fa-external-link-alt me-2"></i>Abrir em Nova Aba
-                            </a>
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            Para melhor visualização, clique no botão acima.
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    const modalContainer = document.createElement('div');
-    modalContainer.innerHTML = modalHTML;
-    document.body.appendChild(modalContainer);
-    
-    const modal = new bootstrap.Modal(document.getElementById(modalId));
-    modal.show();
-    
-    document.getElementById(modalId).addEventListener('hidden.bs.modal', () => {
-        setTimeout(() => modalContainer.remove(), 300);
-    });
+    window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 // ✅ FUNÇÃO: Formatar tamanho do arquivo
@@ -1082,7 +1057,8 @@ async function atualizarCampoAnexo(prioridade) {
     inputAnexo.required = false;
     inputAnexo.removeAttribute('required');
     usarAnexoExistente = false;
-    
+    anexoExistenteSelecionado = null;
+
     if (prioridade === 'minimo_operacional' || prioridade === 'vistoria_tecnica') {
         divAnexo.style.display = 'block';
         
@@ -1127,6 +1103,13 @@ async function atualizarCampoAnexo(prioridade) {
                         });
                     });
                     
+                    const selectAnexoExistente = document.getElementById('selectAnexoExistente');
+                    if (selectAnexoExistente) {
+                        selectAnexoExistente.addEventListener('change', (e) => {
+                            anexoExistenteSelecionado = e.target.value || null;
+                        });
+                    }
+
                     document.querySelectorAll('input[name="usarAnexoExistente"]').forEach(radio => {
                         radio.addEventListener('change', (e) => {
                             usarAnexoExistente = (e.target.value === 'sim');
@@ -1136,12 +1119,20 @@ async function atualizarCampoAnexo(prioridade) {
                                 inputAnexo.removeAttribute('required');
                                 textoAjuda.innerHTML = `<span class="text-success">✓ Usando anexo existente</span>`;
                                 inputAnexo.disabled = true;
+                                if (selectAnexoExistente) {
+                                    selectAnexoExistente.disabled = false;
+                                }
                             } else {
                                 inputAnexo.setAttribute('required', 'required');
                                 textoAjuda.textContent = prioridade === 'minimo_operacional' 
                                     ? 'Anexe o documento EB - Escala Operacional' 
                                     : 'Anexe o relatório SAT de vistorias atrasadas';
                                 inputAnexo.disabled = false;
+                                if (selectAnexoExistente) {
+                                    selectAnexoExistente.disabled = true;
+                                    selectAnexoExistente.value = '';
+                                }
+                                anexoExistenteSelecionado = null;
                             }
                         });
                     });
@@ -1153,6 +1144,12 @@ async function atualizarCampoAnexo(prioridade) {
                         inputAnexo.required = false;
                         inputAnexo.disabled = true;
                         textoAjuda.innerHTML = `<span class="text-success">✓ Usando anexo existente</span>`;
+                        const primeiroAnexo = anexosInfo.anexos[0];
+                        if (selectAnexoExistente && primeiroAnexo) {
+                            selectAnexoExistente.disabled = false;
+                            selectAnexoExistente.value = primeiroAnexo.numero;
+                            anexoExistenteSelecionado = primeiroAnexo.numero;
+                        }
                     }
                     
                 }, 100);
@@ -1161,6 +1158,7 @@ async function atualizarCampoAnexo(prioridade) {
                 inputAnexo.setAttribute('required', 'required');
                 inputAnexo.disabled = false;
                 usarAnexoExistente = false;
+                anexoExistenteSelecionado = null;
             }
         } else {
             inputAnexo.required = true;
@@ -1247,7 +1245,14 @@ async function cadastrarSolicitacao() {
             const usarAnexoExistenteAtual = radioSim ? radioSim.checked : false;
             
             if (anexosInfo.temAnexos && usarAnexoExistenteAtual) {
-                console.log('📎 Solicitação cadastrada sem novo anexo (justificativa já consta em anexo existente).');
+                if (!anexoExistenteSelecionado) {
+                    mostrarMensagemFormulario('❌ Selecione o anexo de referência da lista de anexos existentes.', 'danger');
+                    btnCadastrar.disabled = false;
+                    btnCadastrar.innerHTML = originalText;
+                    return;
+                }
+                numeroAnexo = anexoExistenteSelecionado;
+                console.log(`📎 Solicitação cadastrada usando anexo existente de referência: ${numeroAnexo}.`);
             } else {
                 if (!inputAnexo || inputAnexo.files.length === 0) {
                     mostrarMensagemFormulario('❌ Selecione um arquivo PDF para anexar.', 'danger');
@@ -1373,7 +1378,6 @@ async function cadastrarDiaSolicitacao(dados, dia, numeroAnexo, urlAnexo, nomeSi
         motivo: dados.motivo,
         observacoes: dados.observacoes,
         comprovante_anexo: numeroAnexo,
-        comprovante_url: urlAnexo,
         criado_por_re: userRE,
         criado_por_nome: userDataCache.nome,
         criado_em: new Date().toISOString()
@@ -2132,7 +2136,6 @@ function inicializarEventListeners() {
     if (selectPrioridade) {
         selectPrioridade.addEventListener('change', async (e) => {
             await atualizarCampoAnexo(e.target.value);
-            atualizarDiasMes();
             calcularHorarioFinal();
         });
     }
@@ -2698,6 +2701,27 @@ function getIconePrioridadeCompleto(prioridade) {
     }
 }
 
+// ✅ FUNÇÃO: Obter URL do anexo via nó anexos
+async function obterUrlAnexoSolicitacao(solicitacao) {
+    if (!solicitacao?.id || !solicitacao?.comprovante_anexo) return null;
+
+    try {
+        const numeroAnexo = String(solicitacao.comprovante_anexo).padStart(2, '0');
+        const partesId = solicitacao.id.split('/');
+        if (partesId.length < 4) return null;
+
+        const [ano, mes, opmCodigo, composicaoCod] = partesId;
+        const caminho = `solicitacoes/${ano}/${mes}/${opmCodigo}/${composicaoCod}/anexos/${numeroAnexo}/url`;
+        const anexoRef = ref(database, caminho);
+        const snapshot = await get(anexoRef);
+
+        return snapshot.exists() ? snapshot.val() : null;
+    } catch (error) {
+        console.warn('⚠️ Não foi possível obter URL do anexo de referência:', error);
+        return null;
+    }
+}
+
 // ✅ FUNÇÃO: Mostrar detalhes da solicitação
 async function mostrarDetalhesSolicitacao(id) {
     const solicitacao = solicitacoesCache.find(s => s.id === id);
@@ -2706,14 +2730,15 @@ async function mostrarDetalhesSolicitacao(id) {
     const modalId = `modalDetalhes-${Date.now()}`;
     
     let anexoHTML = '<small class="text-muted">Nenhum anexo</small>';
-    
+    const urlAnexoReferencia = await obterUrlAnexoSolicitacao(solicitacao);
+
     if (solicitacao.comprovante_anexo) {
-        if (solicitacao.comprovante_url) {
+        if (urlAnexoReferencia) {
             anexoHTML = `
                 <div class="mb-3">
                     <label class="form-label"><strong>Anexo (${solicitacao.comprovante_anexo}):</strong></label>
                     <div>
-                        <a href="${solicitacao.comprovante_url}" target="_blank" class="btn btn-sm btn-primary">
+                        <a href="${urlAnexoReferencia}" target="_blank" class="btn btn-sm btn-primary">
                             <i class="fas fa-external-link-alt me-1"></i>Visualizar Anexo
                         </a>
                     </div>
@@ -2725,31 +2750,7 @@ async function mostrarDetalhesSolicitacao(id) {
                     <label class="form-label"><strong>Anexo (${solicitacao.comprovante_anexo}):</strong></label>
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle me-2"></i>
-                        URL do anexo não disponível.
-                    </div>
-                </div>
-            `;
-        }
-    } else if (solicitacao.comprovante_url) {
-        if (solicitacao.comprovante_url.startsWith('data:')) {
-            anexoHTML = `
-                <div class="mb-3">
-                    <label class="form-label"><strong>Anexo (antigo):</strong></label>
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary" id="btnDownloadBase64${modalId}">
-                            <i class="fas fa-download me-1"></i>Baixar anexo
-                        </button>
-                    </div>
-                </div>
-            `;
-        } else {
-            anexoHTML = `
-                <div class="mb-3">
-                    <label class="form-label"><strong>Anexo:</strong></label>
-                    <div>
-                        <a href="${solicitacao.comprovante_url}" target="_blank" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-external-link-alt me-1"></i>Abrir anexo
-                        </a>
+                        URL do anexo não disponível no nó anexos.
                     </div>
                 </div>
             `;
@@ -2824,16 +2825,6 @@ async function mostrarDetalhesSolicitacao(id) {
     const btnSalvar = document.getElementById(`btnSalvarDetalhes${modalId}`);
     if (btnSalvar) {
         btnSalvar.onclick = () => salvarDetalhesSolicitacao(id, modalContainer, modalId);
-    }
-    
-    if (solicitacao.comprovante_url && solicitacao.comprovante_url.startsWith('data:')) {
-        const btnDownload = document.getElementById(`btnDownloadBase64${modalId}`);
-        if (btnDownload) {
-            btnDownload.onclick = (e) => {
-                e.preventDefault();
-                downloadBase64(solicitacao.comprovante_url, `anexo_${id.replace(/\//g, '_')}.pdf`);
-            };
-        }
     }
     
     const modal = new bootstrap.Modal(document.getElementById(modalId));
