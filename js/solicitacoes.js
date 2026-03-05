@@ -1,11 +1,12 @@
 // js/solicitacoes.js - Versão Completa com Cloudinary
 
 // status
-// 5 = excluido
-// 4 = editado
-// 3 = cancelado
-// 2 = exportado
-// 1 = aprovado
+// vazio = aguardando processamento (usuário)
+// 5 = excluido (usuário)
+// 4 = editado (usuário)
+// 3 = cancelado (administrador)
+// 2 = exportado (administrador)
+// 1 = aprovado (administrador)
 
 import { checkAuth } from './auth-check.js';
 import { auth, database } from './firebase-config.js';
