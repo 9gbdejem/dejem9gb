@@ -2996,7 +2996,7 @@ function downloadBase64(base64Data, filename) {
 // ✅ FUNÇÃO: Salvar detalhes
 async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
     try {
-        const podeAlterar = await validarStatusParaAlteracao(id);
+        const podeAlterar = await validarStatusParaAlteracao(id, { modalId });
         if (!podeAlterar) return;
 
         const solicitacao = solicitacoesCache.find(s => s.id === id);
@@ -3080,13 +3080,23 @@ async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
 }
 
 // ✅ FUNÇÃO: Validar status atual no Firebase antes de alterar
-async function validarStatusParaAlteracao(id) {
+async function validarStatusParaAlteracao(id, options = {}) {
+    const { modalId = null } = options;
+
     const statusRef = ref(database, `solicitacoes/${id}/status`);
     const statusSnapshot = await get(statusRef);
     const statusAtual = Number(statusSnapshot.val());
 
     if ([1, 2, 3].includes(statusAtual)) {
-        alert('Não foi possível alterar os dados, pois esta solicitação já foi processada (status 1, 2 ou 3). A tabela será atualizada.');
+        alert('Não foi possível alterar os dados, pois esta solicitação já foi processada . A tabela será atualizada.');
+
+        if (modalId) {
+            const modalElement = document.getElementById(modalId);
+            if (modalElement) {
+                const modalInstance = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+                modalInstance.hide();
+            }
+        }
 
         const tabelaSolicitacoes = document.getElementById('tabelaSolicitacoes');
         if (tabelaSolicitacoes) {
@@ -3288,8 +3298,11 @@ async function excluirSolicitacao(id) {
 // ✅ FUNÇÃO: Reativar solicitação
 async function reativarSolicitacao(id) {
     try {
+        const podeAlterar = await validarStatusParaAlteracao(id);
+        if (!podeAlterar) return;
+
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
-        
+
         await update(solicitacaoRef, {
             status: 4
         });
