@@ -2996,6 +2996,9 @@ function downloadBase64(base64Data, filename) {
 // ✅ FUNÇÃO: Salvar detalhes
 async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
     try {
+        const podeAlterar = await validarStatusParaAlteracao(id);
+        if (!podeAlterar) return;
+
         const solicitacao = solicitacoesCache.find(s => s.id === id);
         if (!solicitacao) return;
         
@@ -3076,6 +3079,27 @@ async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
     }
 }
 
+// ✅ FUNÇÃO: Validar status atual no Firebase antes de alterar
+async function validarStatusParaAlteracao(id) {
+    const statusRef = ref(database, `solicitacoes/${id}/status`);
+    const statusSnapshot = await get(statusRef);
+    const statusAtual = Number(statusSnapshot.val());
+
+    if ([1, 2, 3].includes(statusAtual)) {
+        alert('Não foi possível alterar os dados, pois esta solicitação já foi processada (status 1, 2 ou 3). A tabela será atualizada.');
+
+        const tabelaSolicitacoes = document.getElementById('tabelaSolicitacoes');
+        if (tabelaSolicitacoes) {
+            await carregarSolicitacoesMes();
+            atualizarTabelaSolicitacoes();
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
 // ✅ FUNÇÃO: Iniciar edição
 async function iniciarEdicao(id) {
     const solicitacao = solicitacoesCache.find(s => s.id === id);
@@ -3153,6 +3177,9 @@ function atualizarBotoesParaModoEdicao(id) {
 // ✅ FUNÇÃO: Confirmar edição
 async function confirmarEdicao(id) {
     try {
+        const podeAlterar = await validarStatusParaAlteracao(id);
+        if (!podeAlterar) return;
+
         const linhaId = `linha-${id.replace(/\//g, '_')}`;
         
         const inputSubten = document.getElementById(`editSubten${linhaId}`);
@@ -3230,6 +3257,9 @@ async function excluirSolicitacao(id) {
     if (!confirm('Tem certeza que deseja excluir esta solicitação?')) return;
     
     try {
+        const podeAlterar = await validarStatusParaAlteracao(id);
+        if (!podeAlterar) return;
+
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
         await update(solicitacaoRef, {
