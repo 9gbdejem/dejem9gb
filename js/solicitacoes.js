@@ -1845,6 +1845,40 @@ function renderInterface() {
                         </div>
                     </div>
                     <div class="card-body p-0">
+                        <div class="p-3 pb-2" id="cardsResumoSolicitacoes">
+                            <div class="row g-2">
+                                <div class="col-12 col-md-4">
+                                    <div class="card card-resumo-solicitacoes card-resumo-subsgt text-white h-100">
+                                        <div class="card-body py-2 px-3">
+                                            <h6 class="fw-bold mb-2">Sub/Sgt</h6>
+                                            <div class="small"><strong>Solicitado:</strong> <span id="resumoSubSgtSolicitado">0</span></div>
+                                            <div class="small"><strong>Escalados:</strong> <span id="resumoSubSgtEscalados">0</span></div>
+                                            <div class="small"><strong>Diferença:</strong> <span id="resumoSubSgtDiferenca">0</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <div class="card card-resumo-solicitacoes card-resumo-cbsd text-white h-100">
+                                        <div class="card-body py-2 px-3">
+                                            <h6 class="fw-bold mb-2">Cb/Sd</h6>
+                                            <div class="small"><strong>Solicitado:</strong> <span id="resumoCbSdSolicitado">0</span></div>
+                                            <div class="small"><strong>Escalados:</strong> <span id="resumoCbSdEscalados">0</span></div>
+                                            <div class="small"><strong>Diferença:</strong> <span id="resumoCbSdDiferenca">0</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <div class="card card-resumo-solicitacoes card-resumo-total text-white h-100">
+                                        <div class="card-body py-2 px-3">
+                                            <h6 class="fw-bold mb-2">TOTAL</h6>
+                                            <div class="small"><strong>Solicitado:</strong> <span id="resumoTotalSolicitado">0</span></div>
+                                            <div class="small"><strong>Escalados:</strong> <span id="resumoTotalEscalados">0</span></div>
+                                            <div class="small"><strong>Diferença:</strong> <span id="resumoTotalDiferenca">0</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
                             <table class="table table-hover table-sm mb-0" id="tabelaSolicitacoes">
                                 <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
@@ -2293,7 +2327,8 @@ async function atualizarTabelaSolicitacoes() {
         );
         
         contador.textContent = solicitacoesValidas.length;
-        
+        atualizarCardsResumoSolicitacoes(solicitacoesValidas);
+
         if (solicitacoesValidas.length === 0) {
             tbody.innerHTML = `
                 <tr>
@@ -2495,6 +2530,49 @@ async function atualizarTabelaSolicitacoes() {
             </tr>
         `;
     }
+}
+
+function atualizarCardsResumoSolicitacoes(solicitacoes) {
+    const getNumero = (valor) => {
+        const numero = parseInt(valor, 10);
+        return Number.isNaN(numero) ? 0 : numero;
+    };
+
+    const totais = solicitacoes.reduce((acc, solicitacao) => {
+        acc.subSgtSolicitado += getNumero(solicitacao.vagas_subten_sgt);
+        acc.subSgtEscalados += getNumero(solicitacao.escalado_subten_sgt);
+        acc.cbSdSolicitado += getNumero(solicitacao.vagas_cb_sd);
+        acc.cbSdEscalados += getNumero(solicitacao.escalado_cb_sd);
+        return acc;
+    }, {
+        subSgtSolicitado: 0,
+        subSgtEscalados: 0,
+        cbSdSolicitado: 0,
+        cbSdEscalados: 0
+    });
+
+    const subSgtDiferenca = totais.subSgtSolicitado - totais.subSgtEscalados;
+    const cbSdDiferenca = totais.cbSdSolicitado - totais.cbSdEscalados;
+    const totalSolicitado = totais.subSgtSolicitado + totais.cbSdSolicitado;
+    const totalEscalados = totais.subSgtEscalados + totais.cbSdEscalados;
+    const totalDiferenca = subSgtDiferenca + cbSdDiferenca;
+
+    const setTexto = (id, valor) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = valor;
+    };
+
+    setTexto('resumoSubSgtSolicitado', totais.subSgtSolicitado);
+    setTexto('resumoSubSgtEscalados', totais.subSgtEscalados);
+    setTexto('resumoSubSgtDiferenca', subSgtDiferenca);
+
+    setTexto('resumoCbSdSolicitado', totais.cbSdSolicitado);
+    setTexto('resumoCbSdEscalados', totais.cbSdEscalados);
+    setTexto('resumoCbSdDiferenca', cbSdDiferenca);
+
+    setTexto('resumoTotalSolicitado', totalSolicitado);
+    setTexto('resumoTotalEscalados', totalEscalados);
+    setTexto('resumoTotalDiferenca', totalDiferenca);
 }
 
 // ✅ FUNÇÃO: Gerar HTML das ações

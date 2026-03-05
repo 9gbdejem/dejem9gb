@@ -214,6 +214,24 @@ body {
 .card.bg-danger { background: linear-gradient(45deg, #dc3545, #c82333); }
 .card.bg-dark { background: linear-gradient(45deg, #343a40, #23272b); }
 
+.card-resumo-solicitacoes {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    text-align: center;
+}
+
+.card-resumo-subsgt {
+    background: linear-gradient(45deg, #dc3545, #74111b);
+}
+
+.card-resumo-cbsd {
+    background: linear-gradient(45deg, #28a745, #136626);
+}
+
+.card-resumo-total {
+    background: linear-gradient(45deg, #6c757d, #3e4349);
+}
+
 /* ================= MODAL ================= */
 .modal-content {
     border-radius: 10px;
