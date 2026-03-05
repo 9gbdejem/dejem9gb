@@ -1,4 +1,12 @@
-// js/solicitacoes.js - Versão Completa com Cloudinary (LAYOUT ORIGINAL PRESERVADO)
+// js/solicitacoes.js - Versão Completa com Cloudinary
+
+// status
+// 5 = excluido
+// 4 = editado
+// 3 = cancelado
+// 2 = exportado
+// 1 = aprovado
+
 import { checkAuth } from './auth-check.js';
 import { auth, database } from './firebase-config.js';
 import { 
@@ -1995,9 +2003,13 @@ function inicializarDatepicker() {
             locale: 'pt',
             minDate: amanha,
             disableMobile: true,
-            defaultDate: amanha,
             onChange: atualizarDiasMes
         });
+        
+        const inputData = document.getElementById('inputData');
+        if (inputData) {
+            inputData.value = '';
+        }
     } catch (error) {
         console.warn('⚠️ Flatpickr não carregado:', error);
     }
@@ -2087,6 +2099,35 @@ function atualizarDiasMes() {
     }
 }
 
+// ✅ FUNÇÃO: Sincronizar filtro de mês com a data selecionada
+async function sincronizarMesFiltroComDataSelecionada() {
+    const inputData = document.getElementById('inputData');
+    const selectMes = document.getElementById('selectMes');
+
+    if (!inputData?.value || !selectMes?.value) return;
+
+    const partesData = inputData.value.split('/');
+    if (partesData.length !== 3) return;
+
+    const mesData = parseInt(partesData[1], 10);
+    const mesSelecionado = parseInt(selectMes.value, 10);
+
+    if (isNaN(mesData) || mesData < 1 || mesData > 12 || mesData === mesSelecionado) return;
+
+    const nomeMesSelecionado = selectMes.options[selectMes.selectedIndex]?.text?.trim() || `Mês ${mesSelecionado}`;
+    const opcaoNovoMes = selectMes.querySelector(`option[value="${mesData}"]`);
+    const nomeNovoMes = opcaoNovoMes?.text?.trim() || `Mês ${mesData}`;
+
+    alert(`A data informada está em ${nomeNovoMes}, mas o filtro está em ${nomeMesSelecionado}. A tabela de solicitações será atualizada para o mês de ${nomeNovoMes}.`);
+
+    selectMes.value = String(mesData);
+    mesFiltro = mesData;
+    anexosExistentesCache = {};
+    usarAnexoExistente = false;
+
+    await atualizarTabelaComDelay();
+}
+
 // ✅ FUNÇÃO: Inicializar event listeners
 function inicializarEventListeners() {
     const selectOpm = document.getElementById('selectOpm');
@@ -2159,6 +2200,8 @@ function inicializarEventListeners() {
     const inputData = document.getElementById('inputData');
     if (inputData) {
         inputData.addEventListener('change', async () => {
+            await sincronizarMesFiltroComDataSelecionada();
+            
             const prioridade = document.getElementById('selectPrioridade')?.value;
             if (prioridade === 'minimo_operacional' || prioridade === 'vistoria_tecnica') {
                 await atualizarCampoAnexo(prioridade);
@@ -2715,7 +2758,9 @@ async function reutilizarDadosSolicitacao(id) {
         document.getElementById('inputVagasCbSd').value = solicitacao.vagas_cb_sd;
         document.getElementById('inputMotivo').value = solicitacao.motivo || '';
         document.getElementById('inputObservacoes').value = solicitacao.observacoes || '';
+        document.getElementById('inputData').value = '';
         
+        atualizarDiasMes();
         calcularHorarioFinal();
         atualizarCampoAnexo(solicitacao.prioridade);
         
