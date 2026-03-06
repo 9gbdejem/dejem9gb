@@ -1,12 +1,20 @@
 // js/solicitacoes.js - Versão Completa com Cloudinary
 
-// status
+// Status_Atual
 // vazio = aguardando processamento (usuário)
 // 5 = excluido (usuário)
 // 4 = editado (usuário)
-// 3 = cancelado (administrador)
+// 3 = cancelado (administrador) se no 'Status_Adm' estiver 2, no 'Status_Atual' ficará 3
 // 2 = exportado (administrador)
-// 1 = aprovado (administrador)
+// 1 = aprovado (administrador) significa que o nó 'Status_Adm' não está vazio e tem valor 1, ou seja, foi aprovado e cadastrado no sistema local
+
+// Status_Adm - esses valores sempre vem do sistema local, ou seja, do nó 'solicitacoes/ano/mes/opm/composicao/id_solicitacao/Status_Adm';
+// os dados somente são enviados ao Firebase se na coluna 'Alteracao' do sistema local estiver com valor 1
+// 1 = aprovado, aguardando cadastro na Intranet
+// 2 = cancelado pelo administrador
+// 3 = cadastrado na Intranet (tem ID_Escala e Prazo_Inscricao), aguardando montar
+// 4 = montado e divulgado, aguardando pagamento
+// 5 = pago
 
 import { checkAuth } from './auth-check.js';
 import { auth, database } from './firebase-config.js';
