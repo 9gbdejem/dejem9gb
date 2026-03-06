@@ -8,7 +8,7 @@
 // 2 = exportado (administrador)
 // 1 = aprovado (administrador) significa que o nó 'Status_Adm' não está vazio e tem valor 1, ou seja, foi aprovado e cadastrado no sistema local
 
-// Status_Adm - esses valores sempre vem do sistema local, ou seja, do nó 'solicitacoes/ano/mes/opm/composicao/id_solicitacao/Status_Adm';
+// Status_Adm - esses valores sempre vem do sistema local, sendo enviados ao nó 'solicitacoes/ano/mes/opm/composicao/id_solicitacao/Status_Adm';
 // os dados somente são enviados ao Firebase se na coluna 'Alteracao' do sistema local estiver com valor 1
 // 1 = aprovado, aguardando cadastro na Intranet
 // 2 = cancelado pelo administrador
