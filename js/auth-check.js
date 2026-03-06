@@ -214,7 +214,7 @@ function hideElement(selector, retryCount = 0) {
 // Navbar de fallback
 function createFallbackNavbar() {
     return `
-        <nav class="navbar navbar-dark bg-primary">
+        <nav class="navbar navbar-dark">
             <div class="container-fluid">
                 <a class="navbar-brand" href="dashboard.html">Sistema</a>
                 <div>

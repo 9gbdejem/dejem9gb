@@ -3529,7 +3529,8 @@ async function exportarCSV() {
         }
         
         const dadosCSV = paraExportar.map(s => ({
-            ID: (s.id || '').replaceAll('/', ''),
+            // ID: (s.id || '').replaceAll('/', ''),
+            ID: s.id,
             Data: new Date(s.data).toLocaleDateString('pt-BR'),
             OPM_Codigo: s.opm_codigo,
             OPM_Nome: s.opm_nome,
