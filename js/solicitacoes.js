@@ -1,10 +1,10 @@
 // js/solicitacoes.js - Versão Completa com Cloudinary
 
-// Status_Atual
+// Status_Inicial
 // vazio = aguardando processamento (usuário)
 // 5 = excluido (usuário)
 // 4 = editado (usuário)
-// 3 = cancelado (administrador) se no 'Status_Adm' estiver 2, no 'Status_Atual' ficará 3
+// 3 = cancelado (administrador) se no 'Status_Adm' estiver 2, no 'Status_Inicial' ficará 3
 // 2 = exportado (administrador)
 // 1 = aprovado (administrador) significa que o nó 'Status_Adm' não está vazio e tem valor 1, ou seja, foi aprovado e cadastrado no sistema local
 
@@ -41,6 +41,26 @@ const BASE_URL_ANEXOS = 'https://sistemasadmin.intranet.policiamilitar.sp.gov.br
 let anexosExistentesCache = {};
 let usarAnexoExistente = false;
 let anexoExistenteSelecionado = null;
+
+function normalizarSolicitacaoFirebase(dados = {}) {
+    return {
+        ...dados,
+        Status_Inicial: dados.Status_Inicial ?? dados.status ?? null,
+        solic_subten_sgt: Number(dados.Solic_Subten_Sgt ?? dados.solic_subten_sgt ?? dados.vagas_subten_sgt ?? 0),
+        solic_cb_sd: Number(dados.Solic_Cb_Sd ?? dados.solic_cb_sd ?? dados.vagas_cb_sd ?? 0),
+        solic_superior: Number(dados.Solic_Superior ?? dados.solic_superior ?? 0),
+        solic_intermed: Number(dados.Solic_Intermed ?? dados.solic_intermed ?? 0),
+        solic_subalterno: Number(dados.Solic_Subalterno ?? dados.solic_subalterno ?? 0),
+        ID_Firebase: dados.ID_Firebase || dados.id_firebase || '',
+        ID_Escala: dados.ID_Escala || dados.id_sistema_local || '',
+        Prazo_Inscricao: dados.Prazo_Inscricao || dados.prazo_inscricao || '',
+        esc_superior: Number(dados.Esc_Superior ?? dados.esc_superior ?? 0),
+        esc_intermed: Number(dados.Esc_Intermed ?? dados.esc_intermed ?? 0),
+        esc_subalterno: Number(dados.Esc_Subalterno ?? dados.esc_subalterno ?? 0),
+        esc_subten_sgt: Number(dados.Esc_Subten_Sgt ?? dados.escalado_subten_sgt ?? 0),
+        esc_cb_sd: Number(dados.Esc_Cb_Sd ?? dados.escalado_cb_sd ?? 0)
+    };
+}
 
 // Hierarquia militar para ordenação
 const HIERARQUIA_MILITAR = {
@@ -233,7 +253,7 @@ async function carregarSolicitacoesMes() {
             if (tbody) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="14" class="text-center py-4 text-muted">
+                        <td colspan="20" class="text-center py-4 text-muted">
                             <i class="fas fa-hand-pointer fa-2x mb-3"></i><br>
                             Selecione uma OPM para carregar as solicitações
                         </td>
@@ -273,7 +293,7 @@ async function carregarSolicitacoesMes() {
                             solicitacoesCache.push({
                                 id: idCompleto,
                                 id_simplificado: idSolicitacao,
-                                ...dados,
+                                ...normalizarSolicitacaoFirebase(dados),
                                 opm_codigo: opmSelecionada,
                                 opm_nome: opmsNomes[opmSelecionada] || opmSelecionada,
                                 composicao_cod: composicaoCod,
@@ -400,7 +420,7 @@ async function carregarSolicitacoesMesFallback() {
                                     solicitacoesCache.push({
                                         id: idNovo,
                                         id_antigo: id,
-                                        ...dados,
+                                        ...normalizarSolicitacaoFirebase(dados),
                                         opm_codigo: opmSelecionada,
                                         opm_nome: opmsNomes[opmSelecionada] || opmSelecionada,
                                         data_extraida: dataInfo.data,
@@ -1389,8 +1409,12 @@ async function cadastrarDiaSolicitacao(dados, dia, numeroAnexo, urlAnexo, nomeSi
         composicao_nome: composicaoNome,
         horario_inicial: dados.horario_inicial,
         horario_final: dados.horario_final,
-        vagas_subten_sgt: dados.vagas_subten_sgt,
-        vagas_cb_sd: dados.vagas_cb_sd,
+        Solic_Subten_Sgt: dados.solic_subten_sgt,
+        Solic_Cb_Sd: dados.solic_cb_sd,
+        Solic_Superior: dados.solic_superior || 0,
+        Solic_Intermed: dados.solic_intermed || 0,
+        Solic_Subalterno: dados.solic_subalterno || 0,
+        ID_Firebase: idSolicitacao,
         prioridade: dados.prioridade,
         motivo: dados.motivo,
         observacoes: dados.observacoes,
@@ -1471,8 +1495,11 @@ function coletarDadosFormulario() {
         dia_selecionado: diaSelecionado,
         horario_inicial: document.getElementById('inputHorarioInicial').value,
         horario_final: document.getElementById('inputHorarioFinal').value,
-        vagas_subten_sgt: parseInt(document.getElementById('inputVagasSubten').value),
-        vagas_cb_sd: parseInt(document.getElementById('inputVagasCbSd').value),
+        solic_subten_sgt: parseInt(document.getElementById('inputSolicSubtenSgt').value),
+        solic_cb_sd: parseInt(document.getElementById('inputSolicCbSd').value),
+        solic_superior: parseInt(document.getElementById('inputSolicSuperior')?.value || '0'),
+        solic_intermed: parseInt(document.getElementById('inputSolicIntermed')?.value || '0'),
+        solic_subalterno: parseInt(document.getElementById('inputSolicSubalterno')?.value || '0'),
         prioridade: document.getElementById('selectPrioridade').value,
         motivo: document.getElementById('inputMotivo')?.value.trim() || '',
         observacoes: document.getElementById('inputObservacoes')?.value.trim() || '',
@@ -1790,16 +1817,31 @@ function renderInterface() {
                                 <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
                                     <label class="form-label">Subten/Sgt <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control text-center" 
-                                           id="inputVagasSubten" min="0" max="99" 
+                                           id="inputSolicSubtenSgt" min="0" max="99"
                                            required style="max-width: 80px;">
                                 </div>
                                 
                                 <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
                                     <label class="form-label">Cb/Sd <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control text-center" 
-                                           id="inputVagasCbSd" min="0" max="99" 
+                                           id="inputSolicCbSd" min="0" max="99"
                                            required style="max-width: 80px;">
                                 </div>
+                                
+                                ${userDataCache.nivel === 1 ? `
+                                <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
+                                    <label class="form-label">Superior</label>
+                                    <input type="number" class="form-control text-center" id="inputSolicSuperior" min="0" max="99" value="0" style="max-width: 80px;">
+                                </div>
+                                <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
+                                    <label class="form-label">Intermed</label>
+                                    <input type="number" class="form-control text-center" id="inputSolicIntermed" min="0" max="99" value="0" style="max-width: 80px;">
+                                </div>
+                                <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
+                                    <label class="form-label">Subalterno</label>
+                                    <input type="number" class="form-control text-center" id="inputSolicSubalterno" min="0" max="99" value="0" style="max-width: 80px;">
+                                </div>
+                                ` : ''}
                                 
                                 <div class="col-xl-10 col-lg-10 col-md-8 col-sm-6">
                                     <label class="form-label">Expandir escala para:</label>
@@ -1916,12 +1958,12 @@ function renderInterface() {
                                         <th>COMPOSIÇÃO</th>
                                         <th width="70">COD</th>
                                         <th width="120">HORÁRIO</th>
-                                        <th colspan="2" width="120" class="text-center">VAGAS SOLICITADAS</th>
+                                        <th colspan="${userDataCache.nivel === 1 ? 5 : 2}" width="240" class="text-center">VAGAS SOLICITADAS</th>
                                         <th width="80" class="text-center">PRIOR.</th>
                                         <th width="80" class="text-center">STATUS</th>
                                         <th width="80">ID</th>
                                         <th width="140">PRAZO</th>
-                                        <th colspan="2" width="120" class="text-center">ESCALADO</th>
+                                        <th colspan="${userDataCache.nivel === 1 ? 5 : 2}" width="240" class="text-center">ESCALADO</th>
                                         <th width="60"></th>
                                     </tr>
                                     <tr class="text-center small table-secondary">
@@ -1932,18 +1974,20 @@ function renderInterface() {
                                         <th></th>
                                         <th width="60">Sub/Sgt</th>
                                         <th width="60">Cb/Sd</th>
+                                        ${userDataCache.nivel === 1 ? '<th width="60">Sup</th><th width="60">Int</th><th width="60">Sub</th>' : ''}
                                         <th></th>
                                         <th></th>
                                         <th></th>
                                         <th></th>
                                         <th width="60">Sub/Sgt</th>
                                         <th width="60">Cb/Sd</th>
+                                        ${userDataCache.nivel === 1 ? '<th width="60">Sup</th><th width="60">Int</th><th width="60">Sub</th>' : ''}
                                         <th></th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbodySolicitacoes">
                                     <tr>
-                                        <td colspan="14" class="text-center py-5">
+                                        <td colspan="20" class="text-center py-5">
                                             <div class="spinner-border text-primary"></div>
                                             <p class="mt-2 text-muted">Carregando solicitações...</p>
                                         </td>
@@ -2284,7 +2328,7 @@ function exibirAtualizandoTabela() {
 
     tbody.innerHTML = `
         <tr>
-            <td colspan="14" class="text-center py-4 text-primary">
+            <td colspan="20" class="text-center py-4 text-primary">
                 <i class="fas fa-spinner fa-spin me-2"></i>Atualizando
             </td>
         </tr>
@@ -2395,7 +2439,7 @@ async function atualizarTabelaSolicitacoes() {
         if (solicitacoesValidas.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="14" class="text-center py-4 text-muted">
+                    <td colspan="20" class="text-center py-4 text-muted">
                         <i class="fas fa-inbox fa-2x mb-3"></i><br>
                         Nenhuma solicitação encontrada para este mês
                     </td>
@@ -2406,6 +2450,7 @@ async function atualizarTabelaSolicitacoes() {
         
         let html = '';
         solicitacoesValidas.forEach((solicitacao) => {
+            const isAdmin = userDataCache.nivel === 1;
             let dataFormatada;
             let dataObj;
             
@@ -2428,27 +2473,33 @@ async function atualizarTabelaSolicitacoes() {
                 dataFormatada = `${dia}/${mes}/${ano}`;
             }
             
-            const statusIcon = getIconeStatus(solicitacao.status);
-            const statusClass = getClasseStatus(solicitacao.status);
-            const statusTooltip = getTooltipStatus(solicitacao.status);
+            const statusIcon = getIconeStatus(solicitacao.Status_Inicial);
+            const statusClass = getClasseStatus(solicitacao.Status_Inicial);
+            const statusTooltip = getTooltipStatus(solicitacao.Status_Inicial);
             
             const prioridadeIcon = getIconePrioridadeCompleto(solicitacao.prioridade);
             
             const acoesHTML = gerarAcoesHTMLMelhorado(solicitacao);
             
-            const vagasSubten = solicitacao.vagas_subten_sgt || 0;
-            const vagasCbSd = solicitacao.vagas_cb_sd || 0;
+            const vagasSubten = solicitacao.solic_subten_sgt || 0;
+            const vagasCbSd = solicitacao.solic_cb_sd || 0;
+            const solicSuperior = solicitacao.solic_superior || 0;
+            const solicIntermed = solicitacao.solic_intermed || 0;
+            const solicSubalterno = solicitacao.solic_subalterno || 0;
             
-            const escaladoSubten = solicitacao.escalado_subten_sgt || 0;
-            const escaladoCbSd = solicitacao.escalado_cb_sd || 0;
+            const escaladoSubten = solicitacao.esc_subten_sgt || 0;
+            const escaladoCbSd = solicitacao.esc_cb_sd || 0;
+            const escSuperior = solicitacao.esc_superior || 0;
+            const escIntermed = solicitacao.esc_intermed || 0;
+            const escSubalterno = solicitacao.esc_subalterno || 0;
             
             const subtenClass = (escaladoSubten < vagasSubten) ? 'text-danger fw-bold' : '';
             const cbSdClass = (escaladoCbSd < vagasCbSd) ? 'text-danger fw-bold' : '';
             
             let prazoHTML = '-';
-            if (solicitacao.prazo_inscricao) {
+            if (solicitacao.Prazo_Inscricao) {
                 try {
-                    const [dataPart, horaPart] = String(solicitacao.prazo_inscricao).split(' ');
+                    const [dataPart, horaPart] = String(solicitacao.Prazo_Inscricao).split(' ');
                     if (dataPart && horaPart) {
                         const [dia, mes, ano] = dataPart.split('/');
                         const [horas, minutos] = horaPart.split(':');
@@ -2466,7 +2517,7 @@ async function atualizarTabelaSolicitacoes() {
                 composicaoTitle = composicaoNome;
             }
             
-            const idSistema = solicitacao.id_sistema_local || '-';
+            const idSistema = solicitacao.ID_Escala || '-';
             let idTruncated = idSistema;
             let idTitle = '';
             
@@ -2522,6 +2573,12 @@ async function atualizarTabelaSolicitacoes() {
                         ${vagasCbSd}
                     </td>
                     
+                    ${isAdmin ? `
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell">${solicSuperior}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell">${solicIntermed}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell">${solicSubalterno}</td>
+                    ` : ''}
+
                     <td class="px-1 py-2 text-center">
                         <div class="d-flex justify-content-center">
                             ${prioridadeIcon}
@@ -2530,9 +2587,9 @@ async function atualizarTabelaSolicitacoes() {
                     
                     <td class="px-1 py-2 text-center">
                         <span class="status-icon" data-id="${solicitacao.id}" 
-                            data-status="${solicitacao.status || ''}" 
+                            data-status="${solicitacao.Status_Inicial || ''}"
                             title="${statusTooltip}"
-                            style="cursor: ${userDataCache.nivel === 1 && [1, 2, 3].includes(solicitacao.status) ? 'pointer' : 'default'}; 
+                            style="cursor: ${userDataCache.nivel === 1 && [1, 2, 3].includes(solicitacao.Status_Inicial) ? 'pointer' : 'default'};
                                     font-size: 1.3em; display: inline-block;">
                             ${statusIcon}
                         </span>
@@ -2564,6 +2621,12 @@ async function atualizarTabelaSolicitacoes() {
                         ${escaladoCbSd}
                     </td>
                     
+                    ${isAdmin ? `
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell">${escSuperior}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell">${escIntermed}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell">${escSubalterno}</td>
+                    ` : ''}
+
                     <td class="px-1 py-2 text-center">
                         <button class="btn btn-sm btn-outline-info btn-detalhes" 
                                 data-id="${solicitacao.id}" 
@@ -2585,7 +2648,7 @@ async function atualizarTabelaSolicitacoes() {
         console.error('Erro ao atualizar tabela:', error);
         tbody.innerHTML = `
             <tr>
-                <td colspan="14" class="text-center py-4 text-danger">
+                <td colspan="20" class="text-center py-4 text-danger">
                     <i class="fas fa-exclamation-triangle fa-2x mb-3"></i><br>
                     Erro ao carregar solicitações<br>
                     <small>${error.message}</small>
@@ -2602,10 +2665,10 @@ function atualizarCardsResumoSolicitacoes(solicitacoes) {
     };
 
     const totais = solicitacoes.reduce((acc, solicitacao) => {
-        acc.subSgtSolicitado += getNumero(solicitacao.vagas_subten_sgt);
-        acc.subSgtEscalados += getNumero(solicitacao.escalado_subten_sgt);
-        acc.cbSdSolicitado += getNumero(solicitacao.vagas_cb_sd);
-        acc.cbSdEscalados += getNumero(solicitacao.escalado_cb_sd);
+        acc.subSgtSolicitado += getNumero(solicitacao.solic_subten_sgt);
+        acc.subSgtEscalados += getNumero(solicitacao.esc_subten_sgt);
+        acc.cbSdSolicitado += getNumero(solicitacao.solic_cb_sd);
+        acc.cbSdEscalados += getNumero(solicitacao.esc_cb_sd);
         return acc;
     }, {
         subSgtSolicitado: 0,
@@ -2644,7 +2707,7 @@ function gerarAcoesHTMLMelhorado(solicitacao) {
     const isModerador = userDataCache.nivel === 2;
     const podeAcessarOPM = opmsPermitidas.includes(solicitacao.opm_codigo);
     
-    if ([1, 2, 3].includes(solicitacao.status)) {
+    if ([1, 2, 3].includes(solicitacao.Status_Inicial)) {
         return '';
     }
     
@@ -2663,7 +2726,7 @@ function gerarAcoesHTMLMelhorado(solicitacao) {
     
     if (!podeEditar) return '';
     
-    if (solicitacao.status === 4 || !solicitacao.status) {
+    if (solicitacao.Status_Inicial === 4 || !solicitacao.Status_Inicial) {
         return `
             <div class="d-flex gap-1 justify-content-center">
                 <button class="btn btn-sm btn-outline-primary btn-editar" data-id="${solicitacao.id}" title="Editar">
@@ -2774,8 +2837,8 @@ async function reutilizarDadosSolicitacao(id) {
         document.getElementById('selectComposicao').value = solicitacao.composicao_cod;
         document.getElementById('inputHorarioInicial').value = solicitacao.horario_inicial;
         document.getElementById('selectPrioridade').value = solicitacao.prioridade;
-        document.getElementById('inputVagasSubten').value = solicitacao.vagas_subten_sgt;
-        document.getElementById('inputVagasCbSd').value = solicitacao.vagas_cb_sd;
+        document.getElementById('inputSolicSubtenSgt').value = solicitacao.solic_subten_sgt;
+        document.getElementById('inputSolicCbSd').value = solicitacao.solic_cb_sd;
         document.getElementById('inputMotivo').value = solicitacao.motivo || '';
         document.getElementById('inputObservacoes').value = solicitacao.observacoes || '';
         document.getElementById('inputData').value = '';
@@ -2927,7 +2990,7 @@ async function mostrarDetalhesSolicitacao(id) {
                                 <strong>OPM:</strong> ${solicitacao.opm_nome} (${solicitacao.opm_codigo})<br>
                             </div>
                             <div class="col-md-6">
-                                <strong>Vagas:</strong> ${solicitacao.vagas_subten_sgt} Subten/Sgt, ${solicitacao.vagas_cb_sd} Cb/Sd<br>
+                                <strong>Vagas:</strong> ${solicitacao.solic_subten_sgt} Subten/Sgt, ${solicitacao.solic_cb_sd} Cb/Sd<br>
                                 <strong>Prioridade:</strong> ${solicitacao.prioridade}<br>
                                 <strong>Composição:</strong> ${solicitacao.composicao_nome} (${solicitacao.composicao_cod})
                             </div>
@@ -3036,7 +3099,7 @@ async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
         
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
-        if (!solicitacao.status || solicitacao.status !== 4) {
+        if (!solicitacao.Status_Inicial || solicitacao.Status_Inicial !== 4) {
             const historicoRef = ref(database, `solicitacoes/${id}/historico`);
             const entradaHistorico = criarEntradaHistorico({
                 motivo_anterior: solicitacao.motivo || '',
@@ -3045,7 +3108,7 @@ async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
             await update(historicoRef, entradaHistorico);
             
             await update(solicitacaoRef, {
-                status: 4,
+                Status_Inicial: 4,
                 motivo: motivo,
                 observacoes: observacoes
             });
@@ -3102,7 +3165,7 @@ async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
 async function validarStatusParaAlteracao(id, options = {}) {
     const { modalId = null } = options;
 
-    const statusRef = ref(database, `solicitacoes/${id}/status`);
+    const statusRef = ref(database, `solicitacoes/${id}/Status_Inicial`);
     const statusSnapshot = await get(statusRef);
     const statusAtual = Number(statusSnapshot.val());
 
@@ -3137,7 +3200,7 @@ async function iniciarEdicao(id) {
     const podeEditar = (
         userDataCache.nivel === 1 ||
         (userDataCache.nivel === 2 && opmsPermitidas.includes(solicitacao.opm_codigo) &&
-         ![1, 2, 3].includes(solicitacao.status))
+         ![1, 2, 3].includes(solicitacao.Status_Inicial))
     );
     
     if (!podeEditar) {
@@ -3165,7 +3228,7 @@ function transformarCelulasEmInputs(id, solicitacao) {
     celulaSubten.innerHTML = `
         <input type="number" class="form-control form-control-sm text-center" 
                id="editSubten${linhaId}" 
-               value="${solicitacao.vagas_subten_sgt || 0}"
+               value="${solicitacao.solic_subten_sgt || 0}"
                min="0" max="99" style="width: 60px;">
     `;
     
@@ -3173,7 +3236,7 @@ function transformarCelulasEmInputs(id, solicitacao) {
     celulaCbSd.innerHTML = `
         <input type="number" class="form-control form-control-sm text-center" 
                id="editCbSd${linhaId}" 
-               value="${solicitacao.vagas_cb_sd || 0}"
+               value="${solicitacao.solic_cb_sd || 0}"
                min="0" max="99" style="width: 60px;">
     `;
 }
@@ -3234,16 +3297,16 @@ async function confirmarEdicao(id) {
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
         const entradaHistorico = criarEntradaHistorico({
             vagas_anteriores: {
-                subten_sgt: solicitacaoAtual.vagas_subten_sgt,
-                cb_sd: solicitacaoAtual.vagas_cb_sd
+                subten_sgt: solicitacaoAtual.solic_subten_sgt,
+                cb_sd: solicitacaoAtual.solic_cb_sd
             },
         });
         await update(historicoRef, entradaHistorico);
         
         await update(solicitacaoRef, {
-            vagas_subten_sgt: novasVagasSubten,
-            vagas_cb_sd: novasVagasCbSd,
-            status: 4
+            solic_subten_sgt: novasVagasSubten,
+            solic_cb_sd: novasVagasCbSd,
+            Status_Inicial: 4
         });
         
         const [ano, mes, opmCodigo] = id.split('/');
@@ -3252,9 +3315,9 @@ async function confirmarEdicao(id) {
 
         const index = solicitacoesCache.findIndex(s => s.id === id);
         if (index !== -1) {
-            solicitacoesCache[index].vagas_subten_sgt = novasVagasSubten;
-            solicitacoesCache[index].vagas_cb_sd = novasVagasCbSd;
-            solicitacoesCache[index].status = 4;
+            solicitacoesCache[index].solic_subten_sgt = novasVagasSubten;
+            solicitacoesCache[index].solic_cb_sd = novasVagasCbSd;
+            solicitacoesCache[index].Status_Inicial = 4;
         }
         
         solicitacoesCache = [];
@@ -3292,7 +3355,7 @@ async function excluirSolicitacao(id) {
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
         await update(solicitacaoRef, {
-            status: 5
+            Status_Inicial: 5
         });
         
         const [ano, mes, opmCodigo] = id.split('/');
@@ -3323,7 +3386,7 @@ async function reativarSolicitacao(id) {
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
 
         await update(solicitacaoRef, {
-            status: 4
+            Status_Inicial: 4
         });
         
         const [ano, mes, opmCodigo] = id.split('/');
@@ -3465,7 +3528,7 @@ async function confirmarLiberacaoAdmin(id, modalContainer, modalId) {
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
         await update(solicitacaoRef, {
-            status: null
+            Status_Inicial: null
         });
         
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
@@ -3498,7 +3561,7 @@ async function confirmarLiberacao(id, modalContainer, modalId) {
         const solicitacaoRef = ref(database, `solicitacoes/${id}`);
         
         await update(solicitacaoRef, {
-            status: null
+            Status_Inicial: null
         });
         
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
@@ -3524,7 +3587,7 @@ async function confirmarLiberacao(id, modalContainer, modalId) {
 async function exportarCSV() {
     try {
         const paraExportar = solicitacoesCache.filter(s => 
-            !s.status || s.status === 4 || s.status === 5
+            !s.Status_Inicial || s.Status_Inicial === 4 || s.Status_Inicial === 5
         );
         
         if (paraExportar.length === 0) {
@@ -3538,7 +3601,7 @@ async function exportarCSV() {
         
         const dadosCSV = paraExportar.map(s => ({
             // ID: (s.id || '').replaceAll('/', ''),
-            ID: s.id,
+            ID_Firebase: s.ID_Firebase || s.id,
             Data: new Date(s.data).toLocaleDateString('pt-BR'),
             OPM_Codigo: s.opm_codigo,
             OPM_Nome: s.opm_nome,
@@ -3547,12 +3610,15 @@ async function exportarCSV() {
             Descricao: s.descricao || '',
             Horario_Inicial: s.horario_inicial,
             Horario_Final: s.horario_final,
-            Vagas_Subten_Sgt: s.vagas_subten_sgt,
-            Vagas_Cb_Sd: s.vagas_cb_sd,
+            Solic_Superior: s.solic_superior || 0,
+            Solic_Intermed: s.solic_intermed || 0,
+            Solic_Subalterno: s.solic_subalterno || 0,
+            Solic_Subten_Sgt: s.solic_subten_sgt,
+            Solic_Cb_Sd: s.solic_cb_sd,
             Prioridade: s.prioridade,
             Motivo: s.motivo || '',
             Observacoes: s.observacoes || '',
-            Status_Atual: s.status || ''
+            Status_Inicial: s.Status_Inicial || ''
         }));
         
         const ws = XLSX.utils.json_to_sheet(dadosCSV);
@@ -3567,7 +3633,7 @@ async function exportarCSV() {
         for (const solicitacao of paraExportar) {
             const solicitacaoRef = ref(database, `solicitacoes/${solicitacao.id}`);
             await update(solicitacaoRef, {
-                status: 2
+                Status_Inicial: 2
             });
             
             const historicoRef = ref(database, `solicitacoes/${solicitacao.id}/historico`);
