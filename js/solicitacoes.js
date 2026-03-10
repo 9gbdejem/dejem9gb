@@ -3165,9 +3165,10 @@ async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
 async function validarStatusParaAlteracao(id, options = {}) {
     const { modalId = null } = options;
 
-    const statusRef = ref(database, `solicitacoes/${id}/Status_Inicial`);
-    const statusSnapshot = await get(statusRef);
-    const statusAtual = Number(statusSnapshot.val());
+    const solicitacaoRef = ref(database, `solicitacoes/${id}`);
+    const solicitacaoSnapshot = await get(solicitacaoRef);
+    const dadosSolicitacao = solicitacaoSnapshot.val() || {};
+    const statusAtual = Number(dadosSolicitacao.Status_Inicial ?? dadosSolicitacao.status ?? null);
 
     if ([1, 2, 3].includes(statusAtual)) {
         alert('Não foi possível alterar os dados, pois esta solicitação já foi processada . A tabela será atualizada.');
@@ -3304,8 +3305,8 @@ async function confirmarEdicao(id) {
         await update(historicoRef, entradaHistorico);
         
         await update(solicitacaoRef, {
-            solic_subten_sgt: novasVagasSubten,
-            solic_cb_sd: novasVagasCbSd,
+            Solic_Subten_Sgt: novasVagasSubten,
+            Solic_Cb_Sd: novasVagasCbSd,
             Status_Inicial: 4
         });
         
@@ -3315,8 +3316,8 @@ async function confirmarEdicao(id) {
 
         const index = solicitacoesCache.findIndex(s => s.id === id);
         if (index !== -1) {
-            solicitacoesCache[index].solic_subten_sgt = novasVagasSubten;
-            solicitacoesCache[index].solic_cb_sd = novasVagasCbSd;
+            solicitacoesCache[index].Solic_Subten_Sgt = novasVagasSubten;
+            solicitacoesCache[index].Solic_Cb_Sd = novasVagasCbSd;
             solicitacoesCache[index].Status_Inicial = 4;
         }
         
