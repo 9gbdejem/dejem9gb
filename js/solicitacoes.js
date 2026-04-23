@@ -15,6 +15,7 @@
 // 3 = cadastrado na Intranet (tem ID_Escala e Prazo_Inscricao), aguardando montar
 // 4 = montado e divulgado, aguardando pagamento
 // 5 = pago
+// 6 = aguardando comprovante para o administrador pagar
 
 import { checkAuth } from './auth-check.js';
 import { auth, database } from './firebase-config.js';
