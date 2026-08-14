@@ -1,0 +1,169 @@
+Option Compare Database
+Option Explicit
+
+Private mstrIDEscala As String
+Private mstrWhereEscala As String
+Private mstrTextoBase As String
+
+Private Sub Form_Load()
+    On Error GoTo Erro
+    Dim arrArgs() As String
+    
+    If Trim(Nz(Me.OpenArgs, "")) <> "" Then
+        arrArgs = Split(CStr(Me.OpenArgs), vbTab)
+        If UBound(arrArgs) >= 1 Then
+            mstrIDEscala = Trim(Nz(arrArgs(0), ""))
+            mstrWhereEscala = Trim(Nz(arrArgs(1), ""))
+        End If
+    End If
+    
+    If mstrIDEscala = "" Then mstrIDEscala = Trim(Nz(TempVars("AltCancOBSIDEscala").Value, ""))
+    If mstrWhereEscala = "" Then mstrWhereEscala = Trim(Nz(TempVars("AltCancOBSWhere").Value, ""))
+    
+    Call DefinirTempVarLocal("AltCancOBSConfirmado", "0")
+    
+    If mstrIDEscala = "" Or mstrWhereEscala = "" Then
+        MsgBox "Nenhuma escala foi informada para reabertura.", vbExclamation, "Reabrir cancelada"
+        DoCmd.Close acForm, Me.Name
+        Exit Sub
+    End If
+    
+    mstrTextoBase = "Escala anterior deletada: " & mstrIDEscala & _
+                    ". Foi reativada em " & Format(Date, "dd/mm/yyyy") & _
+                    " pelo administrador " & UsuarioLogadoRE() & _
+                    ", devido solicitação de"
+    
+    Me.lblMotivo.Caption = mstrTextoBase
+    Me.txtMotivoReabertura = Null
+    Me.txtObservAdm.Locked = True
+    Me.txtObservAdm.Enabled = True
+    
+    Call CarregarObservacaoAdm
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmAltCancOBS.Form_Load: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar motivo de reabertura: " & Err.Number & " - " & Err.Description, vbCritical
+End Sub
+
+Private Sub CarregarObservacaoAdm()
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Erro
+    
+    strSQL = "SELECT Observacoes_Adm, Motivo_reabertura FROM TblEscGeral " & _
+             "WHERE " & mstrWhereEscala
+    
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    If rs.EOF Then
+        Me.txtObservAdm = ""
+    Else
+        Me.txtObservAdm = TextoObservacaoAdm(Nz(rs!Motivo_reabertura, ""), Nz(rs!Observacoes_Adm, ""))
+    End If
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmAltCancOBS.CarregarObservacaoAdm: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar observacoes: " & Err.Number & " - " & Err.Description, vbCritical
+    Resume Sair
+End Sub
+
+Private Sub btnIniciar_Click()
+    Dim strMotivoDigitado As String
+    Dim strNovoMotivo As String
+    Dim strMotivoAnterior As String
+    Dim strMotivoFinal As String
+    Dim strSQL As String
+    Dim resposta As VbMsgBoxResult
+    
+    On Error GoTo Erro
+    
+    strMotivoDigitado = Trim(Nz(Me.txtMotivoReabertura, ""))
+    
+    If strMotivoDigitado = "" Then
+        MsgBox "Informe o motivo da reabertura.", vbExclamation, "Reabrir cancelada"
+        Me.txtMotivoReabertura.SetFocus
+        Exit Sub
+    End If
+    
+    resposta = MsgBox("Confirma registrar o motivo e reabrir esta escala?", _
+                      vbQuestion + vbYesNo, "Confirmar reabertura")
+    If resposta = vbNo Then Exit Sub
+    
+    strNovoMotivo = mstrTextoBase & " " & strMotivoDigitado & "."
+    strMotivoAnterior = MotivoReaberturaAtual()
+    
+    If strMotivoAnterior <> "" Then
+        strMotivoFinal = strNovoMotivo & " || " & strMotivoAnterior
+    Else
+        strMotivoFinal = strNovoMotivo
+    End If
+    
+    strSQL = "UPDATE TblEscGeral SET Motivo_reabertura = " & SQLTexto(strMotivoFinal) & _
+             " WHERE " & mstrWhereEscala
+    
+    CurrentDb.Execute strSQL, dbFailOnError
+    
+    Call DefinirTempVarLocal("AltCancOBSConfirmado", "1")
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmAltCancOBS.btnIniciar_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao salvar motivo de reabertura: " & Err.Number & " - " & Err.Description, vbCritical
+End Sub
+
+Private Sub btnAbortar_Click()
+    Call DefinirTempVarLocal("AltCancOBSConfirmado", "0")
+    DoCmd.Close acForm, Me.Name
+End Sub
+
+Private Function MotivoReaberturaAtual() As String
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Sair
+    
+    strSQL = "SELECT Motivo_reabertura FROM TblEscGeral WHERE " & mstrWhereEscala
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    If Not rs.EOF Then MotivoReaberturaAtual = Trim(Nz(rs!Motivo_reabertura, ""))
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+End Function
+
+Private Function TextoObservacaoAdm(ByVal strMotivoReabertura As String, ByVal strObservAdm As String) As String
+    strMotivoReabertura = Trim(Nz(strMotivoReabertura, ""))
+    strObservAdm = Trim(Nz(strObservAdm, ""))
+    
+    If strMotivoReabertura <> "" Then
+        If strObservAdm <> "" Then
+            TextoObservacaoAdm = strMotivoReabertura & " || " & strObservAdm
+        Else
+            TextoObservacaoAdm = strMotivoReabertura
+        End If
+    Else
+        TextoObservacaoAdm = strObservAdm
+    End If
+End Function
+
+Private Sub DefinirTempVarLocal(ByVal strNome As String, ByVal strValor As String)
+    On Error Resume Next
+    TempVars.Remove strNome
+    On Error GoTo 0
+    TempVars.Add strNome, strValor
+End Sub
+
+Private Function SQLTexto(ByVal valor As Variant) As String
+    SQLTexto = "'" & Replace(Nz(valor, ""), "'", "''") & "'"
+End Function

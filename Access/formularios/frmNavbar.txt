@@ -1,0 +1,49 @@
+Option Compare Database
+
+Public Sub AtualizarBotoes(strFormularioAtivo As String)
+    Me.btnDashboard.Enabled = (strFormularioAtivo <> "frmDashboard")
+    Me.btnDashboard.BackColor = IIf(strFormularioAtivo = "frmDashboard", RGB(100, 100, 100), RGB(68, 114, 196))
+    
+    Me.btnDistribuicao.Enabled = (strFormularioAtivo <> "frmDistribuicao")
+    Me.btnDistribuicao.BackColor = IIf(strFormularioAtivo = "frmDistribuicao", RGB(100, 100, 100), RGB(68, 114, 196))
+    
+    Me.btnEscalas.Enabled = (strFormularioAtivo <> "frmEscalas")
+    Me.btnEscalas.BackColor = IIf(strFormularioAtivo = "frmEscalas", RGB(100, 100, 100), RGB(68, 114, 196))
+        
+    Me.btnComposicao.Enabled = (strFormularioAtivo <> "frmComposicao")
+    Me.btnComposicao.BackColor = IIf(strFormularioAtivo = "frmComposicao", RGB(100, 100, 100), RGB(68, 114, 196))
+    
+    Me.btnSuperiores.Enabled = (strFormularioAtivo <> "frmListSuperiores")
+    Me.btnSuperiores.BackColor = IIf(strFormularioAtivo = "frmListSuperiores", RGB(100, 100, 100), RGB(68, 114, 196))
+End Sub
+
+Private Sub btnDashboard_Click()
+    Forms!frmApp!frmNavegar.SourceObject = "frmDashboard"
+    AtualizarBotoes "frmDashboard"
+End Sub
+
+Private Sub btnDistribuicao_Click()
+    Forms!frmApp!frmNavegar.SourceObject = "frmDistribuicao"
+    AtualizarBotoes "frmDistribuicao"
+End Sub
+
+Private Sub btnEscalas_Click()
+    Forms!frmApp!frmNavegar.SourceObject = "frmEscalas"
+    AtualizarBotoes "frmEscalas"
+End Sub
+
+Private Sub btnComposicao_Click()
+    Forms!frmApp!frmNavegar.SourceObject = "frmComposicao"
+    AtualizarBotoes "frmComposicao"
+End Sub
+
+Private Sub btnSuperiores_Click()
+    Forms!frmApp!frmNavegar.SourceObject = "frmListSuperiores"
+    AtualizarBotoes "frmListSuperiores"
+End Sub
+
+Private Sub btnSair_Click()
+    If MsgBox("Tem certeza que deseja sair?", vbQuestion + vbYesNo, "Sair") = vbYes Then
+        DoCmd.Quit
+    End If
+End Sub

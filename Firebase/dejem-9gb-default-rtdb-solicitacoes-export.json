@@ -1,0 +1,706 @@
+{
+  "2026": {
+    "03": {
+      "704091103": {
+        "8731": {
+          "251500": {
+            "ID_Firebase": "2026/03/704091103/8731/251500",
+            "Solic_Cb_Sd": 3,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 2,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "8731",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "criado_em": "2026-03-10T17:13:35.820Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-03-25",
+            "historico": {
+              "20260310141336289": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260310141348786": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "motivo_anterior": "",
+                "observacoes_anteriores": ""
+              },
+              "20260310141400074": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "vagas_anteriores": {
+                  "cb_sd": 2,
+                  "subten_sgt": 1
+                }
+              },
+              "20260310141406557": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "23:00",
+            "horario_inicial": "15:00",
+            "motivo": "zxc zc zcz",
+            "observacoes": "asd asdasd asd",
+            "opm_codigo": "704091103",
+            "opm_nome": "RIB PRETO - IPIRANGA",
+            "prioridade": "viatura_extra"
+          }
+        }
+      }
+    },
+    "04": {
+      "704091201": {
+        "5148": {
+          "100730": {
+            "ID_Firebase": "2026/04/704091201/5148/100730",
+            "Solic_Cb_Sd": 0,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "5148",
+            "composicao_nome": "ATIVIDADE TÉCNICA",
+            "comprovante_anexo": "01",
+            "criado_em": "2026-03-10T11:10:42.587Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-04-10",
+            "historico": {
+              "20260310081043081": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260311131247697": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "",
+            "observacoes": "",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ",
+            "prioridade": "vistoria_tecnica"
+          },
+          "110730": {
+            "ID_Firebase": "2026/04/704091201/5148/110730",
+            "Solic_Cb_Sd": 1,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "5148",
+            "composicao_nome": "ATIVIDADE TÉCNICA",
+            "comprovante_anexo": "01",
+            "criado_em": "2026-03-10T11:08:57.124Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-04-11",
+            "historico": {
+              "20260310080857595": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260311131248013": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "",
+            "observacoes": "",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ",
+            "prioridade": "vistoria_tecnica"
+          },
+          "230730": {
+            "ID_Firebase": "2026/04/704091201/5148/230730",
+            "Solic_Cb_Sd": 0,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 2,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "5148",
+            "composicao_nome": "ATIVIDADE TÉCNICA",
+            "comprovante_anexo": "01",
+            "criado_em": "2026-03-10T11:08:57.753Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-04-23",
+            "historico": {
+              "20260310080858224": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260310081100684": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "vagas_anteriores": {
+                  "cb_sd": 1,
+                  "subten_sgt": 1
+                }
+              },
+              "20260310081122452": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "observacao": "Liberado pelo administrador para edição"
+              },
+              "20260311131248329": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "",
+            "observacoes": "",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ",
+            "prioridade": "vistoria_tecnica"
+          },
+          "240730": {
+            "ID_Firebase": "2026/04/704091201/5148/240730",
+            "Solic_Cb_Sd": 1,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "5148",
+            "composicao_nome": "ATIVIDADE TÉCNICA",
+            "comprovante_anexo": "01",
+            "criado_em": "2026-03-10T11:08:58.380Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-04-24",
+            "historico": {
+              "20260310080858849": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260311131248643": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "",
+            "observacoes": "",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ",
+            "prioridade": "vistoria_tecnica"
+          },
+          "250730": {
+            "ID_Firebase": "2026/04/704091201/5148/250730",
+            "Solic_Cb_Sd": 1,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "5148",
+            "composicao_nome": "ATIVIDADE TÉCNICA",
+            "comprovante_anexo": "01",
+            "criado_em": "2026-03-10T11:08:59.006Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-04-25",
+            "historico": {
+              "20260310080859478": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260311131248959": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "",
+            "observacoes": "",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ",
+            "prioridade": "vistoria_tecnica"
+          },
+          "290730": {
+            "ID_Firebase": "2026/04/704091201/5148/290730",
+            "Solic_Cb_Sd": 1,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "5148",
+            "composicao_nome": "ATIVIDADE TÉCNICA",
+            "comprovante_anexo": "01",
+            "criado_em": "2026-03-10T11:08:59.633Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-04-29",
+            "historico": {
+              "20260310080900099": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260311131249275": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "",
+            "observacoes": "",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ",
+            "prioridade": "vistoria_tecnica"
+          },
+          "060730": {
+            "ID_Firebase": "2026/04/704091201/5148/060730",
+            "Solic_Cb_Sd": 1,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "5148",
+            "composicao_nome": "ATIVIDADE TÉCNICA",
+            "comprovante_anexo": "01",
+            "criado_em": "2026-03-10T11:08:55.741Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-04-06",
+            "historico": {
+              "20260310080856212": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260311131247068": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "",
+            "observacoes": "",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ",
+            "prioridade": "vistoria_tecnica"
+          },
+          "090730": {
+            "ID_Firebase": "2026/04/704091201/5148/090730",
+            "Solic_Cb_Sd": 1,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "5148",
+            "composicao_nome": "ATIVIDADE TÉCNICA",
+            "comprovante_anexo": "01",
+            "criado_em": "2026-03-10T11:08:56.370Z",
+            "criado_por_nome": "Alexandre Alves Ferreira",
+            "criado_por_re": "127893",
+            "data": "2026-04-09",
+            "historico": {
+              "20260310080856968": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260311131247381": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "",
+            "observacoes": "",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ",
+            "prioridade": "vistoria_tecnica"
+          },
+          "anexos": {
+            "01": {
+              "nome_sistema": "2026047040912010514801",
+              "upload_em": "2026-03-10T11:08:55.584Z",
+              "upload_por_nome": "Alexandre Alves Ferreira",
+              "upload_por_re": "127893",
+              "url": "https://res.cloudinary.com/djr6lzgcu/image/upload/v1773140934/solicitacoes/2026047040912010514801.pdf"
+            }
+          }
+        }
+      },
+      "704091401": {
+        "7512": {
+          "150730": {
+            "ID_Firebase": "2026/04/704091401/7512/150730",
+            "Solic_Cb_Sd": 2,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "7512",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "comprovante_anexo": "02",
+            "criado_em": "2026-03-09T19:23:02.958Z",
+            "criado_por_nome": "Jessé Siqueira dos Santos",
+            "criado_por_re": "132695",
+            "data": "2026-04-15",
+            "historico": {
+              "20260309162303424": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260309162342944": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "ad asd awed1234 53245524%$#@",
+            "observacoes": "zxc asd as#$@$ @#$",
+            "opm_codigo": "704091401",
+            "opm_nome": "SERTÃOZINHO",
+            "prioridade": "minimo_operacional"
+          },
+          "160730": {
+            "ID_Firebase": "2026/04/704091401/7512/160730",
+            "Solic_Cb_Sd": 2,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "7512",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "comprovante_anexo": "02",
+            "criado_em": "2026-03-09T19:23:03.579Z",
+            "criado_por_nome": "Jessé Siqueira dos Santos",
+            "criado_por_re": "132695",
+            "data": "2026-04-16",
+            "historico": {
+              "20260309162304047": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260309162343257": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "ad asd awed1234 53245524%$#@",
+            "observacoes": "zxc asd as#$@$ @#$",
+            "opm_codigo": "704091401",
+            "opm_nome": "SERTÃOZINHO",
+            "prioridade": "minimo_operacional"
+          },
+          "170730": {
+            "ID_Firebase": "2026/04/704091401/7512/170730",
+            "Solic_Cb_Sd": 2,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "7512",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "comprovante_anexo": "02",
+            "criado_em": "2026-03-09T19:23:04.204Z",
+            "criado_por_nome": "Jessé Siqueira dos Santos",
+            "criado_por_re": "132695",
+            "data": "2026-04-17",
+            "historico": {
+              "20260309162304668": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260309162343569": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "ad asd awed1234 53245524%$#@",
+            "observacoes": "zxc asd as#$@$ @#$",
+            "opm_codigo": "704091401",
+            "opm_nome": "SERTÃOZINHO",
+            "prioridade": "minimo_operacional"
+          },
+          "290730": {
+            "ID_Firebase": "2026/04/704091401/7512/290730",
+            "Solic_Cb_Sd": 2,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "7512",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "comprovante_anexo": "02",
+            "criado_em": "2026-03-09T19:23:04.851Z",
+            "criado_por_nome": "Jessé Siqueira dos Santos",
+            "criado_por_re": "132695",
+            "data": "2026-04-29",
+            "historico": {
+              "20260309162305319": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260309162343882": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "ad asd awed1234 53245524%$#@",
+            "observacoes": "zxc asd as#$@$ @#$",
+            "opm_codigo": "704091401",
+            "opm_nome": "SERTÃOZINHO",
+            "prioridade": "minimo_operacional"
+          },
+          "300730": {
+            "ID_Firebase": "2026/04/704091401/7512/300730",
+            "Solic_Cb_Sd": 2,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "7512",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "comprovante_anexo": "02",
+            "criado_em": "2026-03-09T19:23:05.479Z",
+            "criado_por_nome": "Jessé Siqueira dos Santos",
+            "criado_por_re": "132695",
+            "data": "2026-04-30",
+            "historico": {
+              "20260309162305943": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260309162344194": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "ad asd awed1234 53245524%$#@",
+            "observacoes": "zxc asd as#$@$ @#$",
+            "opm_codigo": "704091401",
+            "opm_nome": "SERTÃOZINHO",
+            "prioridade": "minimo_operacional"
+          },
+          "020730": {
+            "ID_Firebase": "2026/04/704091401/7512/020730",
+            "Solic_Cb_Sd": 2,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "7512",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "comprovante_anexo": "02",
+            "criado_em": "2026-03-09T19:23:01.089Z",
+            "criado_por_nome": "Jessé Siqueira dos Santos",
+            "criado_por_re": "132695",
+            "data": "2026-04-02",
+            "historico": {
+              "20260309162301555": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260309162342005": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "ad asd awed1234 53245524%$#@",
+            "observacoes": "zxc asd as#$@$ @#$",
+            "opm_codigo": "704091401",
+            "opm_nome": "SERTÃOZINHO",
+            "prioridade": "minimo_operacional"
+          },
+          "040730": {
+            "ID_Firebase": "2026/04/704091401/7512/040730",
+            "Solic_Cb_Sd": 2,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 1,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "7512",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "comprovante_anexo": "02",
+            "criado_em": "2026-03-09T19:23:01.714Z",
+            "criado_por_nome": "Jessé Siqueira dos Santos",
+            "criado_por_re": "132695",
+            "data": "2026-04-04",
+            "historico": {
+              "20260309162302179": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260309162342319": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              },
+              "20260310234346995": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "observacao": "Liberado pelo administrador (status 1,2,3 → vazio)"
+              },
+              "20260310234353020": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "ad asd awed1234 53245524%$#@",
+            "observacoes": "zxc asd as#$@$ @#$",
+            "opm_codigo": "704091401",
+            "opm_nome": "SERTÃOZINHO",
+            "prioridade": "minimo_operacional"
+          },
+          "060730": {
+            "ID_Firebase": "2026/04/704091401/7512/060730",
+            "Solic_Cb_Sd": 5,
+            "Solic_Intermed": 0,
+            "Solic_Subalterno": 0,
+            "Solic_Subten_Sgt": 3,
+            "Solic_Superior": 0,
+            "Status_Inicial": 2,
+            "composicao_cod": "7512",
+            "composicao_nome": "INCÊNDIO OU RESGATE",
+            "comprovante_anexo": "02",
+            "criado_em": "2026-03-09T19:23:02.335Z",
+            "criado_por_nome": "Jessé Siqueira dos Santos",
+            "criado_por_re": "132695",
+            "data": "2026-04-06",
+            "historico": {
+              "20260309162302801": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "dados_completos": "Solicitação criada"
+              },
+              "20260309162328113": {
+                "alterado_por_nome": "Jessé Siqueira dos Santos",
+                "alterado_por_re": "132695",
+                "vagas_anteriores": {
+                  "cb_sd": 2,
+                  "subten_sgt": 1
+                }
+              },
+              "20260309162342632": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              },
+              "20260310234348883": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "observacao": "Liberado pelo administrador (status 1,2,3 → vazio)"
+              },
+              "20260310234353366": {
+                "alterado_por_nome": "Alexandre Alves Ferreira",
+                "alterado_por_re": "127893",
+                "exportado_por_nome": "Alexandre Alves Ferreira",
+                "exportado_por_re": "127893"
+              }
+            },
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "motivo": "ad asd awed1234 53245524%$#@",
+            "observacoes": "zxc asd as#$@$ @#$",
+            "opm_codigo": "704091401",
+            "opm_nome": "SERTÃOZINHO",
+            "prioridade": "minimo_operacional"
+          },
+          "anexos": {
+            "02": {
+              "nome_sistema": "2026047040914010751202",
+              "upload_em": "2026-03-09T19:23:00.934Z",
+              "upload_por_nome": "Jessé Siqueira dos Santos",
+              "upload_por_re": "132695",
+              "url": "https://res.cloudinary.com/djr6lzgcu/image/upload/v1773084180/solicitacoes/2026047040914010751202.pdf"
+            }
+          }
+        }
+      }
+    }
+  }
+}

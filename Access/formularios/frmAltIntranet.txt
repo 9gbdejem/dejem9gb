@@ -1,0 +1,574 @@
+Option Compare Database
+Option Explicit
+
+Private Const URL_CAD_ESCALA As String = "http://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/CadEsc.aspx?"
+
+Private Sub Pausar(ByVal segundos As Double)
+    Dim inicio As Double
+    Dim decorrido As Double
+    
+    inicio = Timer
+    
+    Do
+        If Timer >= inicio Then
+            decorrido = Timer - inicio
+        Else
+            decorrido = (86400 - inicio) + Timer
+        End If
+        DoEvents
+    Loop While decorrido < segundos
+End Sub
+
+Private Sub Form_Load()
+    On Error Resume Next
+    If Nz(Me.txtDataPrazo, "") = "" Then Me.txtDataPrazo = Format(Date, "dd/mm/yyyy")
+    If Nz(Me.txtHoraPrazo, "") = "" Then Me.txtHoraPrazo = Format(Time, "hh:nn")
+    On Error GoTo 0
+End Sub
+
+Private Sub btnIniciar_Click()
+    ExecutarAlteracao
+End Sub
+
+Private Sub btnCadIniciar_Click()
+    ExecutarAlteracao
+End Sub
+
+Private Sub btnApenasStatus_Click()
+    Dim resposta As VbMsgBoxResult
+    Dim lngAlteradas As Long
+    
+    On Error GoTo Erro
+    
+    resposta = MsgBox("Deseja alterar apenas o Status_Adm das escalas selecionadas para 3?" & vbCrLf & vbCrLf & _
+                      "Esta ação não acessará a intranet e não alterará o prazo de inscrição.", _
+                      vbQuestion + vbYesNo, "Alterar apenas status")
+    If resposta = vbNo Then Exit Sub
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Alterando Status_Adm... aguarde."
+    
+    lngAlteradas = AlterarApenasStatusAdm3()
+    
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    
+    MsgBox "Status_Adm alterado para 3." & vbCrLf & _
+           "Escala(s) alterada(s): " & lngAlteradas, _
+           vbInformation, "Alterar apenas status"
+    
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    On Error Resume Next
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Debug.Print "Erro frmAltIntranet.btnApenasStatus_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao alterar apenas o status: " & Err.Number & " - " & Err.Description, vbCritical
+End Sub
+
+Private Sub ExecutarAlteracao()
+    Dim dtPrazo As Date
+    Dim strPrazo As String
+    Dim resposta As VbMsgBoxResult
+    Dim lngAlteradas As Long
+    
+    On Error GoTo Erro
+    
+    If Not ObterPrazoInformado(dtPrazo) Then Exit Sub
+    strPrazo = Format(dtPrazo, "dd/mm/yyyy hh:nn")
+    
+    resposta = MsgBox("Confirma alterar as escalas selecionadas na intranet?", _
+                      vbQuestion + vbYesNo, "Alterar intranet")
+    If resposta = vbNo Then Exit Sub
+    
+    resposta = MsgBox("A alteracao local sera gravada somente apos sucesso na intranet. Continuar?", _
+                      vbQuestion + vbYesNo, "Confirmacao final")
+    If resposta = vbNo Then Exit Sub
+    
+    Me.Visible = False
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Alterando escalas na Intranet... aguarde."
+    
+    lngAlteradas = AlterarEscalasSelecionadas(strPrazo)
+    
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    
+    MsgBox "Alteracao na intranet concluida." & vbCrLf & _
+           "Escala(s) alterada(s): " & lngAlteradas, _
+           vbInformation, "Alterar intranet"
+    
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    On Error Resume Next
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Me.Visible = True
+    Debug.Print "Erro frmAltIntranet.ExecutarAlteracao: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao alterar intranet: " & Err.Number & " - " & Err.Description, vbCritical
+End Sub
+
+Private Function AlterarApenasStatusAdm3() As Long
+    Dim db As DAO.Database
+    Dim arrIDs() As String
+    Dim i As Long
+    Dim strID As String
+    
+    On Error GoTo Erro
+    
+    arrIDs = IDsSelecionadosTemp()
+    Set db = CurrentDb
+    
+    For i = LBound(arrIDs) To UBound(arrIDs)
+        strID = Trim(arrIDs(i))
+        If strID <> "" Then
+            db.Execute "UPDATE TblEscGeral SET Status_Adm = '3', Alteracao = 1 " & _
+                       "WHERE ID_Cadastro = " & SQLTexto(strID), dbFailOnError
+            AlterarApenasStatusAdm3 = AlterarApenasStatusAdm3 + db.RecordsAffected
+        End If
+    Next
+    
+Sair:
+    Set db = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmAltIntranet.AlterarApenasStatusAdm3: " & Err.Number & " - " & Err.Description
+    Err.Raise Err.Number, "AlterarApenasStatusAdm3", Err.Description
+End Function
+
+Private Function AlterarEscalasSelecionadas(ByVal strPrazo As String) As Long
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim driver As ChromeDriver
+    Dim por As New by
+    Dim arrIDs() As String
+    Dim strSQL As String
+    Dim strLink As String
+    Dim strURL As String
+    Dim i As Long
+    Dim strID As String
+    Dim strP1 As String
+    Dim strCoord As String
+    Dim strSubcmd As String
+    
+    On Error GoTo Erro
+    
+    arrIDs = IDsSelecionadosTemp()
+    If UBound(arrIDs) < LBound(arrIDs) Then Exit Function
+    
+    strLink = LinkUsuarioLogado()
+    If strLink = "" Then
+        Err.Raise vbObjectError + 700, "AlterarEscalasSelecionadas", "Link do usuario logado nao encontrado."
+    End If
+    
+    strP1 = BuscarRESuperior(3)
+    strCoord = BuscarRESuperior(2)
+    strSubcmd = BuscarRESuperior(1)
+    
+    Set db = CurrentDb
+    Set driver = New ChromeDriver
+    
+    strURL = URL_CAD_ESCALA & strLink
+    
+    With driver
+        .Start
+        .Window.Maximize
+        .Get strURL
+        Pausar 2
+    End With
+    
+    For i = LBound(arrIDs) To UBound(arrIDs)
+        strID = Trim(arrIDs(i))
+        If strID <> "" Then
+            strSQL = "SELECT * FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strID)
+            Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+            
+            If Not rs.EOF Then
+                If Trim(Nz(rs!ID_Escala, "")) = "" Or Trim(Nz(rs!ID_Escala, "")) = "0" Then
+                    Err.Raise vbObjectError + 701, "AlterarEscalasSelecionadas", _
+                              "Escala sem ID_Escala: " & strID
+                End If
+                
+                If AlterarEscalaSite(driver, por, rs, strPrazo, strP1, strCoord, strSubcmd) Then
+                    AtualizarEscalaLocal db, rs, strPrazo
+                    AlterarEscalasSelecionadas = AlterarEscalasSelecionadas + 1
+                End If
+            End If
+            
+            rs.Close
+            Set rs = Nothing
+        End If
+    Next
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    If Not driver Is Nothing Then driver.Quit
+    Set rs = Nothing
+    Set db = Nothing
+    Set driver = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmAltIntranet.AlterarEscalasSelecionadas: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao alterar escala na intranet: " & Err.Number & " - " & Err.Description, vbCritical
+    Resume Sair
+End Function
+
+Private Function AlterarEscalaSite(ByRef driver As ChromeDriver, ByRef por As by, ByRef rs As DAO.Recordset, _
+                                  ByVal strPrazo As String, ByVal strP1 As String, _
+                                  ByVal strCoord As String, ByVal strSubcmd As String) As Boolean
+    Dim blnForaPrazo As Boolean
+    
+    On Error GoTo Erro
+    
+    blnForaPrazo = ForaPrazo(strPrazo)
+    
+    With driver
+        LimparEnviarPorName driver, por, "vESCOPRIDFFIL", Nz(rs!ID_Escala, "")
+        .FindElement(por.id("IMAGE4")).Click
+        AguardarAjax driver, por, 30
+        
+        .FindElement(por.id("vUPD_0001")).Click
+        AguardarAjax driver, por, 30
+        
+        LimparEnviarPorName driver, por, "vQTDOFSUP", ValorFinalQtdeTemp("AltAtzSuperior", rs!Atz_Superior)
+        LimparEnviarPorName driver, por, "vQTDOFINT", ValorFinalQtdeTemp("AltAtzIntermed", rs!Atz_Intermed)
+        LimparEnviarPorName driver, por, "vQTDOFSUB", ValorFinalQtdeTemp("AltAtzSubalterno", rs!Atz_Subalterno)
+        LimparEnviarPorName driver, por, "vQTDPRASUBTEN", ValorFinalQtdeTemp("AltAtzSubtenSgt", rs!Atz_Subten_Sgt)
+        LimparEnviarPorName driver, por, "vQTDPRACBSD", ValorFinalQtdeTemp("AltAtzCbSd", rs!Atz_Cb_Sd)
+        
+        LimparEnviarPorID driver, por, "vESCOPRDATFIMISC", strPrazo
+        .FindElement(por.id("vESCOPRDLGATVNOM")).Click
+        
+        If blnForaPrazo Then
+            .FindElement(por.id("vRADIOJUSTDTESCALAREMANEJ")).Click
+            Call SelecionarSuperioresForaPrazo(driver, por, strP1, strCoord, strSubcmd)
+        End If
+        
+        .FindElement(por.Name("ALTERAR")).Click
+        AguardarAjax driver, por, 30
+    End With
+    
+    AlterarEscalaSite = True
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmAltIntranet.AlterarEscalaSite ID_Escala=" & Nz(rs!ID_Escala, "") & _
+                ": " & Err.Number & " - " & Err.Description
+    AlterarEscalaSite = False
+End Function
+
+Private Sub AtualizarEscalaLocal(ByRef db As DAO.Database, ByRef rs As DAO.Recordset, ByVal strPrazo As String)
+    Dim strSQL As String
+    
+    strSQL = "UPDATE TblEscGeral SET " & _
+             "Atz_Superior = " & ValorFinalQtdeTemp("AltAtzSuperior", rs!Atz_Superior) & ", " & _
+             "Atz_Intermed = " & ValorFinalQtdeTemp("AltAtzIntermed", rs!Atz_Intermed) & ", " & _
+             "Atz_Subalterno = " & ValorFinalQtdeTemp("AltAtzSubalterno", rs!Atz_Subalterno) & ", " & _
+             "Atz_Subten_Sgt = " & ValorFinalQtdeTemp("AltAtzSubtenSgt", rs!Atz_Subten_Sgt) & ", " & _
+             "Atz_Cb_Sd = " & ValorFinalQtdeTemp("AltAtzCbSd", rs!Atz_Cb_Sd) & ", " & _
+             "Prazo_Inscricao = " & SQLTexto(strPrazo) & ", " & _
+             "Status_Adm = '3', " & _
+             "Alteracao = 1 " & _
+             "WHERE ID_Cadastro = " & SQLTexto(Nz(rs!ID_Cadastro, ""))
+    
+    db.Execute strSQL, dbFailOnError
+End Sub
+
+Private Sub LimparEnviarPorName(ByRef driver As ChromeDriver, ByRef por As by, _
+                                ByVal strName As String, ByVal vValor As Variant)
+    With driver.FindElement(por.Name(strName))
+        .Click
+        .Clear
+        .SendKeys CStr(Nz(vValor, ""))
+    End With
+End Sub
+
+Private Sub LimparEnviarPorID(ByRef driver As ChromeDriver, ByRef por As by, _
+                              ByVal strID As String, ByVal vValor As Variant)
+    With driver.FindElement(por.id(strID))
+        .Click
+        .Clear
+        .SendKeys CStr(Nz(vValor, ""))
+    End With
+End Sub
+
+Private Sub AguardarAjax(ByRef driver As ChromeDriver, ByRef por As by, ByVal lngTempoMax As Long)
+    Dim i As Long
+    
+    On Error Resume Next
+    
+    For i = 1 To lngTempoMax
+        Err.Clear
+        If driver.FindElement(por.id("gx_ajax_notification")).IsDisplayed = False Then Exit Sub
+        Pausar 1
+    Next
+    
+    If Err.Number <> 0 Then Err.Clear
+End Sub
+
+Private Sub SelecionarSuperioresForaPrazo(ByRef driver As ChromeDriver, ByRef por As by, _
+                                          ByVal strP1 As String, ByVal strCoord As String, ByVal strSubcmd As String)
+    Dim lngTentativas As Long
+    
+    On Error GoTo Erro
+    
+    Do While Not SuperioresPreenchidos(driver, por, strP1, strCoord, strSubcmd)
+        lngTentativas = lngTentativas + 1
+        If lngTentativas > 30 Then
+            Err.Raise vbObjectError + 713, "SelecionarSuperioresForaPrazo", _
+                      "Nao foi possivel manter P1, Coordenador e Subcomandante preenchidos."
+        End If
+        
+        SelecionarComboPorValor driver, por, "vCOMBOP1", strP1
+        Pausar 0.5
+        SelecionarComboPorValor driver, por, "vCOMBOCOORD", strCoord
+        Pausar 0.5
+        SelecionarComboPorValor driver, por, "vCOMBOSUCMD", strSubcmd
+        Pausar 0.5
+    Loop
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmAltIntranet.SelecionarSuperioresForaPrazo: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Function SuperioresPreenchidos(ByRef driver As ChromeDriver, ByRef por As by, _
+                                       ByVal strP1 As String, ByVal strCoord As String, ByVal strSubcmd As String) As Boolean
+    SuperioresPreenchidos = (ValorElementoPorID(driver, por, "vCOMBOP1") = strP1 And _
+                             ValorElementoPorID(driver, por, "vCOMBOCOORD") = strCoord And _
+                             ValorElementoPorID(driver, por, "vCOMBOSUCMD") = strSubcmd)
+End Function
+
+Private Sub SelecionarComboPorValor(ByRef driver As ChromeDriver, ByRef por As by, _
+                                    ByVal strID As String, ByVal strValor As String)
+    If strValor <> "" Then driver.FindElement(por.id(strID)).AsSelect.SelectByValue strValor
+End Sub
+
+Private Function ValorElementoPorID(ByRef driver As ChromeDriver, ByRef por As by, ByVal strID As String) As String
+    On Error GoTo Erro
+    ValorElementoPorID = Trim(Nz(driver.FindElement(por.id(strID)).Attribute("value"), ""))
+    Exit Function
+Erro:
+    ValorElementoPorID = ""
+End Function
+
+Private Function ObterPrazoInformado(ByRef dtPrazo As Date) As Boolean
+    Dim strData As String
+    Dim strHora As String
+    Dim partesData() As String
+    
+    strData = Trim(Nz(Me.txtDataPrazo, ""))
+    strHora = Trim(Nz(Me.txtHoraPrazo, ""))
+    
+    If strData = "" Or strHora = "" Then
+        MsgBox "Informe a data e o horario do prazo.", vbExclamation, "Prazo"
+        Exit Function
+    End If
+    
+    If Not IsDateBrasileiro(strData) Then
+        MsgBox "Data invalida. Use dd/mm/aaaa.", vbExclamation, "Prazo"
+        Exit Function
+    End If
+    
+    If Not NormalizarHoraPrazo() Then Exit Function
+    
+    partesData = Split(strData, "/")
+    strHora = Trim(Nz(Me.txtHoraPrazo, ""))
+    
+    dtPrazo = DateSerial(CInt(partesData(2)), CInt(partesData(1)), CInt(partesData(0))) + TimeValue(strHora)
+    ObterPrazoInformado = True
+End Function
+
+Private Sub txtDataPrazo_AfterUpdate()
+    Dim strValor As String
+    strValor = Trim(Nz(Me.txtDataPrazo, ""))
+    
+    If strValor <> "" Then
+        If IsDateBrasileiro(strValor) Then
+            Me.txtDataPrazo = Format(ConverterStringParaData(strValor), "dd/mm/yyyy")
+        Else
+            MsgBox "Data invalida. Use dd/mm/aaaa.", vbExclamation
+            Me.txtDataPrazo = ""
+        End If
+    End If
+End Sub
+
+Private Sub txtHoraPrazo_AfterUpdate()
+    If Trim(Nz(Me.txtHoraPrazo, "")) <> "" Then Call NormalizarHoraPrazo
+End Sub
+
+Private Sub txtHoraPrazo_GotFocus()
+    Dim strValor As String
+    strValor = Replace(Trim(Nz(Me.txtHoraPrazo, "")), ":", "")
+    Me.txtHoraPrazo = strValor
+    Me.txtHoraPrazo.SelStart = 0
+    Me.txtHoraPrazo.SelLength = Len(strValor)
+End Sub
+
+Private Sub txtHoraPrazo_KeyPress(KeyAscii As Integer)
+    If KeyAscii = 8 Then Exit Sub
+    If KeyAscii < 48 Or KeyAscii > 57 Then
+        KeyAscii = 0
+        Beep
+        Exit Sub
+    End If
+    If Len(Nz(Me.txtHoraPrazo.Text, "")) >= 4 Then
+        KeyAscii = 0
+        Beep
+    End If
+End Sub
+
+Private Function NormalizarHoraPrazo() As Boolean
+    Dim strValor As String
+    Dim intHora As Integer
+    Dim intMinuto As Integer
+    
+    On Error GoTo Invalido
+    
+    strValor = Replace(Trim(Nz(Me.txtHoraPrazo, "")), ":", "")
+    If Len(strValor) < 3 Or Len(strValor) > 4 Then GoTo Invalido
+    If Not SomenteNumeros(strValor) Then GoTo Invalido
+    
+    If Len(strValor) = 3 Then strValor = "0" & strValor
+    
+    intHora = CInt(Left(strValor, 2))
+    intMinuto = CInt(Right(strValor, 2))
+    
+    If intHora < 0 Or intHora > 23 Then GoTo Invalido
+    If intMinuto < 0 Or intMinuto > 59 Then GoTo Invalido
+    
+    Me.txtHoraPrazo = Format(TimeSerial(intHora, intMinuto, 0), "hh:nn")
+    NormalizarHoraPrazo = True
+    Exit Function
+    
+Invalido:
+    MsgBox "Horario invalido. Digite 3 ou 4 numeros.", vbExclamation, "Prazo"
+    Me.txtHoraPrazo = ""
+End Function
+
+Private Function IsDateBrasileiro(ByVal strData As String) As Boolean
+    Dim partes() As String
+    Dim dia As Integer
+    Dim mes As Integer
+    Dim ano As Integer
+    
+    If Not strData Like "##/##/####" Then Exit Function
+    
+    partes = Split(strData, "/")
+    If UBound(partes) <> 2 Then Exit Function
+    
+    dia = CInt(partes(0))
+    mes = CInt(partes(1))
+    ano = CInt(partes(2))
+    
+    If mes >= 1 And mes <= 12 And dia >= 1 And dia <= DiaNoMes(mes, ano) Then IsDateBrasileiro = True
+End Function
+
+Private Function ConverterStringParaData(ByVal strData As String) As Date
+    Dim partes() As String
+    partes = Split(strData, "/")
+    ConverterStringParaData = DateSerial(CInt(partes(2)), CInt(partes(1)), CInt(partes(0)))
+End Function
+
+Private Function DiaNoMes(ByVal mes As Integer, ByVal ano As Integer) As Integer
+    Select Case mes
+        Case 1, 3, 5, 7, 8, 10, 12
+            DiaNoMes = 31
+        Case 4, 6, 9, 11
+            DiaNoMes = 30
+        Case 2
+            If (ano Mod 4 = 0 And ano Mod 100 <> 0) Or (ano Mod 400 = 0) Then
+                DiaNoMes = 29
+            Else
+                DiaNoMes = 28
+            End If
+    End Select
+End Function
+
+Private Function SomenteNumeros(ByVal strValor As String) As Boolean
+    Dim i As Long
+    Dim ch As String
+    
+    If strValor = "" Then Exit Function
+    
+    For i = 1 To Len(strValor)
+        ch = Mid(strValor, i, 1)
+        If ch < "0" Or ch > "9" Then Exit Function
+    Next
+    
+    SomenteNumeros = True
+End Function
+
+Private Function IDsSelecionadosTemp() As String()
+    Dim strIDs As String
+    
+    On Error Resume Next
+    strIDs = Nz(TempVars("AltIDs"), "")
+    On Error GoTo 0
+    
+    If Trim(strIDs) = "" Then
+        IDsSelecionadosTemp = Split("", ",")
+    Else
+        IDsSelecionadosTemp = Split(strIDs, ",")
+    End If
+End Function
+
+Private Function ValorFinalQtdeTemp(ByVal strTempVar As String, ByVal vAtual As Variant) As Long
+    Dim strValor As String
+    
+    On Error Resume Next
+    strValor = Trim(Nz(TempVars(strTempVar), ""))
+    On Error GoTo 0
+    
+    If strValor = "" Then
+        ValorFinalQtdeTemp = 0
+    Else
+        ValorFinalQtdeTemp = CLng(strValor)
+    End If
+End Function
+
+Private Function ForaPrazo(ByVal strPrazo As String) As Boolean
+    If IsDate(strPrazo) Then ForaPrazo = (DateAdd("d", -2, CDate(strPrazo)) < Now())
+End Function
+
+Private Function BuscarRESuperior(ByVal lngSelecionado As Long) As String
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Sair
+    
+    strSQL = "SELECT Selecionado, RE FROM TblListSuperiores"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        If Val(CStr(Nz(rs!Selecionado, ""))) = lngSelecionado Then
+            BuscarRESuperior = Trim(Nz(rs!RE, ""))
+            Exit Do
+        End If
+        rs.MoveNext
+    Loop
+    
+Sair:
+    If Err.Number <> 0 Then
+        Debug.Print "Erro frmAltIntranet.BuscarRESuperior: " & Err.Number & " - " & Err.Description
+        Err.Clear
+    End If
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+End Function
+
+Private Function SQLTexto(ByVal v As Variant) As String
+    SQLTexto = "'" & Replace(Nz(v, ""), "'", "''") & "'"
+End Function

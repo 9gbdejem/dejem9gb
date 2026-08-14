@@ -1,0 +1,303 @@
+Option Compare Database
+Option Explicit
+
+Private mstrPesquisa As String
+
+Private Sub Form_Load()
+    mstrPesquisa = Trim(Nz(Me.OpenArgs, ""))
+End Sub
+
+Private Sub btnPesquisarID_Click()
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strFiltro As String
+    Dim lngEncontradas As Long
+    
+    On Error GoTo Erro
+    
+    If Not PesquisaValida() Then Exit Sub
+    
+    PrepararExecucao True
+    
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset( _
+        "SELECT TOP 1 ID_Escala FROM TblEscGeral WHERE ID_Escala = " & SQLTexto(mstrPesquisa), _
+        dbOpenSnapshot)
+    
+    If rs.EOF Then
+        MsgBox "Nenhuma escala encontrada para o ID informado.", vbInformation, "Pesquisar ID"
+        GoTo Sair
+    End If
+    
+    lngEncontradas = 1
+    strFiltro = "ID_Escala = " & SQLTexto(mstrPesquisa)
+    
+    AplicarFiltroPesquisa strFiltro
+    
+    MsgBox "Escala(s) encontrada(s): " & lngEncontradas & vbCrLf & _
+           "Escala(s) exibida(s): " & lngEncontradas, _
+           vbInformation, "Pesquisar ID"
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    PrepararExecucao False
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmPesquisar.btnPesquisarID_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao pesquisar ID: " & Err.Number & " - " & Err.Description, vbCritical, "Pesquisar ID"
+    Resume Sair
+End Sub
+
+Private Sub btnPesquisarRE_Click()
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strListaIDs As String
+    Dim strIDEscala As String
+    Dim strFiltro As String
+    Dim strFiltroData As String
+    Dim strFiltroExibicao As String
+    Dim lngEncontradas As Long
+    Dim lngExibidas As Long
+    
+    On Error GoTo Erro
+    
+    If Not PesquisaValida() Then Exit Sub
+    
+    PrepararExecucao True
+    
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset( _
+        "SELECT DISTINCT ID_Escala FROM TblMilEsc " & _
+        "WHERE Militar_RE = " & SQLTexto(mstrPesquisa) & " " & _
+        "AND ID_Escala Is Not Null AND ID_Escala <> '' AND ID_Escala <> '0'", _
+        dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        strIDEscala = Trim(Nz(rs!ID_Escala, ""))
+        If strIDEscala <> "" Then
+            If strListaIDs <> "" Then strListaIDs = strListaIDs & ","
+            strListaIDs = strListaIDs & SQLTexto(strIDEscala)
+            lngEncontradas = lngEncontradas + 1
+        End If
+        rs.MoveNext
+    Loop
+    
+    If lngEncontradas = 0 Then
+        MsgBox "Nenhuma escala encontrada para o RE informado.", vbInformation, "Pesquisar RE"
+        GoTo Sair
+    End If
+    
+    strFiltro = "ID_Escala IN (" & strListaIDs & ")"
+    strFiltroData = FiltroDataFrmEscalas()
+    strFiltroExibicao = JuntarFiltros(strFiltro, strFiltroData)
+    lngExibidas = ContarEscalasFiltro(strFiltroExibicao)
+    
+    AplicarFiltroPesquisa strFiltroExibicao
+    
+    MsgBox "Escala(s) encontrada(s): " & lngEncontradas & vbCrLf & _
+           "Escala(s) exibida(s) devido ao filtro: " & lngExibidas, _
+           vbInformation, "Pesquisar RE"
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    PrepararExecucao False
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmPesquisar.btnPesquisarRE_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao pesquisar RE: " & Err.Number & " - " & Err.Description, vbCritical, "Pesquisar RE"
+    Resume Sair
+End Sub
+
+Private Function PesquisaValida() As Boolean
+    mstrPesquisa = Trim(Nz(mstrPesquisa, ""))
+    
+    If mstrPesquisa = "" Then
+        MsgBox "Valor de pesquisa vazio.", vbExclamation, "Pesquisar"
+        DoCmd.Close acForm, Me.Name
+        Exit Function
+    End If
+    
+    PesquisaValida = True
+End Function
+
+Private Sub AplicarFiltroPesquisa(ByVal strFiltro As String)
+    Dim frmSub As Form
+    
+    Set frmSub = ObterSubformLinhaEscala()
+    
+    If frmSub Is Nothing Then
+        Err.Raise vbObjectError + 901, "AplicarFiltroPesquisa", _
+                  "Nao foi possivel localizar o subformulario sfrmLinhaEscala."
+    End If
+    
+    frmSub.AplicarFiltro strFiltro, ""
+End Sub
+
+Private Function FiltroDataFrmEscalas() As String
+    Dim frmEscalas As Form
+    Dim strInicio As String
+    Dim strFim As String
+    Dim blnInicio As Boolean
+    Dim blnFim As Boolean
+    Dim strFiltro As String
+    
+    Set frmEscalas = ObterFormEscalas()
+    If frmEscalas Is Nothing Then Exit Function
+    
+    strInicio = Trim(Nz(frmEscalas.Controls("txtDataInicial"), ""))
+    strFim = Trim(Nz(frmEscalas.Controls("txtDataFinal"), ""))
+    
+    blnInicio = IsDateBrasileiro(strInicio)
+    blnFim = IsDateBrasileiro(strFim)
+    
+    If blnInicio Then strFiltro = "Data_Esc >= " & SQLDataBr(strInicio)
+    If blnFim Then
+        If strFiltro <> "" Then strFiltro = strFiltro & " AND "
+        strFiltro = strFiltro & "Data_Esc <= " & SQLDataBr(strFim)
+    End If
+    
+    FiltroDataFrmEscalas = strFiltro
+End Function
+
+Private Function JuntarFiltros(ByVal strFiltroBase As String, ByVal strFiltroData As String) As String
+    If Trim(strFiltroData) <> "" Then
+        JuntarFiltros = "(" & strFiltroBase & ") AND " & strFiltroData
+    Else
+        JuntarFiltros = strFiltroBase
+    End If
+End Function
+
+Private Function ContarEscalasFiltro(ByVal strFiltro As String) As Long
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Erro
+    
+    strSQL = "SELECT Count(*) AS Total FROM qryEscalaGeral"
+    If Trim(strFiltro) <> "" Then strSQL = strSQL & " WHERE " & strFiltro
+    
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    If Not rs.EOF Then ContarEscalasFiltro = CLng(Nz(rs!Total, 0))
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmPesquisar.ContarEscalasFiltro: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
+
+Private Function ObterSubformLinhaEscala() As Form
+    Dim frmEscalas As Form
+    
+    Set frmEscalas = ObterFormEscalas()
+    
+    If frmEscalas Is Nothing Then Exit Function
+    
+    Set ObterSubformLinhaEscala = frmEscalas.Controls("sfrmLinhaEscala").Form
+    If ObterSubformLinhaEscala Is Nothing Then
+        Set ObterSubformLinhaEscala = frmEscalas.Controls("sfrmLinhaEscalas").Form
+    End If
+    
+    On Error GoTo 0
+End Function
+
+Private Function ObterFormEscalas() As Form
+    On Error Resume Next
+    
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Set ObterFormEscalas = Forms!frmApp!frmNavegar.Form
+        If Not ObterFormEscalas Is Nothing Then
+            If ObterFormEscalas.Name <> "frmEscalas" Then Set ObterFormEscalas = Nothing
+        End If
+    End If
+    
+    If ObterFormEscalas Is Nothing Then
+        If CurrentProject.AllForms("frmEscalas").IsLoaded Then Set ObterFormEscalas = Forms!frmEscalas
+    End If
+    
+    On Error GoTo 0
+End Function
+
+Private Function IsDateBrasileiro(ByVal strData As String) As Boolean
+    Dim partes() As String
+    Dim dia As Integer
+    Dim mes As Integer
+    Dim ano As Integer
+    
+    If strData = "" Then Exit Function
+    If Not strData Like "##/##/####" Then Exit Function
+    
+    partes = Split(strData, "/")
+    If UBound(partes) <> 2 Then Exit Function
+    
+    dia = CInt(partes(0))
+    mes = CInt(partes(1))
+    ano = CInt(partes(2))
+    
+    If mes >= 1 And mes <= 12 And dia >= 1 And dia <= DiaNoMes(mes, ano) Then
+        IsDateBrasileiro = True
+    End If
+End Function
+
+Private Function DiaNoMes(ByVal mes As Integer, ByVal ano As Integer) As Integer
+    Select Case mes
+        Case 1, 3, 5, 7, 8, 10, 12
+            DiaNoMes = 31
+        Case 4, 6, 9, 11
+            DiaNoMes = 30
+        Case 2
+            If (ano Mod 4 = 0 And ano Mod 100 <> 0) Or (ano Mod 400 = 0) Then
+                DiaNoMes = 29
+            Else
+                DiaNoMes = 28
+            End If
+    End Select
+End Function
+
+Private Function SQLDataBr(ByVal strData As String) As String
+    Dim partes() As String
+    
+    partes = Split(strData, "/")
+    If UBound(partes) = 2 Then
+        SQLDataBr = "#" & partes(2) & "-" & partes(1) & "-" & partes(0) & "#"
+    Else
+        SQLDataBr = "Null"
+    End If
+End Function
+
+Private Sub PrepararExecucao(ByVal blnExecutando As Boolean)
+    On Error Resume Next
+    
+    DoCmd.Hourglass blnExecutando
+    
+    If blnExecutando Then
+        SysCmd acSysCmdSetStatus, "Pesquisando... aguarde."
+    Else
+        SysCmd acSysCmdClearStatus
+    End If
+    
+    Me.btnPesquisarID.Enabled = Not blnExecutando
+    Me.btnPesquisarRE.Enabled = Not blnExecutando
+    Me.Repaint
+    
+    On Error GoTo 0
+End Sub
+
+Private Function SQLTexto(ByVal valor As Variant) As String
+    SQLTexto = "'" & Replace(Nz(valor, ""), "'", "''") & "'"
+End Function

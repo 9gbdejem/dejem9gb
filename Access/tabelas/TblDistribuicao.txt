@@ -1,0 +1,47 @@
+Tabela: TblDistribuicao
+
+Campos sugeridos:
+
+ID
+- Tipo: Numeração Automática
+- Chave primária
+
+Mes_Referencia
+- Tipo: Data/Hora
+- Usar sempre o primeiro dia do mês de referência
+
+Operacao
+- Tipo: Texto Curto
+- Exemplo: ROTINEIRA, OP SP SEM FOGO, MUN SÃO CARLOS
+
+Operacao_Matematica
+- Tipo: Texto Curto
+- Valores: Adicionar ou Subtrair
+
+Qtde_Oficiais
+- Tipo: Número
+- Inteiro longo
+
+Qtde_Pracas
+- Tipo: Número
+- Inteiro longo
+
+Observacao
+- Tipo: Texto Longo
+
+RE_Cadastro
+- Tipo: Texto Curto
+
+Data_Cadastro
+- Tipo: Data/Hora
+
+Índices recomendados:
+
+Mes_Referencia
+- Com duplicação permitida
+
+Operacao
+- Com duplicação permitida
+
+Mes_Referencia + Operacao
+- Com duplicação permitida

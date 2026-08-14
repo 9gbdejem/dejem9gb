@@ -128,7 +128,7 @@
 
         <div class="row mb-4">
             <div class="col-md-3">
-                <div class="card bg-primary text-white metric-card">
+                <div class="card bg-primary text-white">
                     <div class="card-body">
                         <h6 class="card-title">Total de Vagas no Período</h6>
                         <h2 id="totalVagas" class="mb-0">0</h2>
@@ -137,7 +137,7 @@
                 </div>
             </div>
             <div class="col-md-2">
-                <div class="card bg-info text-white metric-card">
+                <div class="card bg-info text-white">
                     <div class="card-body">
                         <h6 class="card-title">Total de Escalas</h6>
                         <h2 id="totalEscalas" class="mb-0">0</h2>
@@ -146,7 +146,7 @@
                 </div>
             </div>
             <div class="col-md-2">
-                <div class="card bg-warning text-white metric-card">
+                <div class="card bg-warning text-white">
                     <div class="card-body">
                         <h6 class="card-title">Militares</h6>
                         <h2 id="totalMilitares" class="mb-0">0</h2>
@@ -155,7 +155,7 @@
                 </div>
             </div>
             <div class="col-md-2">
-                <div class="card bg-success text-white metric-card">
+                <div class="card bg-success text-white">
                     <div class="card-body">
                         <h6 class="card-title">Mês Atual</h6>
                         <h2 id="mesAtual" class="mb-0">-</h2>
@@ -164,7 +164,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-secondary text-white metric-card">
+                <div class="card bg-secondary text-white">
                     <div class="card-body">
                         <h6 class="card-title">Ano</h6>
                         <h2 id="anoAtual" class="mb-0">-</h2>

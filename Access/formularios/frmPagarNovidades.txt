@@ -1,0 +1,230 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Form_Load()
+    On Error GoTo Erro
+    
+    ConfigurarLista
+    CarregarEscalasNovidade
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmPagarNovidades.Form_Load: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar novidades: " & Err.Number & " - " & Err.Description, vbCritical, "Pagar novidades"
+End Sub
+
+Private Sub ConfigurarLista()
+    On Error Resume Next
+    
+    Me.lstEscalas.RowSourceType = "Value List"
+    Me.lstEscalas.ColumnCount = 9
+    Me.lstEscalas.BoundColumn = 8
+    Me.lstEscalas.ColumnWidths = "2.3cm;4cm;4.5cm;1.4cm;1.3cm;1.3cm;1.7cm;0cm;0cm"
+    Me.lstEscalas.MultiSelect = 2
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub CarregarEscalasNovidade()
+    Dim frmSub As Form
+    Dim rs As DAO.Recordset
+    Dim strLista As String
+    Dim lngTotal As Long
+    
+    On Error GoTo Erro
+    
+    Set frmSub = ObterSubformLinhaEscala()
+    If frmSub Is Nothing Then
+        MsgBox "Nao foi possivel localizar o sfrmLinhaEscala.", vbExclamation, "Pagar novidades"
+        Exit Sub
+    End If
+    
+    Set rs = frmSub.RecordsetClone
+    If rs.BOF And rs.EOF Then GoTo Sair
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If Trim(Nz(rs!Status_Adm, "")) = "7" Then
+            strLista = strLista & LinhaLista(rs)
+            lngTotal = lngTotal + 1
+        End If
+        rs.MoveNext
+    Loop
+    
+Sair:
+    On Error Resume Next
+    Me.lstEscalas.RowSource = strLista
+    If lngTotal = 0 Then
+        MsgBox "Nenhuma escala com novidade foi encontrada no filtro atual.", vbInformation, "Pagar novidades"
+    End If
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set frmSub = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmPagarNovidades.CarregarEscalasNovidade: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar lista de novidades: " & Err.Number & " - " & Err.Description, vbCritical, "Pagar novidades"
+    Resume Sair
+End Sub
+
+Private Function LinhaLista(ByRef rs As DAO.Recordset) As String
+    LinhaLista = ValorLista(Format(Nz(rs!Data_Esc, ""), "dd/mm/yyyy")) & ";" & _
+                 ValorLista(Nz(rs!OPM_Nome, "")) & ";" & _
+                 ValorLista(Nz(rs!Composicao_Nome, "")) & ";" & _
+                 ValorLista(Nz(rs!Composicao_Cod, "")) & ";" & _
+                 ValorLista(Format(Nz(rs!Horario_Inicial, ""), "hh:nn")) & ";" & _
+                 ValorLista(Format(Nz(rs!Horario_Final, ""), "hh:nn")) & ";" & _
+                 ValorLista(Nz(rs!ID_Escala, "")) & ";" & _
+                 ValorLista(Nz(rs!ID_Escala, "")) & ";" & _
+                 ValorLista(Nz(rs!ID_Cadastro, "")) & ";"
+End Function
+
+Private Sub btnLinkPagar_Click()
+    On Error GoTo Erro
+    
+    If LinkUsuarioLogado() = "" Then
+        MsgBox "Link do usuario logado nao encontrado. Refaca o login.", vbExclamation, "Pagar novidades"
+        Exit Sub
+    End If
+    
+    CreateObject("Shell.Application").Open ("https://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/ConPre.aspx?" & LinkUsuarioLogado())
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmPagarNovidades.btnLinkPagar_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao abrir a Intranet: " & Err.Number & " - " & Err.Description, vbCritical, "Pagar novidades"
+End Sub
+
+Private Sub btnLinkSite_Click()
+    On Error GoTo Erro
+    
+    CreateObject("Shell.Application").Open ("https://dejem9gb.netlify.app/")
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmPagarNovidades.btnLinkSite_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao abrir o site: " & Err.Number & " - " & Err.Description, vbCritical, "Pagar novidades"
+End Sub
+
+Private Sub btnConfirmar_Click()
+    Dim resposta As VbMsgBoxResult
+    Dim lngSelecionadas As Long
+    Dim lngAtualizadas As Long
+    
+    On Error GoTo Erro
+    
+    lngSelecionadas = TotalSelecionadas()
+    If lngSelecionadas = 0 Then
+        MsgBox "Selecione uma ou mais escalas.", vbExclamation, "Pagar novidades"
+        Exit Sub
+    End If
+    
+    resposta = MsgBox("Confirma que as " & lngSelecionadas & " escala(s) selecionada(s) foram confirmadas manualmente na Intranet?" & vbCrLf & vbCrLf & _
+                      "Observacao: este codigo nao verificara a confirmacao na Intranet. A confirmacao das escalas com novidade e totalmente manual.", _
+                      vbQuestion + vbYesNo, "Confirmar pagamento manual")
+    If resposta = vbNo Then Exit Sub
+    
+    resposta = MsgBox("Esta acao alterara o Status_Adm para 5 e preenchera Pag_Confirm e RE_Pagamento." & vbCrLf & _
+                      "Deseja continuar?", _
+                      vbQuestion + vbYesNo, "Confirmacao final")
+    If resposta = vbNo Then Exit Sub
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Confirmando pagamento manual... aguarde."
+    
+    lngAtualizadas = ConfirmarSelecionadasPagas()
+    
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    
+    MsgBox "Pagamento manual confirmado." & vbCrLf & _
+           "Escala(s) atualizada(s): " & lngAtualizadas, _
+           vbInformation, "Pagar novidades"
+    
+    AtualizarFrmEscalasPagamentoManual
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    On Error Resume Next
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Debug.Print "Erro frmPagarNovidades.btnConfirmar_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao confirmar pagamento manual: " & Err.Number & " - " & Err.Description, vbCritical, "Pagar novidades"
+End Sub
+
+Private Function ConfirmarSelecionadasPagas() As Long
+    Dim db As DAO.Database
+    Dim i As Variant
+    Dim strIDEscala As String
+    Dim strSQL As String
+    
+    On Error GoTo Erro
+    
+    Set db = CurrentDb
+    
+    For Each i In Me.lstEscalas.ItemsSelected
+        strIDEscala = Trim(Nz(Me.lstEscalas.Column(7, CLng(i)), ""))
+        
+        If strIDEscala <> "" Then
+            strSQL = "UPDATE TblEscGeral SET " & _
+                     "Status_Adm = '5', " & _
+                     "Pag_Confirm = Date(), " & _
+                     "RE_Pagamento = " & SQLTexto(UsuarioLogadoRE()) & ", " & _
+                     "Alteracao = 1 " & _
+                     "WHERE ID_Escala = " & SQLTexto(strIDEscala) & _
+                     " AND Status_Adm = '7'"
+            
+            db.Execute strSQL, dbFailOnError
+            ConfirmarSelecionadasPagas = ConfirmarSelecionadasPagas + db.RecordsAffected
+        End If
+    Next
+    
+Sair:
+    Set db = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmPagarNovidades.ConfirmarSelecionadasPagas: " & Err.Number & " - " & Err.Description
+    Err.Raise Err.Number, "ConfirmarSelecionadasPagas", Err.Description
+End Function
+
+Private Function TotalSelecionadas() As Long
+    Dim i As Variant
+    
+    For Each i In Me.lstEscalas.ItemsSelected
+        TotalSelecionadas = TotalSelecionadas + 1
+    Next
+End Function
+
+Private Function ObterSubformLinhaEscala() As Form
+    On Error Resume Next
+    
+    If CurrentProject.AllForms("frmEscalas").IsLoaded Then
+        Set ObterSubformLinhaEscala = Forms!frmEscalas!sfrmLinhaEscala.Form
+        If Not ObterSubformLinhaEscala Is Nothing Then Exit Function
+    End If
+    
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Set ObterSubformLinhaEscala = Forms!frmApp!frmNavegar.Form!sfrmLinhaEscala.Form
+    End If
+    
+    On Error GoTo 0
+End Function
+
+Private Sub AtualizarFrmEscalasPagamentoManual()
+    On Error Resume Next
+    If CurrentProject.AllForms("frmEscalas").IsLoaded Then Forms!frmEscalas.btnFiltrar_Click
+    If CurrentProject.AllForms("frmApp").IsLoaded Then Forms!frmApp!frmNavegar.Form.btnFiltrar_Click
+    On Error GoTo 0
+End Sub
+
+Private Function ValorLista(ByVal v As Variant) As String
+    ValorLista = Replace(Nz(v, ""), ";", " ")
+End Function
+
+Private Function SQLTexto(ByVal valor As Variant) As String
+    SQLTexto = "'" & Replace(Nz(valor, ""), "'", "''") & "'"
+End Function

@@ -1,0 +1,528 @@
+Option Compare Database
+Option Explicit
+
+Private Const URL_PAGAR_ESCALA As String = "http://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/ConPre.aspx?"
+
+Public Sub IniciarPagamentoEscalasFiltradas()
+    If ExisteStatus7Filtrado() Then
+        DoCmd.OpenForm "frmPagar", , , , , acDialog
+    Else
+        PagarEscalasConfirmadasFiltradas
+    End If
+End Sub
+
+Public Sub PagarEscalasConfirmadasFiltradas()
+    Dim frmSub As Form
+    Dim rs As DAO.Recordset
+    Dim driver As ChromeDriver
+    Dim por As New by
+    Dim strLink As String
+    Dim strURL As String
+    Dim lngElegiveis As Long
+    Dim lngPagas As Long
+    Dim lngPagasSemMilitar As Long
+    Dim lngNovidade As Long
+    Dim lngAguardando As Long
+    Dim lngJaPagas As Long
+    Dim blnJaPaga As Boolean
+    Dim resposta As VbMsgBoxResult
+    
+    On Error GoTo Erro
+    
+    Set frmSub = ObterSubformLinhaEscala()
+    If frmSub Is Nothing Then
+        MsgBox "Nao foi possivel localizar o sfrmLinhaEscala.", vbExclamation, "Pagar escalas"
+        Exit Sub
+    End If
+    
+    Set rs = frmSub.RecordsetClone
+    If rs.BOF And rs.EOF Then
+        MsgBox "Nao ha escalas exibidas para pagar.", vbInformation, "Pagar escalas"
+        GoTo Sair
+    End If
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If EscalaElegivelPagamento(rs) Then lngElegiveis = lngElegiveis + 1
+        rs.MoveNext
+    Loop
+    
+    If lngElegiveis = 0 Then
+        MsgBox "Nenhuma escala elegivel foi encontrada." & vbCrLf & _
+               "Criterios: exibida no sfrmLinhaEscala e Status_Adm = 4.", _
+               vbInformation, "Pagar escalas"
+        GoTo Sair
+    End If
+    
+    resposta = MsgBox("Há " & lngElegiveis & " escala(s) para confirmar no filtro selecionado. Deseja continuar?", _
+                      vbQuestion + vbYesNo, "Pagar escalas")
+    If resposta = vbNo Then GoTo Sair
+    
+    strLink = LinkUsuarioLogado()
+    If strLink = "" Then
+        MsgBox "Link do usuario logado nao encontrado. Refaca o login.", vbExclamation, "Pagar escalas"
+        GoTo Sair
+    End If
+    
+    strURL = URL_PAGAR_ESCALA & strLink
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Verificando confirmacoes no Firebase... aguarde."
+    
+    Set driver = New ChromeDriver
+    With driver
+        .Start
+        .Window.Maximize
+        .Get strURL
+        Pausar 1
+    End With
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If EscalaElegivelPagamento(rs) Then
+            If EscalaSemMilitar(rs) Then
+                If EscalaJaTerminou(rs) Then
+                    SysCmd acSysCmdSetStatus, "Pagando vaga sem militar " & Nz(rs!ID_Escala, "") & "... aguarde."
+                    blnJaPaga = False
+                    If PagarUmaEscala(driver, por, Nz(rs!ID_Escala, ""), strURL, blnJaPaga) Then
+                        MarcarEscalaPaga Nz(rs!ID_Escala, "")
+                        If blnJaPaga Then
+                            lngJaPagas = lngJaPagas + 1
+                        Else
+                            lngPagasSemMilitar = lngPagasSemMilitar + 1
+                        End If
+                    Else
+                        lngAguardando = lngAguardando + 1
+                    End If
+                Else
+                    lngAguardando = lngAguardando + 1
+                End If
+            Else
+                Select Case StatusConfirmacaoEscala(Nz(rs!ID_Escala, ""))
+                    Case "concluida"
+                        SysCmd acSysCmdSetStatus, "Pagando escala " & Nz(rs!ID_Escala, "") & "... aguarde."
+                        blnJaPaga = False
+                        If PagarUmaEscala(driver, por, Nz(rs!ID_Escala, ""), strURL, blnJaPaga) Then
+                            MarcarEscalaPaga Nz(rs!ID_Escala, "")
+                            If blnJaPaga Then
+                                lngJaPagas = lngJaPagas + 1
+                            Else
+                                lngPagas = lngPagas + 1
+                            End If
+                        Else
+                            lngAguardando = lngAguardando + 1
+                        End If
+                    Case "novidade"
+                        MarcarEscalaComNovidade Nz(rs!ID_Escala, "")
+                        lngNovidade = lngNovidade + 1
+                    Case "aguardando"
+                        lngAguardando = lngAguardando + 1
+                End Select
+            End If
+        End If
+        rs.MoveNext
+    Loop
+    
+    MsgBox "Pagamento concluido." & vbCrLf & _
+           "Escala(s) elegivel(is): " & lngElegiveis & vbCrLf & _
+           "Paga(s) confirmada(s): " & lngPagas & vbCrLf & _
+           "Paga(s) sem militar: " & lngPagasSemMilitar & vbCrLf & _
+           "Ja paga(s) na intranet: " & lngJaPagas & vbCrLf & _
+           "Com novidade: " & lngNovidade & vbCrLf & _
+           "Aguardando confirmacao: " & lngAguardando, _
+           vbInformation, "Pagar escalas"
+    
+    AtualizarFrmEscalasPagamento
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    If Not driver Is Nothing Then driver.Quit
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Set rs = Nothing
+    Set driver = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro mdlPagarEscalas.PagarEscalasConfirmadasFiltradas: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao pagar escalas: " & Err.Number & " - " & Err.Description, vbCritical, "Pagar escalas"
+    Resume Sair
+End Sub
+
+Public Sub PagarEscalasNovidadesManual()
+    DoCmd.OpenForm "frmPagarNovidades", , , , , acDialog
+End Sub
+
+Private Function StatusConfirmacaoEscala(ByVal strIDEscala As String) As String
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim resp As FirebaseResponse
+    Dim strJson As String
+    Dim strStatus As String
+    Dim blnTemMilitar As Boolean
+    Dim blnTemNovidade As Boolean
+    Dim blnTemAguardando As Boolean
+    Dim blnTodosConcluidos As Boolean
+    
+    On Error GoTo Erro
+    
+    strIDEscala = Trim(Nz(strIDEscala, ""))
+    If strIDEscala = "" Then
+        StatusConfirmacaoEscala = "aguardando"
+        Exit Function
+    End If
+    
+    resp = BuscarDadosFirebase("confirmacoes/" & strIDEscala)
+    If Not resp.Success Then
+        Err.Raise vbObjectError + 980, "StatusConfirmacaoEscala", _
+                  "Erro ao buscar confirmacoes/" & strIDEscala
+    End If
+    
+    strJson = Trim(Nz(resp.ResponseText, ""))
+    If strJson = "" Or strJson = "null" Then
+        LimparStatusMilitares strIDEscala
+        StatusConfirmacaoEscala = "aguardando"
+        Exit Function
+    End If
+    
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset("SELECT Militar_RE FROM TblMilEsc WHERE ID_Escala = " & SQLTexto(strIDEscala), dbOpenSnapshot)
+    
+    blnTodosConcluidos = True
+    
+    Do While Not rs.EOF
+        blnTemMilitar = True
+        strStatus = StatusFirebaseMilitar(strJson, Nz(rs!Militar_RE, ""))
+        
+        AtualizarStatusMilitar strIDEscala, Nz(rs!Militar_RE, ""), strStatus
+        
+        Select Case strStatus
+            Case "concluida"
+            Case "novidade"
+                blnTemNovidade = True
+                blnTodosConcluidos = False
+            Case Else
+                blnTemAguardando = True
+                blnTodosConcluidos = False
+        End Select
+        
+        rs.MoveNext
+    Loop
+    
+    If Not blnTemMilitar Then
+        StatusConfirmacaoEscala = "aguardando"
+    ElseIf blnTemNovidade Then
+        StatusConfirmacaoEscala = "novidade"
+    ElseIf blnTodosConcluidos Then
+        StatusConfirmacaoEscala = "concluida"
+    ElseIf blnTemAguardando Then
+        StatusConfirmacaoEscala = "aguardando"
+    End If
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro mdlPagarEscalas.StatusConfirmacaoEscala: " & Err.Number & " - " & Err.Description
+    StatusConfirmacaoEscala = "aguardando"
+    Resume Sair
+End Function
+
+Private Function StatusFirebaseMilitar(ByVal strJson As String, ByVal strRE As String) As String
+    Dim regex As Object
+    Dim matches As Object
+    
+    strRE = Trim(Nz(strRE, ""))
+    If strRE = "" Then Exit Function
+    
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Global = False
+    regex.IgnoreCase = False
+    regex.MultiLine = True
+    regex.Pattern = """RE_" & RegexEscape(strRE) & """\s*:\s*\{[\s\S]*?""status""\s*:\s*""([^""]*)"""
+    
+    Set matches = regex.Execute(strJson)
+    If matches.Count > 0 Then StatusFirebaseMilitar = matches(0).subMatches(0)
+End Function
+
+Private Sub AtualizarStatusMilitar(ByVal strIDEscala As String, ByVal strRE As String, ByVal strStatus As String)
+    If Not CampoExiste("TblMilEsc", "Status") Then
+        Err.Raise vbObjectError + 981, "AtualizarStatusMilitar", _
+                  "A coluna Status nao existe na TblMilEsc."
+    End If
+    
+    If Trim(Nz(strStatus, "")) = "" Then
+        CurrentDb.Execute "UPDATE TblMilEsc SET [Status] = Null " & _
+                          "WHERE ID_Escala = " & SQLTexto(strIDEscala) & _
+                          " AND Militar_RE = " & SQLTexto(strRE), dbFailOnError
+    Else
+        CurrentDb.Execute "UPDATE TblMilEsc SET [Status] = " & SQLTexto(StatusParaExibicao(strStatus)) & _
+                          " WHERE ID_Escala = " & SQLTexto(strIDEscala) & _
+                          " AND Militar_RE = " & SQLTexto(strRE), dbFailOnError
+    End If
+End Sub
+
+Private Function StatusParaExibicao(ByVal strStatus As String) As String
+    Select Case LCase(Trim(Nz(strStatus, "")))
+        Case "concluida"
+            StatusParaExibicao = "Concluida"
+        Case "novidade"
+            StatusParaExibicao = "Novidade"
+        Case Else
+            StatusParaExibicao = Trim(Nz(strStatus, ""))
+    End Select
+End Function
+
+Private Sub LimparStatusMilitares(ByVal strIDEscala As String)
+    If Not CampoExiste("TblMilEsc", "Status") Then Exit Sub
+    CurrentDb.Execute "UPDATE TblMilEsc SET [Status] = Null WHERE ID_Escala = " & SQLTexto(strIDEscala), dbFailOnError
+End Sub
+
+Private Function PagarUmaEscala(ByRef driver As ChromeDriver, ByRef por As by, _
+                                ByVal strIDEscala As String, ByVal strURL As String, _
+                                ByRef blnJaPaga As Boolean) As Boolean
+    Dim i As Long
+    Dim strConfirmado As String
+    
+    On Error GoTo Erro
+    
+    driver.Get strURL
+    Pausar 0.5
+    
+    LimparEnviarPorName driver, por, "vESCOPRIDF", strIDEscala
+    
+    For i = 1 To 30
+        driver.FindElement(por.Name("IMAGE3")).Click
+        Pausar 1
+        
+        strConfirmado = TextoElementoPorID(driver, por, "span_vESCOPRIDCPTC")
+        If strConfirmado <> "" Then Exit For
+    Next
+    
+    If strConfirmado = "" Then Exit Function
+    
+    If UCase(strConfirmado) = "SIM" Then
+        blnJaPaga = True
+        PagarUmaEscala = True
+        Exit Function
+    End If
+    
+    driver.FindElement(por.Name("CONFIRMAR")).Click
+    Pausar 1
+    AceitarAlerta driver
+    Pausar 1
+    
+    PagarUmaEscala = True
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro mdlPagarEscalas.PagarUmaEscala ID_Escala=" & strIDEscala & _
+                ": " & Err.Number & " - " & Err.Description
+    PagarUmaEscala = False
+End Function
+
+Private Sub MarcarEscalaPaga(ByVal strIDEscala As String)
+    CurrentDb.Execute "UPDATE TblEscGeral SET " & _
+                      "Pag_Confirm = Date(), " & _
+                      "RE_Pagamento = " & SQLTexto(UsuarioLogadoRE()) & ", " & _
+                      "Status_Adm = '5', " & _
+                      "Alteracao = 1 " & _
+                      "WHERE ID_Escala = " & SQLTexto(strIDEscala), dbFailOnError
+End Sub
+
+Private Sub MarcarEscalaComNovidade(ByVal strIDEscala As String)
+    CurrentDb.Execute "UPDATE TblEscGeral SET Status_Adm = '7', Alteracao = 1 " & _
+                      "WHERE ID_Escala = " & SQLTexto(strIDEscala), dbFailOnError
+End Sub
+
+Private Function ExisteStatus7Filtrado() As Boolean
+    Dim frmSub As Form
+    Dim rs As DAO.Recordset
+    
+    On Error GoTo Sair
+    
+    Set frmSub = ObterSubformLinhaEscala()
+    If frmSub Is Nothing Then Exit Function
+    
+    Set rs = frmSub.RecordsetClone
+    If rs.BOF And rs.EOF Then GoTo Sair
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If Trim(Nz(rs!Status_Adm, "")) = "7" Then
+            ExisteStatus7Filtrado = True
+            Exit Do
+        End If
+        rs.MoveNext
+    Loop
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+End Function
+
+Private Function EscalaElegivelPagamento(ByRef rs As DAO.Recordset) As Boolean
+    EscalaElegivelPagamento = (Trim(Nz(rs!Status_Adm, "")) = "4" And _
+                               Trim(Nz(rs!ID_Escala, "")) <> "" And _
+                               Trim(Nz(rs!ID_Escala, "")) <> "0")
+End Function
+
+Private Function EscalaSemMilitar(ByRef rs As DAO.Recordset) As Boolean
+    EscalaSemMilitar = (CLng(Nz(rs!Esc_Superior, 0)) = 0 And _
+                        CLng(Nz(rs!Esc_Intermed, 0)) = 0 And _
+                        CLng(Nz(rs!Esc_Subalterno, 0)) = 0 And _
+                        CLng(Nz(rs!Esc_Subten_Sgt, 0)) = 0 And _
+                        CLng(Nz(rs!Esc_Cb_Sd, 0)) = 0)
+End Function
+
+Private Function EscalaJaTerminou(ByRef rs As DAO.Recordset) As Boolean
+    Dim dtFim As Date
+    
+    On Error GoTo Sair
+    
+    If Not IsDate(rs!Data_Esc) Then Exit Function
+    
+    dtFim = DateValue(CDate(rs!Data_Esc))
+    
+    If IsDate(rs!Horario_Final) Then
+        dtFim = dtFim + TimeValue(CDate(rs!Horario_Final))
+    ElseIf Trim(Nz(rs!Horario_Final, "")) <> "" Then
+        dtFim = dtFim + TimeValue(CStr(rs!Horario_Final))
+    Else
+        Exit Function
+    End If
+    
+    EscalaJaTerminou = (dtFim < Now)
+    
+Sair:
+End Function
+
+Private Function ObterSubformLinhaEscala() As Form
+    On Error Resume Next
+    
+    If CurrentProject.AllForms("frmEscalas").IsLoaded Then
+        Set ObterSubformLinhaEscala = Forms!frmEscalas!sfrmLinhaEscala.Form
+        If Not ObterSubformLinhaEscala Is Nothing Then Exit Function
+    End If
+    
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Set ObterSubformLinhaEscala = Forms!frmApp!frmNavegar.Form!sfrmLinhaEscala.Form
+    End If
+    
+    On Error GoTo 0
+End Function
+
+Private Sub AtualizarFrmEscalasPagamento()
+    On Error Resume Next
+    If CurrentProject.AllForms("frmEscalas").IsLoaded Then Forms!frmEscalas.btnFiltrar_Click
+    If CurrentProject.AllForms("frmApp").IsLoaded Then Forms!frmApp!frmNavegar.Form.btnFiltrar_Click
+    On Error GoTo 0
+End Sub
+
+Private Sub LimparEnviarPorName(ByRef driver As ChromeDriver, ByRef por As by, _
+                                ByVal strName As String, ByVal vValor As Variant)
+    With driver.FindElement(por.Name(strName))
+        .Click
+        .Clear
+        .SendKeys CStr(Nz(vValor, ""))
+    End With
+End Sub
+
+Private Function TextoElementoPorID(ByRef driver As ChromeDriver, ByRef por As by, ByVal strID As String) As String
+    On Error GoTo Erro
+    TextoElementoPorID = Trim(Nz(driver.FindElement(por.id(strID)).Text, ""))
+    Exit Function
+Erro:
+    TextoElementoPorID = ""
+End Function
+
+Private Sub AceitarAlerta(ByRef driver As ChromeDriver)
+    On Error Resume Next
+    driver.SwitchToAlert.Accept
+    On Error GoTo 0
+End Sub
+
+Private Function CampoExiste(ByVal strTabela As String, ByVal strCampo As String) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim tdf As DAO.TableDef
+    Dim fld As DAO.Field
+    Dim strCampos As String
+    
+    On Error GoTo TentarTableDef
+    
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset("SELECT TOP 1 [" & strCampo & "] FROM [" & strTabela & "]", dbOpenSnapshot)
+    CampoExiste = True
+    GoTo Sair
+    
+TentarTableDef:
+    Err.Clear
+    On Error GoTo Erro
+    
+    Set db = CurrentDb
+    db.TableDefs.Refresh
+    Set tdf = db.TableDefs(strTabela)
+    tdf.Fields.Refresh
+    
+    For Each fld In tdf.Fields
+        If StrComp(fld.Name, strCampo, vbTextCompare) = 0 Then
+            CampoExiste = True
+            GoTo Sair
+        End If
+        strCampos = strCampos & IIf(strCampos <> "", ", ", "") & "[" & fld.Name & "]"
+    Next
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set tdf = Nothing
+    Set db = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "mdlPagarEscalas.CampoExiste - Tabela=" & strTabela & " | Campo procurado=" & strCampo
+    Debug.Print "mdlPagarEscalas.CampoExiste - Campos visiveis no Access: " & strCampos
+    Debug.Print "Erro mdlPagarEscalas.CampoExiste: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
+
+Private Function RegexEscape(ByVal strValor As String) As String
+    Dim especiais As Variant
+    Dim i As Long
+    
+    especiais = Array("\", ".", "+", "*", "?", "^", "$", "(", ")", "[", "]", "{", "}", "|")
+    RegexEscape = strValor
+    
+    For i = LBound(especiais) To UBound(especiais)
+        RegexEscape = Replace(RegexEscape, especiais(i), "\" & especiais(i))
+    Next
+End Function
+
+Private Sub Pausar(ByVal segundos As Double)
+    Dim inicio As Double
+    Dim decorrido As Double
+    
+    inicio = Timer
+    
+    Do
+        If Timer >= inicio Then
+            decorrido = Timer - inicio
+        Else
+            decorrido = (86400 - inicio) + Timer
+        End If
+        DoEvents
+    Loop While decorrido < segundos
+End Sub
+
+Private Function SQLTexto(ByVal valor As Variant) As String
+    SQLTexto = "'" & Replace(Nz(valor, ""), "'", "''") & "'"
+End Function

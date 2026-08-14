@@ -1,0 +1,289 @@
+Option Compare Database
+Option Explicit
+
+Private mstrIDCadastro As String
+Private mblnCarregado As Boolean
+
+Private mstrObservAdmOriginal As String
+Private mstrObservSlcOriginal As String
+Private mstrMotivoReaberturaOriginal As String
+
+Private Sub Form_Load()
+    On Error GoTo Erro_Form_Load
+
+    Me.txtVerifAlt = 0
+    mblnCarregado = False
+
+    mstrObservAdmOriginal = ""
+    mstrObservSlcOriginal = ""
+    mstrMotivoReaberturaOriginal = ""
+
+    ' Recebe o ID_Cadastro pelo OpenArgs
+    mstrIDCadastro = Trim(Nz(Me.OpenArgs, ""))
+
+    If mstrIDCadastro = "" Then
+        MsgBox "Nenhum cadastro selecionado.", vbExclamation, "Observações"
+        DoCmd.Close acForm, Me.Name
+        Exit Sub
+    End If
+
+    Call CarregarObservacoes
+
+    Exit Sub
+
+Erro_Form_Load:
+    MsgBox "Erro ao carregar formulário de observações: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub CarregarObservacoes()
+    On Error GoTo Erro_CarregarObservacoes
+
+    Dim strSQL As String
+    Dim rs As DAO.Recordset
+
+    ' Busca Adm e Solic pelo ID_Cadastro
+    strSQL = "SELECT ID_Cadastro, ID_Escala, Observacoes_Adm, Observacoes_Slc, Motivo_reabertura " & _
+             "FROM TblEscGeral " & _
+             "WHERE ID_Cadastro = '" & SQLTexto(mstrIDCadastro) & "'"
+
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+
+    If Not rs.EOF Then
+
+        mstrMotivoReaberturaOriginal = Nz(rs!Motivo_reabertura, "")
+        
+        Me.txtObservAdm = TextoObservacaoAdm(mstrMotivoReaberturaOriginal, Nz(rs!Observacoes_Adm, ""))
+        Me.txtObservSlc = Nz(rs!Observacoes_Slc, "")
+
+        mstrObservAdmOriginal = Nz(Me.txtObservAdm.Value, "")
+        mstrObservSlcOriginal = Nz(Me.txtObservSlc.Value, "")
+
+        Me.txtVerifAlt = 0
+        mblnCarregado = True
+    Else
+        Me.txtObservAdm = ""
+        Me.txtObservSlc = ""
+
+        mstrObservAdmOriginal = ""
+        mstrObservSlcOriginal = ""
+        mstrMotivoReaberturaOriginal = ""
+
+        Me.txtVerifAlt = 0
+        mblnCarregado = False
+
+        MsgBox "Nenhum registro encontrado para o ID_Cadastro: " & mstrIDCadastro, vbExclamation, "Observações"
+    End If
+
+    rs.Close
+    Set rs = Nothing
+
+    Exit Sub
+
+Erro_CarregarObservacoes:
+    Debug.Print "ERRO CarregarObservacoes: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar observações: " & Err.Description, vbCritical, "Erro"
+
+    mblnCarregado = False
+
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+End Sub
+
+Private Sub txtObservAdm_Change()
+    Call VerificarAlteracoes
+End Sub
+
+Private Sub txtObservSlc_Change()
+    Call VerificarAlteracoes
+End Sub
+
+Private Sub VerificarAlteracoes()
+    On Error GoTo Sair
+
+    If Not mblnCarregado Then Exit Sub
+
+    Dim strAdmAtual As String
+    Dim strSlcAtual As String
+
+    strAdmAtual = ValorAtualCampo("txtObservAdm")
+    strSlcAtual = ValorAtualCampo("txtObservSlc")
+
+    If strAdmAtual <> mstrObservAdmOriginal _
+       Or strSlcAtual <> mstrObservSlcOriginal Then
+
+        Me.txtVerifAlt = 1
+    Else
+        Me.txtVerifAlt = 0
+    End If
+
+    Exit Sub
+
+Sair:
+    ' Ignora erro de alteração de texto
+End Sub
+
+Private Function ValorAtualCampo(ByVal strNomeControle As String) As String
+    On Error GoTo TrataErro
+
+    Dim ctlAtivo As Control
+    Set ctlAtivo = Screen.ActiveControl
+
+    If Not ctlAtivo Is Nothing Then
+        If ctlAtivo.Name = strNomeControle Then
+            ValorAtualCampo = Nz(Me.Controls(strNomeControle).Text, "")
+            Exit Function
+        End If
+    End If
+
+    ValorAtualCampo = Nz(Me.Controls(strNomeControle).Value, "")
+    Exit Function
+
+TrataErro:
+    ValorAtualCampo = Nz(Me.Controls(strNomeControle).Value, "")
+End Function
+
+Private Sub btnSalvar_Click()
+    On Error GoTo ErroSalvar
+
+    Dim resposta As Integer
+    Dim strSQL As String
+    Dim strObservAdm As String
+    Dim strObservSlc As String
+
+    If Not mblnCarregado Then
+        MsgBox "Dados não carregados corretamente.", vbExclamation, "Observações"
+        Exit Sub
+    End If
+
+    Call VerificarAlteracoes
+
+    If Nz(Me.txtVerifAlt, 0) = 0 Then
+        MsgBox "Nenhuma alteração foi feita para salvar.", vbInformation, "Observações"
+        Exit Sub
+    End If
+
+    resposta = MsgBox("Deseja salvar as alterações nas observações?" & vbCrLf & vbCrLf & _
+                      "Esta ação não poderá ser desfeita.", _
+                      vbQuestion + vbYesNo, "Confirmar Salvamento")
+
+    If resposta = vbNo Then Exit Sub
+
+    resposta = MsgBox("TEM CERTEZA que deseja salvar as alterações?" & vbCrLf & vbCrLf & _
+                      "As informações serão gravadas permanentemente no banco de dados.", _
+                      vbExclamation + vbYesNo, "Última Confirmação")
+
+    If resposta = vbNo Then Exit Sub
+
+    strObservAdm = ObservacaoAdmParaSalvar(Nz(Me.txtObservAdm.Value, ""))
+    strObservSlc = Nz(Me.txtObservSlc.Value, "")
+
+    ' Salva Adm e Solic pelo ID_Cadastro
+    strSQL = "UPDATE TblEscGeral SET " & _
+             "Observacoes_Adm = '" & SQLTexto(strObservAdm) & "', " & _
+             "Observacoes_Slc = '" & SQLTexto(strObservSlc) & "' " & _
+             "WHERE ID_Cadastro = '" & SQLTexto(mstrIDCadastro) & "'"
+
+    CurrentDb.Execute strSQL, dbFailOnError
+
+    MsgBox "Observações salvas com sucesso!", vbInformation, "Sucesso"
+
+    Me.txtVerifAlt = 0
+    mstrObservAdmOriginal = Nz(Me.txtObservAdm.Value, "")
+    mstrObservSlcOriginal = Nz(Me.txtObservSlc.Value, "")
+
+    DoCmd.Close acForm, Me.Name
+
+    Exit Sub
+
+ErroSalvar:
+    Debug.Print "ERRO btnSalvar_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao salvar: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub btnCancelar_Click()
+    Dim resposta As Integer
+
+    Call VerificarAlteracoes
+
+    If Nz(Me.txtVerifAlt, 0) = 0 Then
+        DoCmd.Close acForm, Me.Name
+        Exit Sub
+    End If
+
+    resposta = MsgBox("Há alterações não salvas." & vbCrLf & vbCrLf & _
+                      "Deseja realmente cancelar e perder as alterações?", _
+                      vbExclamation + vbYesNo, "Confirmar Cancelamento")
+
+    If resposta = vbNo Then Exit Sub
+
+    resposta = MsgBox("TEM CERTEZA que deseja cancelar?" & vbCrLf & vbCrLf & _
+                      "Todas as alterações não salvas serão perdidas.", _
+                      vbExclamation + vbYesNo, "Última Confirmação")
+
+    If resposta = vbYes Then
+        DoCmd.Close acForm, Me.Name
+    End If
+End Sub
+
+Private Sub Form_Unload(Cancel As Integer)
+    Dim resposta As Integer
+
+    Call VerificarAlteracoes
+
+    If Nz(Me.txtVerifAlt, 0) = 0 Then Exit Sub
+
+    resposta = MsgBox("Há alterações não salvas." & vbCrLf & vbCrLf & _
+                      "Se fechar agora, as alterações serão perdidas." & vbCrLf & vbCrLf & _
+                      "Deseja fechar mesmo assim?", _
+                      vbExclamation + vbYesNo, "Alterações não salvas")
+
+    If resposta = vbNo Then
+        Cancel = True
+    End If
+End Sub
+
+Private Sub Form_KeyPress(KeyAscii As Integer)
+    If KeyAscii = 27 Then
+        KeyAscii = 0
+        Call btnCancelar_Click
+    End If
+End Sub
+
+Private Function SQLTexto(ByVal valor As Variant) As String
+    SQLTexto = Replace(Nz(valor, ""), "'", "''")
+End Function
+
+Private Function TextoObservacaoAdm(ByVal strMotivoReabertura As String, ByVal strObservAdm As String) As String
+    strMotivoReabertura = Trim(Nz(strMotivoReabertura, ""))
+    strObservAdm = Trim(Nz(strObservAdm, ""))
+    
+    If strMotivoReabertura <> "" Then
+        If strObservAdm <> "" Then
+            TextoObservacaoAdm = strMotivoReabertura & " || " & strObservAdm
+        Else
+            TextoObservacaoAdm = strMotivoReabertura
+        End If
+    Else
+        TextoObservacaoAdm = strObservAdm
+    End If
+End Function
+
+Private Function ObservacaoAdmParaSalvar(ByVal strValorTela As String) As String
+    Dim strPrefixo As String
+    
+    strValorTela = Nz(strValorTela, "")
+    strPrefixo = Trim(Nz(mstrMotivoReaberturaOriginal, ""))
+    
+    If strPrefixo <> "" Then
+        If Left(strValorTela, Len(strPrefixo & " || ")) = strPrefixo & " || " Then
+            ObservacaoAdmParaSalvar = Mid(strValorTela, Len(strPrefixo & " || ") + 1)
+            Exit Function
+        ElseIf strValorTela = strPrefixo Then
+            ObservacaoAdmParaSalvar = ""
+            Exit Function
+        End If
+    End If
+    
+    ObservacaoAdmParaSalvar = strValorTela
+End Function

@@ -1,0 +1,1273 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Pausar(ByVal segundos As Double)
+    Dim fim As Date
+    fim = DateAdd("s", segundos, Now)
+    Do While Now < fim
+        DoEvents
+    Loop
+End Sub
+
+Private Sub Form_Load()
+    On Error GoTo ErroLoad
+    
+    ' Carregar comboboxes
+    Call CarregarComboBoxes
+    Call CarregarComboBoxStatus
+    Call CarregarComboBoxNecessidade
+    
+    ' Configurar datas para o mês corrente
+    Dim dtPrimeiroDia As Date
+    Dim dtUltimoDia As Date
+    
+    dtPrimeiroDia = DateSerial(Year(Date), Month(Date), 1)
+    dtUltimoDia = DateSerial(Year(Date), Month(Date) + 1, 0)
+    
+    Me.txtDataInicial = Format(dtPrimeiroDia, "dd/mm/yyyy")
+    Me.txtDataFinal = Format(dtUltimoDia, "dd/mm/yyyy")
+    
+    Me.cboOPM = "Todas"
+    Me.cboTipoEscala = "Todas"
+    Me.cboStatus = "Todas"
+    Me.cboNecessidade = "Todas"
+    
+    ' Aguarda o subformulário carregar
+    Me.Refresh
+    DoEvents
+    Pausar 0.3
+    
+    ' Chama o filtro
+    Call AjustarAlturaSubformLinhaEscala
+    Call btnFiltrar_Click
+    Call VerificarFirebase
+    
+    Exit Sub
+    
+ErroLoad:
+    Debug.Print "Erro Form_Load frmEscalas: " & Err.Number & " - " & Err.Description
+    Resume Next
+End Sub
+
+Private Sub Form_Resize()
+    Call AjustarAlturaSubformLinhaEscala
+End Sub
+
+Private Sub AjustarAlturaSubformLinhaEscala()
+    On Error GoTo TrataErro
+    
+    Const MARGEM_INFERIOR_CM As Double = 5
+    Const TWIPS_POR_CM As Long = 567
+    Const ALTURA_MINIMA As Long = 2000
+    
+    Dim lngAltura As Long
+    Dim lngMargemInferior As Long
+    
+    If Me.CurrentView = 0 Then Exit Sub
+    If Me.InsideHeight <= 0 Then Exit Sub
+    
+    lngMargemInferior = CLng(MARGEM_INFERIOR_CM * TWIPS_POR_CM)
+    lngAltura = Me.InsideHeight - Me.sfrmLinhaEscala.Top - lngMargemInferior
+    
+    If lngAltura < ALTURA_MINIMA Then lngAltura = ALTURA_MINIMA
+    
+    If Not Me.sfrmLinhaEscala Is Nothing Then
+        Me.sfrmLinhaEscala.Height = lngAltura
+    End If
+    
+    Exit Sub
+    
+TrataErro:
+    Debug.Print "Erro frmEscalas.AjustarAlturaSubformLinhaEscala: " & Err.Number & " - " & Err.Description
+End Sub
+Private Sub btnFechar_Click()
+    DoCmd.Close acForm, Me.Name
+End Sub
+
+Private Sub VerificarFirebase()
+    Dim resultado As Integer
+    
+    ' Verifica se há SolicPendentes
+    resultado = VerificarSolicPendentes()
+    
+    Select Case resultado
+        Case -1  ' Erro na verificação (mas conexão ok)
+            Me.imgLightOn.Visible = False
+            Me.imgLightAlert.Visible = False
+            Me.imgLightOff.Visible = True
+            
+        Case 0  ' Sem dados
+            Me.imgLightOn.Visible = True
+            Me.imgLightAlert.Visible = False
+            Me.imgLightOff.Visible = False
+            
+        Case 1  ' Com dados
+            Me.imgLightOn.Visible = False
+            Me.imgLightAlert.Visible = True
+            Me.imgLightOff.Visible = False
+    End Select
+End Sub
+
+Private Sub btnLegendas_Click()
+    DoCmd.OpenForm "frmLegendas", , , , , acDialog
+End Sub
+
+Private Sub btnLinks_Click()
+    DoCmd.OpenForm "frmLinks", , , , , acDialog
+End Sub
+
+Private Sub btnMesCorrente_Click()
+    Dim dtPrimeiroDia As Date
+    Dim dtUltimoDia As Date
+    
+    dtPrimeiroDia = DateSerial(Year(Date), Month(Date), 1)
+    dtUltimoDia = DateSerial(Year(Date), Month(Date) + 1, 0)
+    
+    Me.cboOPM = "Todas"
+    Me.cboTipoEscala = "Todas"
+    Me.cboStatus = "Todas"
+    Me.cboNecessidade = "Todas"
+    Me.txtDataInicial = Format(dtPrimeiroDia, "dd/mm/yyyy")
+    Me.txtDataFinal = Format(dtUltimoDia, "dd/mm/yyyy")
+    
+    On Error Resume Next
+    Call btnFiltrar_Click
+    On Error GoTo 0
+End Sub
+
+Private Sub btnMesAnterior_Click()
+    On Error Resume Next
+    
+    Dim dtAtual As Date
+    Dim dtPrimeiroDia As Date
+    Dim dtUltimoDia As Date
+    Dim strOPM As String
+    Dim strTipo As String
+    Dim strStatus As String
+    Dim strNecessidade As String
+    
+    ' Preserva os filtros atuais
+    strOPM = Me.cboOPM
+    strTipo = Me.cboTipoEscala
+    strStatus = Me.cboStatus
+    strNecessidade = Me.cboNecessidade
+    
+    ' Pega a data atual
+    If IsDate(Me.txtDataInicial) Then
+        dtAtual = ConverterStringParaData(CStr(Me.txtDataInicial))
+    Else
+        dtAtual = Date
+    End If
+    
+    ' Vai para o mês anterior
+    dtPrimeiroDia = DateSerial(Year(dtAtual), Month(dtAtual) - 1, 1)
+    dtUltimoDia = DateSerial(Year(dtAtual), Month(dtAtual), 0)
+    
+    ' Atualiza os campos de data
+    Me.txtDataInicial = Format(dtPrimeiroDia, "dd/mm/yyyy")
+    Me.txtDataFinal = Format(dtUltimoDia, "dd/mm/yyyy")
+    
+    ' Restaura os filtros
+    Me.cboOPM = strOPM
+    Me.cboTipoEscala = strTipo
+    Me.cboStatus = strStatus
+    Me.cboNecessidade = strNecessidade
+    
+    Call btnFiltrar_Click
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub btnMesSeguinte_Click()
+    On Error Resume Next
+    
+    Dim dtAtual As Date
+    Dim dtPrimeiroDia As Date
+    Dim dtUltimoDia As Date
+    Dim strOPM As String
+    Dim strTipo As String
+    Dim strStatus As String
+    Dim strNecessidade As String
+    
+    ' Preserva os filtros atuais
+    strOPM = Me.cboOPM
+    strTipo = Me.cboTipoEscala
+    strStatus = Me.cboStatus
+    strNecessidade = Me.cboNecessidade
+    
+    ' Pega a data atual
+    If IsDate(Me.txtDataInicial) Then
+        dtAtual = ConverterStringParaData(CStr(Me.txtDataInicial))
+    Else
+        dtAtual = Date
+    End If
+    
+    ' Vai para o mês seguinte
+    dtPrimeiroDia = DateSerial(Year(dtAtual), Month(dtAtual) + 1, 1)
+    dtUltimoDia = DateSerial(Year(dtAtual), Month(dtAtual) + 2, 0)
+    
+    ' Restaura os filtros
+    Me.cboOPM = strOPM
+    Me.cboTipoEscala = strTipo
+    Me.cboStatus = strStatus
+    Me.cboNecessidade = strNecessidade
+    
+    ' Atualiza os campos de data
+    Me.txtDataInicial = Format(dtPrimeiroDia, "dd/mm/yyyy")
+    Me.txtDataFinal = Format(dtUltimoDia, "dd/mm/yyyy")
+        
+    Call btnFiltrar_Click
+    
+    On Error GoTo 0
+End Sub
+
+' ============================================
+' FUNÇÕES DE DATA
+' ============================================
+
+Private Sub btnDiaAnterior_Click()
+    On Error Resume Next
+    
+    Dim dtAtual As Date
+    Dim dtDia As Date
+    Dim strOPM As String
+    Dim strTipo As String
+    Dim strStatus As String
+    Dim strNecessidade As String
+    
+    ' Preserva os filtros atuais
+    strOPM = Me.cboOPM
+    strTipo = Me.cboTipoEscala
+    strStatus = Me.cboStatus
+    strNecessidade = Me.cboNecessidade
+    
+    ' Pega a data inicial atual
+    If Not IsNull(Me.txtDataInicial) And IsDateBrasileiro(CStr(Me.txtDataInicial)) Then
+        dtAtual = ConverterStringParaData(CStr(Me.txtDataInicial))
+    Else
+        dtAtual = Date
+    End If
+    
+    ' Vai para o dia anterior
+    dtDia = DateAdd("d", -1, dtAtual)
+    
+    ' Restaura os filtros
+    Me.cboOPM = strOPM
+    Me.cboTipoEscala = strTipo
+    Me.cboStatus = strStatus
+    Me.cboNecessidade = strNecessidade
+    
+    ' Atualiza as datas para filtrar somente esse dia
+    Me.txtDataInicial = Format(dtDia, "dd/mm/yyyy")
+    Me.txtDataFinal = Format(dtDia, "dd/mm/yyyy")
+    
+    Call btnFiltrar_Click
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub btnDiaCorrente_Click()
+    On Error Resume Next
+    
+    Dim dtDia As Date
+    Dim strOPM As String
+    Dim strTipo As String
+    Dim strStatus As String
+    Dim strNecessidade As String
+    
+    ' Preserva os filtros atuais
+    strOPM = Me.cboOPM
+    strTipo = Me.cboTipoEscala
+    strStatus = Me.cboStatus
+    strNecessidade = Me.cboNecessidade
+    
+    dtDia = Date
+    
+    ' Restaura os filtros
+    Me.cboOPM = strOPM
+    Me.cboTipoEscala = strTipo
+    Me.cboStatus = strStatus
+    Me.cboNecessidade = strNecessidade
+    
+    ' Atualiza as datas para filtrar somente hoje
+    Me.txtDataInicial = Format(dtDia, "dd/mm/yyyy")
+    Me.txtDataFinal = Format(dtDia, "dd/mm/yyyy")
+    
+    Call btnFiltrar_Click
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub btnDiaSeguinte_Click()
+    On Error Resume Next
+    
+    Dim dtAtual As Date
+    Dim dtDia As Date
+    Dim strOPM As String
+    Dim strTipo As String
+    Dim strStatus As String
+    Dim strNecessidade As String
+    
+    ' Preserva os filtros atuais
+    strOPM = Me.cboOPM
+    strTipo = Me.cboTipoEscala
+    strStatus = Me.cboStatus
+    strNecessidade = Me.cboNecessidade
+    
+    ' Pega a data inicial atual
+    If Not IsNull(Me.txtDataInicial) And IsDateBrasileiro(CStr(Me.txtDataInicial)) Then
+        dtAtual = ConverterStringParaData(CStr(Me.txtDataInicial))
+    Else
+        dtAtual = Date
+    End If
+    
+    ' Vai para o dia seguinte
+    dtDia = DateAdd("d", 1, dtAtual)
+    
+    ' Restaura os filtros
+    Me.cboOPM = strOPM
+    Me.cboTipoEscala = strTipo
+    Me.cboStatus = strStatus
+    Me.cboNecessidade = strNecessidade
+    
+    ' Atualiza as datas para filtrar somente esse dia
+    Me.txtDataInicial = Format(dtDia, "dd/mm/yyyy")
+    Me.txtDataFinal = Format(dtDia, "dd/mm/yyyy")
+    
+    Call btnFiltrar_Click
+    
+    On Error GoTo 0
+End Sub
+
+Private Function ConverterStringParaData(ByVal strData As String) As Date
+    Dim partes() As String
+    Dim dia As Integer
+    Dim mes As Integer
+    Dim ano As Integer
+    
+    If strData = "" Then Exit Function
+    
+    partes = Split(strData, "/")
+    
+    If UBound(partes) = 2 Then
+        dia = CInt(partes(0))
+        mes = CInt(partes(1))
+        ano = CInt(partes(2))
+        ConverterStringParaData = DateSerial(ano, mes, dia)
+    End If
+End Function
+
+Private Function IsDateBrasileiro(ByVal strData As String) As Boolean
+    Dim partes() As String
+    Dim dia As Integer
+    Dim mes As Integer
+    Dim ano As Integer
+    
+    If strData = "" Then
+        IsDateBrasileiro = False
+        Exit Function
+    End If
+    
+    If Not strData Like "##/##/####" Then
+        IsDateBrasileiro = False
+        Exit Function
+    End If
+    
+    partes = Split(strData, "/")
+    
+    If UBound(partes) = 2 Then
+        dia = CInt(partes(0))
+        mes = CInt(partes(1))
+        ano = CInt(partes(2))
+        
+        If mes >= 1 And mes <= 12 And dia >= 1 And dia <= DiaNoMes(mes, ano) Then
+            IsDateBrasileiro = True
+        Else
+            IsDateBrasileiro = False
+        End If
+    Else
+        IsDateBrasileiro = False
+    End If
+End Function
+
+Private Function DiaNoMes(ByVal mes As Integer, ByVal ano As Integer) As Integer
+    Select Case mes
+        Case 1, 3, 5, 7, 8, 10, 12
+            DiaNoMes = 31
+        Case 4, 6, 9, 11
+            DiaNoMes = 30
+        Case 2
+            If (ano Mod 4 = 0 And ano Mod 100 <> 0) Or (ano Mod 400 = 0) Then
+                DiaNoMes = 29
+            Else
+                DiaNoMes = 28
+            End If
+    End Select
+End Function
+
+Private Function CondicaoDataString(ByVal vDataInicio As Variant, ByVal vDataFim As Variant) As String
+    Dim dtInicio As Date
+    Dim dtFim As Date
+    Dim strCondicao As String
+    Dim blnInicio As Boolean
+    Dim blnFim As Boolean
+    
+    ' Verifica data inicial
+    If Not IsNull(vDataInicio) And vDataInicio <> "" Then
+        If IsDateBrasileiro(CStr(vDataInicio)) Then
+            dtInicio = ConverterStringParaData(CStr(vDataInicio))
+            blnInicio = True
+        End If
+    End If
+    
+    ' Verifica data final
+    If Not IsNull(vDataFim) And vDataFim <> "" Then
+        If IsDateBrasileiro(CStr(vDataFim)) Then
+            dtFim = ConverterStringParaData(CStr(vDataFim))
+            blnFim = True
+        End If
+    End If
+    
+    ' Constrói a condição
+    If blnInicio And blnFim Then
+        strCondicao = "Data_Esc >= #" & Format(dtInicio, "yyyy-mm-dd") & "#" & _
+                      " AND Data_Esc <= #" & Format(dtFim, "yyyy-mm-dd") & "#"
+    ElseIf blnInicio Then
+        strCondicao = "Data_Esc >= #" & Format(dtInicio, "yyyy-mm-dd") & "#"
+    ElseIf blnFim Then
+        strCondicao = "Data_Esc <= #" & Format(dtFim, "yyyy-mm-dd") & "#"
+    End If
+    
+    CondicaoDataString = strCondicao
+End Function
+
+' ============================================
+' VALIDAÇÃO DAS DATAS
+' ============================================
+
+Private Sub txtDataInicial_AfterUpdate()
+    Dim strValor As String
+    strValor = Trim(Nz(Me.txtDataInicial, ""))
+    
+    If strValor <> "" Then
+        If IsDateBrasileiro(strValor) Then
+            Dim dt As Date
+            dt = ConverterStringParaData(strValor)
+            Me.txtDataInicial = Format(dt, "dd/mm/yyyy")
+        Else
+            MsgBox "Data inválida. Use o formato dd/mm/aaaa (exemplo: 31/12/2026)", vbExclamation
+            Me.txtDataInicial = ""
+        End If
+    End If
+End Sub
+
+Private Sub txtDataFinal_AfterUpdate()
+    Dim strValor As String
+    strValor = Trim(Nz(Me.txtDataFinal, ""))
+    
+    If strValor <> "" Then
+        If IsDateBrasileiro(strValor) Then
+            Dim dt As Date
+            dt = ConverterStringParaData(strValor)
+            Me.txtDataFinal = Format(dt, "dd/mm/yyyy")
+        Else
+            MsgBox "Data inválida. Use o formato dd/mm/aaaa (exemplo: 31/12/2026)", vbExclamation
+            Me.txtDataFinal = ""
+            Exit Sub
+        End If
+    End If
+    
+    ' Valida se data final é >= data inicial
+    Dim strInicio As String
+    Dim strFim As String
+    strInicio = Trim(Nz(Me.txtDataInicial, ""))
+    strFim = Trim(Nz(Me.txtDataFinal, ""))
+    
+    If strInicio <> "" And strFim <> "" Then
+        If IsDateBrasileiro(strInicio) And IsDateBrasileiro(strFim) Then
+            Dim dtInicio As Date
+            Dim dtFim As Date
+            
+            dtInicio = ConverterStringParaData(strInicio)
+            dtFim = ConverterStringParaData(strFim)
+            
+            If dtFim < dtInicio Then
+                MsgBox "A data final não pode ser menor que a data inicial.", vbExclamation
+                Me.txtDataFinal = ""
+                Me.txtDataFinal.SetFocus
+            End If
+        End If
+    End If
+End Sub
+
+' ============================================
+' CARREGAR COMBOBOXES
+' ============================================
+
+Private Sub CarregarComboBoxes()
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strLista As String
+    
+    ' ============================================
+    ' ComboBox de OPM com ordenação personalizada
+    ' ============================================
+    strLista = "Todas;"
+    
+    Set db = CurrentDb
+    
+    Dim strSQL As String
+    strSQL = "SELECT OPM, LOCAL FROM TblOPM_Nome " & _
+             "ORDER BY IIf(Mid(OPM, 6, 1) = '9', 0, 1), OPM"
+    
+    Set rs = db.OpenRecordset(strSQL)
+    
+    Do While Not rs.EOF
+        strLista = strLista & rs!LOCAL & ";"
+        rs.MoveNext
+    Loop
+    
+    rs.Close
+    
+    ' Remove o último ponto e vírgula
+    If Right(strLista, 1) = ";" Then
+        strLista = Left(strLista, Len(strLista) - 1)
+    End If
+    
+    Me.cboOPM.RowSourceType = "Value List"
+    Me.cboOPM.RowSource = strLista
+    
+    ' ============================================
+    ' ComboBox de Tipo Escala
+    ' ============================================
+    strLista = "Todas;"
+    
+    Set rs = db.OpenRecordset("SELECT Composicao_Nome FROM TblComposicao_Nome ORDER BY Composicao_Nome")
+    
+    Do While Not rs.EOF
+        strLista = strLista & rs!Composicao_Nome & ";"
+        rs.MoveNext
+    Loop
+    
+    rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    
+    If Right(strLista, 1) = ";" Then
+        strLista = Left(strLista, Len(strLista) - 1)
+    End If
+    
+    Me.cboTipoEscala.RowSourceType = "Value List"
+    Me.cboTipoEscala.RowSource = strLista
+End Sub
+
+' ============================================
+' CARREGAR COMBOBOX STATUS
+' ============================================
+
+Private Sub CarregarComboBoxStatus()
+    ' Carrega as opções do combobox Status
+    Dim strLista As String
+    
+    strLista = "Todas;Aprovadas;Canceladas;Cadastradas;Montadas;Pagas;Aguardando"
+    
+    Me.cboStatus.RowSourceType = "Value List"
+    Me.cboStatus.RowSource = strLista
+    Me.cboStatus = "Todas"
+End Sub
+
+Private Sub CarregarComboBoxNecessidade()
+    Dim strLista As String
+    
+    strLista = "Todas;Viatura extra;Mínimo operacional;Vistoria técnica"
+    
+    Me.cboNecessidade.RowSourceType = "Value List"
+    Me.cboNecessidade.RowSource = strLista
+    Me.cboNecessidade = "Todas"
+End Sub
+
+' ============================================
+' FUNÇÃO PARA CONVERTER STATUS PARA TEXTO
+' ============================================
+
+Private Function StatusParaTexto(strStatus As String) As String
+    Select Case strStatus
+        Case "Aprovadas"
+            StatusParaTexto = "1"
+        Case "Canceladas"
+            StatusParaTexto = "2"
+        Case "Cadastradas"
+            StatusParaTexto = "3"
+        Case "Montadas"
+            StatusParaTexto = "4"
+        Case "Pagas"
+            StatusParaTexto = "5"
+        Case "Aguardando"
+            StatusParaTexto = "6"
+        Case Else
+            StatusParaTexto = ""
+    End Select
+End Function
+
+Private Function NecessidadeParaValorFirebase(ByVal strNecessidade As String) As String
+    Select Case strNecessidade
+        Case "Viatura extra"
+            NecessidadeParaValorFirebase = "viatura_extra"
+        Case "Mínimo operacional"
+            NecessidadeParaValorFirebase = "minimo_operacional"
+        Case "Vistoria técnica"
+            NecessidadeParaValorFirebase = "vistoria_tecnica"
+        Case Else
+            NecessidadeParaValorFirebase = ""
+    End Select
+End Function
+
+' ============================================
+' EVENTO DO COMBOBOX STATUS
+' ============================================
+
+Private Sub cboStatus_AfterUpdate()
+    ' Aplica o filtro quando o status é alterado
+    Call btnFiltrar_Click
+End Sub
+
+Private Sub cboNecessidade_AfterUpdate()
+    Call btnFiltrar_Click
+End Sub
+' ============================================
+' CARREGAR ESCALAS
+' ============================================
+
+Private Sub CarregarTodasEscalas()
+    On Error Resume Next
+    
+    Dim frm As Object
+    
+    ' Tenta obter o subformulário de diferentes maneiras
+    Set frm = Me.sfrmLinhaEscala.Form
+    
+    If frm Is Nothing Then
+        ' Tenta via controle
+        If Not Me.sfrmLinhaEscala Is Nothing Then
+            Set frm = Me.sfrmLinhaEscala.Form
+        End If
+    End If
+    
+    If Not frm Is Nothing Then
+        frm.AplicarFiltro "", ""
+    Else
+        Debug.Print "Erro: Não foi possível acessar o subformulário sfrmLinhaEscala"
+    End If
+    
+    On Error GoTo 0
+End Sub
+
+' ============================================
+' FILTRAR ESCALAS
+' ============================================
+
+Public Sub btnFiltrar_Click()
+    On Error GoTo ErroFiltrar
+    
+    Dim strFiltro As String
+    Dim frm As Form
+    
+    strFiltro = FiltroAtualEscalas()
+    
+    ' Verifica se o subformulário está carregado
+    If Not Me.sfrmLinhaEscala.Form Is Nothing Then
+        Set frm = Me.sfrmLinhaEscala.Form
+        frm.AplicarFiltro strFiltro, ""
+        Call AtualizarTotaisFiltroAtual
+    Else
+        Call LimparTotaisFiltroAtual
+    End If
+    
+    Exit Sub
+    
+ErroFiltrar:
+    MsgBox "Erro " & Err.Number & " ao filtrar frmEscalas: " & Err.Description, vbCritical
+End Sub
+
+Private Function FiltroAtualEscalas() As String
+    Dim strWhere As String
+    Dim strCondicaoData As String
+    Dim strStatus As String
+    Dim strNecessidade As String
+    
+    If Not IsNull(Me.cboOPM) And Me.cboOPM <> "" And Me.cboOPM <> "Todas" Then
+        strWhere = strWhere & " AND OPM_Nome = '" & Replace(Me.cboOPM, "'", "''") & "'"
+    End If
+    
+    If Not IsNull(Me.cboTipoEscala) And Me.cboTipoEscala <> "" And Me.cboTipoEscala <> "Todas" Then
+        strWhere = strWhere & " AND Composicao_Nome = '" & Replace(Me.cboTipoEscala, "'", "''") & "'"
+    End If
+
+    If Not IsNull(Me.cboNecessidade) And Me.cboNecessidade <> "" And Me.cboNecessidade <> "Todas" Then
+        strNecessidade = NecessidadeParaValorFirebase(CStr(Me.cboNecessidade))
+        If strNecessidade <> "" Then
+            strWhere = strWhere & " AND Necessidade = '" & Replace(strNecessidade, "'", "''") & "'"
+        End If
+    End If
+    
+    If Not IsNull(Me.cboStatus) And Me.cboStatus <> "" And Me.cboStatus <> "Todas" Then
+        strStatus = StatusParaTexto(Me.cboStatus)
+        If strStatus <> "" Then
+            strWhere = strWhere & " AND Status_Adm = '" & strStatus & "'"
+        End If
+    End If
+    
+    strCondicaoData = CondicaoDataString(Me.txtDataInicial, Me.txtDataFinal)
+    
+    If strCondicaoData <> "" Then
+        strWhere = strWhere & " AND " & strCondicaoData
+    End If
+    
+    If strWhere <> "" Then
+        FiltroAtualEscalas = Mid(strWhere, 6)
+    Else
+        FiltroAtualEscalas = ""
+    End If
+End Function
+
+Private Sub AtualizarTotaisFiltroAtual()
+    On Error GoTo ErroTotais
+
+    Dim frm As Form
+    Dim rs As DAO.Recordset
+    Dim lngAtzTotSup As Long
+    Dim lngAtzTotCap As Long
+    Dim lngAtzTotTen As Long
+    Dim lngAtzTotSgt As Long
+    Dim lngAtzTotCbSd As Long
+    Dim lngEscTotSup As Long
+    Dim lngEscTotCap As Long
+    Dim lngEscTotTen As Long
+    Dim lngEscTotSgt As Long
+    Dim lngEscTotCbSd As Long
+    Dim lngUtilOfic As Long
+    Dim lngUtilPrac As Long
+    Dim lngPrevOfic As Long
+    Dim lngPrevPrac As Long
+    Dim lngDistOfic As Long
+    Dim lngDistPrac As Long
+    Dim lngSobrPrevOfic As Long
+    Dim lngSobrPrevPrac As Long
+    Dim lngSobrUtilOfic As Long
+    Dim lngSobrUtilPrac As Long
+    Dim lngStatus(1 To 7) As Long
+    Dim lngStatusAdm As Long
+
+    If Me.sfrmLinhaEscala.Form Is Nothing Then
+        Call LimparTotaisFiltroAtual
+        Exit Sub
+    End If
+
+    Set frm = Me.sfrmLinhaEscala.Form
+    Set rs = frm.RecordsetClone
+
+    If rs.EOF And rs.BOF Then
+        Call LimparTotaisFiltroAtual
+        Call SomarDistribuicaoFiltroAtual(lngDistOfic, lngDistPrac)
+        Call DefinirCaptionSeExiste("lblDistOfic", CStr(lngDistOfic))
+        Call DefinirCaptionSeExiste("lblDistPrac", CStr(lngDistPrac))
+        Call DefinirCaptionSeExiste("lblSobrPrevOfic", CStr(lngDistOfic))
+        Call DefinirCaptionSeExiste("lblSobrPrevPrac", CStr(lngDistPrac))
+        Call DefinirCaptionSeExiste("lblSobrUtilOfic", CStr(lngDistOfic))
+        Call DefinirCaptionSeExiste("lblSobrUtilPrac", CStr(lngDistPrac))
+        GoTo Sair
+    End If
+
+    rs.MoveFirst
+    Do While Not rs.EOF
+        lngAtzTotSup = lngAtzTotSup + CLng(Nz(rs!Atz_Superior, 0))
+        lngAtzTotCap = lngAtzTotCap + CLng(Nz(rs!Atz_Intermed, 0))
+        lngAtzTotTen = lngAtzTotTen + CLng(Nz(rs!Atz_Subalterno, 0))
+        lngAtzTotSgt = lngAtzTotSgt + CLng(Nz(rs!Atz_Subten_Sgt, 0))
+        lngAtzTotCbSd = lngAtzTotCbSd + CLng(Nz(rs!Atz_Cb_Sd, 0))
+        
+        lngEscTotSup = lngEscTotSup + CLng(Nz(rs!Esc_Superior, 0))
+        lngEscTotCap = lngEscTotCap + CLng(Nz(rs!Esc_Intermed, 0))
+        lngEscTotTen = lngEscTotTen + CLng(Nz(rs!Esc_Subalterno, 0))
+        lngEscTotSgt = lngEscTotSgt + CLng(Nz(rs!Esc_Subten_Sgt, 0))
+        lngEscTotCbSd = lngEscTotCbSd + CLng(Nz(rs!Esc_Cb_Sd, 0))
+        lngUtilOfic = lngUtilOfic + CLng(Nz(rs!Esc_Superior, 0)) + CLng(Nz(rs!Esc_Intermed, 0)) + CLng(Nz(rs!Esc_Subalterno, 0))
+        lngUtilPrac = lngUtilPrac + CLng(Nz(rs!Esc_Subten_Sgt, 0)) + CLng(Nz(rs!Esc_Cb_Sd, 0))
+
+        lngStatusAdm = CLng(Val(Nz(rs!Status_Adm, 0)))
+        If lngStatusAdm <> 2 Then
+            lngPrevOfic = lngPrevOfic + CLng(Nz(rs!Atz_Superior, 0)) + CLng(Nz(rs!Atz_Intermed, 0)) + CLng(Nz(rs!Atz_Subalterno, 0))
+            lngPrevPrac = lngPrevPrac + CLng(Nz(rs!Atz_Subten_Sgt, 0)) + CLng(Nz(rs!Atz_Cb_Sd, 0))
+        End If
+
+        If lngStatusAdm >= 1 And lngStatusAdm <= 7 Then
+            lngStatus(lngStatusAdm) = lngStatus(lngStatusAdm) + 1
+        End If
+
+        rs.MoveNext
+    Loop
+
+    Call SomarDistribuicaoFiltroAtual(lngDistOfic, lngDistPrac)
+    lngSobrPrevOfic = lngDistOfic - lngPrevOfic
+    lngSobrPrevPrac = lngDistPrac - lngPrevPrac
+    lngSobrUtilOfic = lngDistOfic - lngUtilOfic
+    lngSobrUtilPrac = lngDistPrac - lngUtilPrac
+
+    Call DefinirCaptionSeExiste("lblAtzTotSup", CStr(lngAtzTotSup))
+    Call DefinirCaptionSeExiste("lblAtzTotCap", CStr(lngAtzTotCap))
+    Call DefinirCaptionSeExiste("lblAtzTotTen", CStr(lngAtzTotTen))
+    Call DefinirCaptionSeExiste("lblAtzTotSgt", CStr(lngAtzTotSgt))
+    Call DefinirCaptionSeExiste("lblAtzTotCbSd", CStr(lngAtzTotCbSd))
+    Call DefinirCaptionSeExiste("lblEscTotSup", CStr(lngEscTotSup))
+    Call DefinirCaptionSeExiste("lblEscTotCap", CStr(lngEscTotCap))
+    Call DefinirCaptionSeExiste("lblEscTotTen", CStr(lngEscTotTen))
+    Call DefinirCaptionSeExiste("lblEscTotSgt", CStr(lngEscTotSgt))
+    Call DefinirCaptionSeExiste("lblEscTotCbSd", CStr(lngEscTotCbSd))
+    Call DefinirCaptionSeExiste("lblAtzTotOf", CStr(lngAtzTotSup + lngAtzTotCap + lngAtzTotTen))
+    Call DefinirCaptionSeExiste("lblEscTotOf", CStr(lngEscTotSup + lngEscTotCap + lngEscTotTen))
+    Call DefinirCaptionSeExiste("lblAtzTotPr", CStr(lngAtzTotSgt + lngAtzTotCbSd))
+    Call DefinirCaptionSeExiste("lblEscTotPr", CStr(lngEscTotSgt + lngEscTotCbSd))
+    Call DefinirCaptionSeExiste("lblUtilOfic", CStr(lngUtilOfic))
+    Call DefinirCaptionSeExiste("lblUtilPrac", CStr(lngUtilPrac))
+    Call DefinirCaptionSeExiste("lblPrevOfic", CStr(lngPrevOfic))
+    Call DefinirCaptionSeExiste("lblPrevPrac", CStr(lngPrevPrac))
+    Call DefinirCaptionSeExiste("lblDistOfic", CStr(lngDistOfic))
+    Call DefinirCaptionSeExiste("lblDistPrac", CStr(lngDistPrac))
+    Call DefinirCaptionSeExiste("lblSobrPrevOfic", CStr(lngSobrPrevOfic))
+    Call DefinirCaptionSeExiste("lblSobrPrevPrac", CStr(lngSobrPrevPrac))
+    Call DefinirCaptionSeExiste("lblSobrUtilOfic", CStr(lngSobrUtilOfic))
+    Call DefinirCaptionSeExiste("lblSobrUtilPrac", CStr(lngSobrUtilPrac))
+
+    Call DefinirCaptionSeExiste("lblStatus1", CStr(lngStatus(1)))
+    Call DefinirCaptionSeExiste("lblStatus2", CStr(lngStatus(2)))
+    Call DefinirCaptionSeExiste("lblStatus3", CStr(lngStatus(3)))
+    Call DefinirCaptionSeExiste("lblStatus4", CStr(lngStatus(4)))
+    Call DefinirCaptionSeExiste("lblStatus5", CStr(lngStatus(5)))
+    Call DefinirCaptionSeExiste("lblStatus6", CStr(lngStatus(6)))
+    Call DefinirCaptionSeExiste("lblStatus7", CStr(lngStatus(7)))
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set frm = Nothing
+    On Error GoTo 0
+    Exit Sub
+
+ErroTotais:
+    Debug.Print "Erro frmEscalas.AtualizarTotaisFiltroAtual: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub SomarDistribuicaoFiltroAtual(ByRef lngDistOfic As Long, ByRef lngDistPrac As Long)
+    On Error GoTo ErroDistribuicao
+
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim dtInicial As Date
+    Dim dtFinalExclusiva As Date
+    Dim lngSinal As Long
+
+    lngDistOfic = 0
+    lngDistPrac = 0
+
+    Call ObterPeriodoMensalDistribuicao(dtInicial, dtFinalExclusiva)
+
+    strSQL = "SELECT Operacao_Matematica, Qtde_Oficiais, Qtde_Pracas " & _
+             "FROM TblDistribuicao " & _
+             "WHERE Mes_Referencia >= " & SQLDataFrmEscalas(dtInicial) & " " & _
+             "AND Mes_Referencia < " & SQLDataFrmEscalas(dtFinalExclusiva)
+
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+
+    Do While Not rs.EOF
+        If Nz(rs!Operacao_Matematica, "") = "Subtrair" Then
+            lngSinal = -1
+        Else
+            lngSinal = 1
+        End If
+
+        lngDistOfic = lngDistOfic + (CLng(Nz(rs!Qtde_Oficiais, 0)) * lngSinal)
+        lngDistPrac = lngDistPrac + (CLng(Nz(rs!Qtde_Pracas, 0)) * lngSinal)
+
+        rs.MoveNext
+    Loop
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    On Error GoTo 0
+    Exit Sub
+
+ErroDistribuicao:
+    Debug.Print "Erro frmEscalas.SomarDistribuicaoFiltroAtual: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub ObterPeriodoMensalDistribuicao(ByRef dtInicial As Date, ByRef dtFinalExclusiva As Date)
+    Dim dtBaseIni As Date
+    Dim dtBaseFim As Date
+
+    If Not IsNull(Me.txtDataInicial) And IsDateBrasileiro(CStr(Me.txtDataInicial)) Then
+        dtBaseIni = ConverterStringParaData(CStr(Me.txtDataInicial))
+    Else
+        dtBaseIni = Date
+    End If
+
+    If Not IsNull(Me.txtDataFinal) And IsDateBrasileiro(CStr(Me.txtDataFinal)) Then
+        dtBaseFim = ConverterStringParaData(CStr(Me.txtDataFinal))
+    Else
+        dtBaseFim = dtBaseIni
+    End If
+
+    If dtBaseFim < dtBaseIni Then
+        dtBaseFim = dtBaseIni
+    End If
+
+    dtInicial = DateSerial(Year(dtBaseIni), Month(dtBaseIni), 1)
+    dtFinalExclusiva = DateSerial(Year(dtBaseFim), Month(dtBaseFim) + 1, 1)
+End Sub
+
+Private Function SQLDataFrmEscalas(ByVal v As Variant) As String
+    If IsDate(v) Then
+        SQLDataFrmEscalas = "#" & Format(CDate(v), "yyyy-mm-dd") & "#"
+    Else
+        SQLDataFrmEscalas = "Null"
+    End If
+End Function
+
+Private Sub LimparTotaisFiltroAtual()
+    On Error Resume Next
+
+    Call DefinirCaptionSeExiste("lblAtzTotSup", "0")
+    Call DefinirCaptionSeExiste("lblAtzTotCap", "0")
+    Call DefinirCaptionSeExiste("lblAtzTotTen", "0")
+    Call DefinirCaptionSeExiste("lblAtzTotSgt", "0")
+    Call DefinirCaptionSeExiste("lblAtzTotCbSd", "0")
+    Call DefinirCaptionSeExiste("lblEscTotSup", "0")
+    Call DefinirCaptionSeExiste("lblEscTotCap", "0")
+    Call DefinirCaptionSeExiste("lblEscTotTen", "0")
+    Call DefinirCaptionSeExiste("lblEscTotSgt", "0")
+    Call DefinirCaptionSeExiste("lblEscTotCbSd", "0")
+    Call DefinirCaptionSeExiste("lblAtzTotOf", "0")
+    Call DefinirCaptionSeExiste("lblEscTotOf", "0")
+    Call DefinirCaptionSeExiste("lblAtzTotPr", "0")
+    Call DefinirCaptionSeExiste("lblEscTotPr", "0")
+    Call DefinirCaptionSeExiste("lblUtilOfic", "0")
+    Call DefinirCaptionSeExiste("lblUtilPrac", "0")
+    Call DefinirCaptionSeExiste("lblPrevOfic", "0")
+    Call DefinirCaptionSeExiste("lblPrevPrac", "0")
+    Call DefinirCaptionSeExiste("lblDistOfic", "0")
+    Call DefinirCaptionSeExiste("lblDistPrac", "0")
+    Call DefinirCaptionSeExiste("lblSobrPrevOfic", "0")
+    Call DefinirCaptionSeExiste("lblSobrPrevPrac", "0")
+    Call DefinirCaptionSeExiste("lblSobrUtilOfic", "0")
+    Call DefinirCaptionSeExiste("lblSobrUtilPrac", "0")
+
+    Call DefinirCaptionSeExiste("lblStatus1", "0")
+    Call DefinirCaptionSeExiste("lblStatus2", "0")
+    Call DefinirCaptionSeExiste("lblStatus3", "0")
+    Call DefinirCaptionSeExiste("lblStatus4", "0")
+    Call DefinirCaptionSeExiste("lblStatus5", "0")
+    Call DefinirCaptionSeExiste("lblStatus6", "0")
+    Call DefinirCaptionSeExiste("lblStatus7", "0")
+
+    On Error GoTo 0
+End Sub
+
+Private Sub DefinirCaptionSeExiste(ByVal strControle As String, ByVal strValor As String)
+    On Error Resume Next
+    Me.Controls(strControle).Caption = strValor
+    If Err.Number <> 0 Then
+        Err.Clear
+        Me.Controls(strControle).Value = strValor
+    End If
+    On Error GoTo 0
+End Sub
+
+' ============================================
+' LIMPAR FILTROS
+' ============================================
+
+Private Sub btnLimparFiltros_Click()
+    On Error Resume Next
+    
+    ' Limpa todos os filtros
+    Me.cboOPM = "Todas"
+    Me.cboTipoEscala = "Todas"
+    Me.cboStatus = "Todas"
+    Me.cboNecessidade = "Todas"
+    Me.txtDataInicial = ""
+    Me.txtDataFinal = ""
+    Me.txtPesquisa = ""
+    
+    ' Recarrega as escalas do mês corrente
+    Call btnMesCorrente_Click
+    
+    On Error GoTo 0
+End Sub
+
+' ============================================
+' BOTÕES DE AÇÃO
+' ============================================
+
+Private Sub btnAtualizarExcelStatus_Click()
+    Dim colIDs As Collection
+    
+    Set colIDs = IDsCadastroFiltradosSubform()
+    
+    If colIDs.Count = 0 Then
+        MsgBox "Nenhuma escala filtrada com ID_Cadastro preenchido foi encontrada.", _
+               vbInformation, "Atualizar Excel Status"
+        Exit Sub
+    End If
+    
+    Call AtualizarStatusEscalasExcelDefinitivo(colIDs)
+    Call btnFiltrar_Click
+End Sub
+
+Private Function IDsCadastroFiltradosSubform() As Collection
+    Dim col As New Collection
+    Dim dict As Object
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strFiltro As String
+    Dim strIDCadastro As String
+    
+    On Error GoTo Erro
+    
+    Set dict = CreateObject("Scripting.Dictionary")
+    
+    strFiltro = FiltroAtualEscalas()
+    strSQL = "SELECT ID_Cadastro FROM qryEscalaGeral " & _
+             "WHERE ID_Cadastro Is Not Null AND ID_Cadastro <> ''"
+    
+    If strFiltro <> "" Then
+        strSQL = strSQL & " AND " & strFiltro
+    End If
+    
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    If rs.BOF And rs.EOF Then
+        Set IDsCadastroFiltradosSubform = col
+        GoTo Sair
+    End If
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        strIDCadastro = Trim(Nz(rs!ID_Cadastro, ""))
+        
+        If strIDCadastro <> "" Then
+            If Not dict.Exists(strIDCadastro) Then
+                dict.Add strIDCadastro, True
+                col.Add strIDCadastro
+            End If
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    Set IDsCadastroFiltradosSubform = col
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Set dict = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmEscalas.IDsCadastroFiltradosSubform: " & Err.Number & " - " & Err.Description
+    Set IDsCadastroFiltradosSubform = col
+    Resume Sair
+End Function
+
+Private Sub btnAtualizarExcelEscal_Click()
+    Call ImportarMilitaresEscaladosExcel2026
+    Call btnFiltrar_Click
+End Sub
+
+Private Sub btnAtualizarExcelAusent_Click()
+    Call ImportarAusenciasExcel2026
+    Call btnFiltrar_Click
+End Sub
+
+Private Sub btnAtualizarOnline_Click()
+    Call VerificarFirebase
+    MsgBox "Status de pendência de solicitações atualizado."
+End Sub
+
+Private Sub btnVerDetalhes_Click()
+    Dim strID As String
+    strID = Trim(Nz(Me.txtEscalaSelecionada, ""))
+    
+    If strID = "" Then
+        MsgBox "Selecione uma escala clicando nela na lista.", vbExclamation
+        Exit Sub
+    End If
+    
+    DoCmd.OpenForm "frmDetalhesEscala", , , "ID_Escala = '" & strID & "'"
+End Sub
+
+Private Sub btnExportar_Click()
+    Dim strID As String
+    strID = Trim(Nz(Me.txtEscalaSelecionada, ""))
+    
+    If strID = "" Then
+        MsgBox "Selecione uma escala primeiro.", vbExclamation
+        Exit Sub
+    End If
+    
+    MsgBox "Exportando escala: " & strID, vbInformation
+End Sub
+
+Private Sub btnCadastrar_Click()
+    On Error Resume Next
+    DoCmd.OpenForm "frmCadastrar", , , , , acDialog
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    Call btnFiltrar_Click
+    On Error GoTo 0
+End Sub
+
+Private Sub btnAlterar_Click()
+    On Error Resume Next
+    DoCmd.OpenForm "frmAlterar", , , , , acDialog
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    Call btnFiltrar_Click
+    On Error GoTo 0
+End Sub
+
+Private Sub btnMontar_Click()
+    Call MontarEscalasFiltradasIntranet
+End Sub
+
+Private Sub btnPagar_Click()
+    Call IniciarPagamentoEscalasFiltradas
+End Sub
+
+Private Sub btnRemover_Click()
+    DoCmd.OpenForm "frmRemoveSelID", , , , , acDialog
+End Sub
+
+Private Sub btnPesquisar_Click()
+    Dim strPesquisa As String
+    
+    strPesquisa = Trim(Nz(Me.txtPesquisa, ""))
+    
+    If strPesquisa = "" Then
+        MsgBox "Informe um valor para pesquisar.", vbExclamation, "Pesquisar"
+        Me.txtPesquisa.SetFocus
+        Exit Sub
+    End If
+    
+    DoCmd.OpenForm "frmPesquisar", , , , , acDialog, strPesquisa
+End Sub
+
+Private Sub btnImportarSolicitacoes_Click()
+    Dim resposta As Integer
+    Dim respPendentes As FirebaseResponse
+    Dim strMensagem As String
+    Dim lngPendentes As Long
+    Dim db As DAO.Database
+    Dim strSQL As String
+    
+    ' Verifica se há solicitações pendentes
+    respPendentes = BuscarDadosFirebase("SolicPendentes")
+    
+    If Not respPendentes.Success Then
+        MsgBox "Erro ao verificar solicitações pendentes.", vbCritical
+        Exit Sub
+    End If
+    
+    ' Se não há dados pendentes, avisa e sai
+    If respPendentes.ResponseText = "null" Or respPendentes.ResponseText = "" Then
+        MsgBox "Não há solicitações pendentes para importar." & vbCrLf & _
+               "O sistema está atualizado.", vbInformation
+        Exit Sub
+    End If
+    
+    ' Conta quantos IDs existem no JSON de SolicPendentes
+    lngPendentes = ContarRegistrosPendentes(respPendentes.ResponseText)
+    
+    ' Se não conseguiu contar, usa 1 como fallback
+    If lngPendentes = 0 Then
+        lngPendentes = 1
+    End If
+    
+    ' Mensagem de confirmação com detalhes
+    strMensagem = "Foram encontradas " & lngPendentes & " solicitação(ões) pendente(s)." & vbCrLf & vbCrLf & _
+                  "Deseja importá-las para a base de dados?" & vbCrLf & vbCrLf & _
+                  "Esta ação irá:" & vbCrLf & _
+                  "- Importar todas as solicitações para a TblEscGeral" & vbCrLf & _
+                  "- Atualizar registros existentes (se houver)" & vbCrLf & _
+                  "- Remover os dados do Firebase após importação"
+    
+    resposta = MsgBox(strMensagem, vbQuestion + vbYesNo, "Importar Solicitações")
+    
+    If resposta = vbNo Then
+        Exit Sub
+    End If
+    
+    DoCmd.Hourglass True
+    Me.btnImportarSolicitacoes.Enabled = False
+    Me.lblStatus.Caption = "Importando solicitações... Aguarde"
+    Me.Repaint
+    
+    ' Executa a importação
+    If ImportarSolicitacoesFirebase() Then
+        
+        ' ============================================
+        ' ATUALIZAR O SUBFORMULÁRIO sfrmLinhaEscala
+        ' ============================================
+        On Error Resume Next
+        
+        ' Tenta atualizar o subformulário
+        If Not Me.sfrmLinhaEscala.Form Is Nothing Then
+            ' Força o subformulário a recarregar os dados
+            Me.sfrmLinhaEscala.Form.Requery
+            
+            ' Se o subformulário tiver um método AplicarFiltro, reaplica os filtros atuais
+            If TipoMetodoExiste(Me.sfrmLinhaEscala.Form, "AplicarFiltro") Then
+                Call btnFiltrar_Click
+            End If
+        End If
+        
+        ' Também atualiza o formulário principal
+        Me.Requery
+        Me.Refresh
+        
+        On Error GoTo 0
+        
+        Call VerificarFirebase
+        Me.lblStatus.Caption = "Importação concluída!"
+    Else
+        Me.lblStatus.Caption = "Erro na importação"
+    End If
+    
+    DoCmd.Hourglass False
+    Me.btnImportarSolicitacoes.Enabled = True
+    
+    Exit Sub
+    
+ErroAtualizarStatus:
+    Debug.Print "ERRO ao atualizar Status_Adm: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao atualizar Status_Adm: " & Err.Description, vbExclamation, "Atenção"
+    Resume Next
+End Sub
+
+' Função para verificar se um método existe no formulário
+Private Function TipoMetodoExiste(frm As Form, strMetodo As String) As Boolean
+    On Error Resume Next
+    Dim obj As Object
+    Set obj = CallByName(frm, strMetodo, VbMethod)
+    TipoMetodoExiste = (Err.Number = 0)
+    On Error GoTo 0
+End Function
+

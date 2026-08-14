@@ -1,0 +1,1235 @@
+Option Compare Database
+Option Explicit
+
+Private Const LINHA_INICIAL_EXCEL As Long = 9
+Private Const LINHA_FINAL_EXCEL As Long = 1403
+
+Private Function CaminhoExcelStatus() As String
+    CaminhoExcelStatus = "C:\Users\36953268832\Desktop\C" & ChrW(243) & "pia de Escalas de DEJEM 2026.xlsm"
+End Function
+
+
+Public Sub AtualizarStatusEscalasExcelDefinitivo(Optional ByVal colIDCadastroFiltrados As Collection = Nothing)
+    Dim xlApp As Object
+    Dim wb As Object
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim dictGuias As Object
+    Dim dictMes As Object
+    Dim dictFiltro As Object
+    Dim strGuia As String
+    Dim strIDCadastro As String
+    Dim lngLinhaExcel As Long
+    Dim lngAtualizadas As Long
+    Dim lngNaoEncontradas As Long
+    Dim lngSemData As Long
+    Dim lngCanceladas As Long
+    Dim lngSemInscritos As Long
+    Dim blnUsarFiltro As Boolean
+    Dim blnAbriuExcel As Boolean
+    Dim strMensagemFiltro As String
+    Dim strResumoFiltro As String
+    
+    On Error GoTo Erro
+    
+    blnUsarFiltro = Not (colIDCadastroFiltrados Is Nothing)
+    If blnUsarFiltro Then
+        Set dictFiltro = DicionarioIDCadastroFiltrados(colIDCadastroFiltrados)
+        If dictFiltro.Count = 0 Then
+            MsgBox "Nenhuma escala filtrada com ID_Cadastro preenchido foi encontrada.", _
+                   vbInformation, "Atualizar Excel Status"
+            Exit Sub
+        End If
+        
+        strMensagemFiltro = "Somente escalas filtradas: " & dictFiltro.Count & vbCrLf
+        strResumoFiltro = strMensagemFiltro
+    Else
+        strMensagemFiltro = "Todas as escalas com ID_Cadastro preenchido." & vbCrLf
+        strResumoFiltro = ""
+    End If
+    
+    If MsgBox("Atualizar definitivamente a TblEscGeral com dados do Excel historico?" & vbCrLf & vbCrLf & _
+              strMensagemFiltro & _
+              "Arquivo: " & CaminhoExcelStatus(), _
+              vbYesNo + vbQuestion, "Atualizar Excel Status") = vbNo Then
+        Exit Sub
+    End If
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Abrindo Excel historico... aguarde."
+    
+    Set xlApp = ObterExcelAplicacao(blnAbriuExcel)
+    Set wb = ObterWorkbookExcel(xlApp, CaminhoExcelStatus())
+    
+    If wb Is Nothing Then
+        MsgBox "Nao foi possivel localizar ou abrir o arquivo Excel.", vbCritical, "Atualizar Excel Status"
+        GoTo Sair
+    End If
+    
+    Set dictGuias = CreateObject("Scripting.Dictionary")
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset("SELECT * FROM TblEscGeral WHERE ID_Cadastro Is Not Null AND ID_Cadastro <> ''", dbOpenDynaset)
+    
+    Do While Not rs.EOF
+        strIDCadastro = NormalizarIDCadastro(Nz(rs!ID_Cadastro, ""))
+        
+        If blnUsarFiltro Then
+            If Not dictFiltro.Exists(strIDCadastro) Then GoTo ProximoRegistro
+        End If
+        
+        If IsDate(Nz(rs!Data_Esc, Null)) Then
+            strGuia = NomeGuiaMes(CDate(rs!Data_Esc))
+            
+            If strIDCadastro <> "" Then
+                Set dictMes = DicionarioGuiaExcel(wb, dictGuias, strGuia)
+                
+                If dictMes Is Nothing Then
+                    lngNaoEncontradas = lngNaoEncontradas + 1
+                    Debug.Print "Guia nao encontrada ou nao carregada no Excel | ID_Cadastro=" & strIDCadastro & " | Guia=" & strGuia
+                Else
+                    If dictMes.Exists(strIDCadastro) Then
+                        lngLinhaExcel = CLng(dictMes(strIDCadastro))
+                        
+                        rs.Edit
+                        Call AtualizarRegistroEscGeralComExcel(rs, wb.Worksheets(strGuia), lngLinhaExcel, lngCanceladas, lngSemInscritos)
+                        rs.Update
+                        
+                        lngAtualizadas = lngAtualizadas + 1
+                    Else
+                        lngNaoEncontradas = lngNaoEncontradas + 1
+                        Debug.Print "Nao encontrado no Excel | ID_Cadastro=" & strIDCadastro & " | Guia=" & strGuia
+                    End If
+                End If
+            End If
+        Else
+            lngSemData = lngSemData + 1
+            Debug.Print "Escala sem Data_Esc valida | ID_Cadastro=" & Nz(rs!ID_Cadastro, "")
+        End If
+        
+ProximoRegistro:
+        rs.MoveNext
+    Loop
+    
+    MsgBox "Atualizacao concluida!" & vbCrLf & vbCrLf & _
+           strResumoFiltro & _
+           "Registros atualizados: " & lngAtualizadas & vbCrLf & _
+           "Canceladas: " & lngCanceladas & vbCrLf & _
+           "Nao houve mais inscritos: " & lngSemInscritos & vbCrLf & _
+           "Nao encontradas no Excel: " & lngNaoEncontradas & vbCrLf & _
+           "Sem Data_Esc valida: " & lngSemData, _
+           vbInformation, "Atualizar Excel Status"
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Set dictFiltro = Nothing
+    If blnAbriuExcel Then
+        If Not wb Is Nothing Then wb.Close False
+        If Not xlApp Is Nothing Then xlApp.Quit
+    End If
+    Set wb = Nothing
+    Set xlApp = Nothing
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro AtualizarStatusEscalasExcelDefinitivo: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao atualizar status pelo Excel: " & Err.Number & " - " & Err.Description, vbCritical, "Atualizar Excel Status"
+    Resume Sair
+End Sub
+
+Private Function DicionarioIDCadastroFiltrados(ByVal colIDs As Collection) As Object
+    Dim dict As Object
+    Dim vID As Variant
+    Dim strID As String
+    
+    Set dict = CreateObject("Scripting.Dictionary")
+    
+    For Each vID In colIDs
+        strID = NormalizarIDCadastro(Nz(vID, ""))
+        If strID <> "" Then
+            If Not dict.Exists(strID) Then dict.Add strID, True
+        End If
+    Next
+    
+    Set DicionarioIDCadastroFiltrados = dict
+End Function
+
+Public Sub ImportarAusenciasExcel2026()
+    Dim xlApp As Object
+    Dim wb As Object
+    Dim ws As Object
+    Dim wsDbMilEsc As Object
+    Dim db As DAO.Database
+    Dim lngLinha As Long
+    Dim lngUltimaLinha As Long
+    Dim lngLidas2026 As Long
+    Dim lngImportadas As Long
+    Dim lngAtualizadas As Long
+    Dim lngSemChave As Long
+    Dim lngSemDataEsc As Long
+    Dim strIDEscala As String
+    Dim strRE As String
+    Dim blnAbriuExcel As Boolean
+    
+    On Error GoTo Erro
+    
+    If MsgBox("Importar todas as ausencias de 2026 da guia Ausencias do Excel historico?" & vbCrLf & vbCrLf & _
+              "Arquivo: " & CaminhoExcelStatus(), _
+              vbYesNo + vbQuestion, "Importar Ausencias Excel") = vbNo Then
+        Exit Sub
+    End If
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Abrindo Excel historico... aguarde."
+    
+    Set xlApp = ObterExcelAplicacao(blnAbriuExcel)
+    Set wb = ObterWorkbookExcel(xlApp, CaminhoExcelStatus())
+    
+    If wb Is Nothing Then
+        MsgBox "Nao foi possivel localizar ou abrir o arquivo Excel.", vbCritical, "Importar Ausencias Excel"
+        GoTo Sair
+    End If
+    
+    Set ws = ObterWorksheetPorPrefixo(wb, "AUSENC")
+    Set wsDbMilEsc = ObterWorksheetPorPrefixo(wb, "DBMILESC")
+    
+    If ws Is Nothing Then
+        MsgBox "Nao foi possivel localizar a guia Ausencias no arquivo Excel.", vbCritical, "Importar Ausencias Excel"
+        GoTo Sair
+    End If
+    
+    Set db = CurrentDb
+    
+    lngUltimaLinha = ws.Cells(ws.Rows.Count, "A").End(-4162).Row
+    If lngUltimaLinha < 2 Then lngUltimaLinha = 2
+    
+    For lngLinha = 2 To lngUltimaLinha
+        If LinhaAusenciaAno2026(ws, lngLinha) Then
+            lngLidas2026 = lngLidas2026 + 1
+            
+            strIDEscala = TextoExcel(ws, lngLinha, "H")
+            strRE = REInicioTexto(TextoExcel(ws, lngLinha, "C"))
+            
+            If strIDEscala = "" Or strRE = "" Then
+                lngSemChave = lngSemChave + 1
+                Debug.Print "Ausencia sem ID_Escala ou RE | Guia=" & ws.Name & _
+                            " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+            ElseIf IsNull(DataEscalaAusenciaExcel(ws, lngLinha)) And _
+                   Not IDEscalaExisteTblEscGeral(db, strIDEscala) Then
+                lngSemDataEsc = lngSemDataEsc + 1
+                Debug.Print "Ausencia sem Data_Esc valida e ID_Escala nao encontrada na TblEscGeral | Guia=" & ws.Name & _
+                            " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+            Else
+                Call SalvarAusenciaDiretaExcel(db, ws, wsDbMilEsc, lngLinha, lngImportadas, lngAtualizadas)
+            End If
+        End If
+    Next lngLinha
+    
+    MsgBox "Importacao de ausencias concluida!" & vbCrLf & vbCrLf & _
+           "Linhas de 2026 lidas: " & lngLidas2026 & vbCrLf & _
+           "Inseridas na TblAusentes: " & lngImportadas & vbCrLf & _
+           "Atualizadas na TblAusentes: " & lngAtualizadas & vbCrLf & _
+           "Sem ID_Escala ou RE: " & lngSemChave & vbCrLf & _
+           "Sem Data_Esc valida: " & lngSemDataEsc, _
+           vbInformation, "Importar Ausencias Excel"
+    
+Sair:
+    On Error Resume Next
+    Set db = Nothing
+    If blnAbriuExcel Then
+        If Not wb Is Nothing Then wb.Close False
+        If Not xlApp Is Nothing Then xlApp.Quit
+    End If
+    Set wb = Nothing
+    Set xlApp = Nothing
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro ImportarAusenciasExcel2026: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao importar ausencias pelo Excel: " & Err.Number & " - " & Err.Description, _
+           vbCritical, "Importar Ausencias Excel"
+    Resume Sair
+End Sub
+
+Public Sub ImportarMilitaresEscaladosExcel2026()
+    Dim xlApp As Object
+    Dim wb As Object
+    Dim ws As Object
+    Dim wsDbMilEsc As Object
+    Dim wsAusencias As Object
+    Dim wsExclusoes As Object
+    Dim db As DAO.Database
+    Dim dictOPM As Object
+    Dim dictComposicao As Object
+    Dim lngLinha As Long
+    Dim lngUltimaLinha As Long
+    Dim lngLidas2026 As Long
+    Dim lngInseridas As Long
+    Dim lngAtualizadas As Long
+    Dim lngPuladas As Long
+    Dim lngOPMNaoEncontrada As Long
+    Dim lngComposicaoNaoEncontrada As Long
+    Dim lngSemChave As Long
+    Dim lngAusentes As Long
+    Dim lngExclusoes As Long
+    Dim lngEventosNaoEncontrados As Long
+    Dim lngEventosAmbiguos As Long
+    Dim strIDEscala As String
+    Dim strRE As String
+    Dim strOPM As String
+    Dim strComposicao As String
+    Dim blnAusente As Boolean
+    Dim blnExclusao As Boolean
+    Dim vData As Variant
+    Dim blnAbriuExcel As Boolean
+    
+    On Error GoTo Erro
+    
+    If MsgBox("Importar militares escalados do Excel historico para a TblMilEsc?" & vbCrLf & vbCrLf & _
+              "Serao importadas somente linhas com Data_Esc no ano de 2026." & vbCrLf & _
+              "Arquivo: " & CaminhoExcelStatus(), _
+              vbYesNo + vbQuestion, "Importar Escalados Excel") = vbNo Then
+        Exit Sub
+    End If
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Abrindo Excel historico... aguarde."
+    
+    Set xlApp = ObterExcelAplicacao(blnAbriuExcel)
+    Set wb = ObterWorkbookExcel(xlApp, CaminhoExcelStatus())
+    
+    If wb Is Nothing Then
+        MsgBox "Nao foi possivel localizar ou abrir o arquivo Excel.", vbCritical, "Importar Escalados Excel"
+        GoTo Sair
+    End If
+    
+    Set db = CurrentDb
+    Set dictOPM = DicionarioCampoTabela(db, "TblOPM_Nome", "LOCAL")
+    Set dictComposicao = DicionarioCampoTabela(db, "TblComposicao_Nome", "Composicao_Nome")
+    Set wsDbMilEsc = ObterWorksheetPorPrefixo(wb, "DBMILESC")
+    Set wsAusencias = ObterWorksheetPorPrefixo(wb, "AUSENC")
+    Set wsExclusoes = ObterWorksheetPorPrefixo(wb, "EXCLUS")
+    
+    If wsDbMilEsc Is Nothing Then
+        MsgBox "Nao foi possivel localizar a guia DbMilEsc no arquivo Excel.", vbCritical, "Importar Escalados Excel"
+        GoTo Sair
+    End If
+    
+    Set ws = wsDbMilEsc
+    SysCmd acSysCmdSetStatus, "Importando militares escalados do Excel... Guia: " & ws.Name
+        
+    lngUltimaLinha = ws.Cells(ws.Rows.Count, "A").End(-4162).Row
+    If lngUltimaLinha < 1 Then lngUltimaLinha = 1
+    
+    For lngLinha = 1 To lngUltimaLinha
+        vData = ValorExcel(ws, lngLinha, "A")
+        
+        If IsDate(vData) Then
+            If Year(CDate(vData)) = 2026 Then
+                lngLidas2026 = lngLidas2026 + 1
+                
+                strIDEscala = TextoExcel(ws, lngLinha, "F")
+                strRE = TextoExcel(ws, lngLinha, "G")
+                strOPM = TextoExcel(ws, lngLinha, "B")
+                strComposicao = TextoExcel(ws, lngLinha, "C")
+                blnAusente = (UCase$(TextoExcel(ws, lngLinha, "K")) = "X")
+                blnExclusao = (UCase$(TextoExcel(ws, lngLinha, "L")) = "X")
+                
+                If strIDEscala = "" Or strRE = "" Then
+                    lngSemChave = lngSemChave + 1
+                    Debug.Print "Militar escalado sem ID_Escala ou RE | Guia=" & ws.Name & _
+                                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+                ElseIf Not dictOPM.Exists(NormalizarTexto(strOPM)) Then
+                    lngOPMNaoEncontrada = lngOPMNaoEncontrada + 1
+                    Debug.Print "OPM nao encontrada no Access | Guia=" & ws.Name & _
+                                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
+                                " | RE=" & strRE & " | OPM=" & strOPM
+                ElseIf Not dictComposicao.Exists(NormalizarTexto(strComposicao)) Then
+                    lngComposicaoNaoEncontrada = lngComposicaoNaoEncontrada + 1
+                    Debug.Print "Composicao nao encontrada no Access | Guia=" & ws.Name & _
+                                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
+                                " | RE=" & strRE & " | Composicao=" & strComposicao
+                ElseIf blnAusente And blnExclusao Then
+                    lngEventosAmbiguos = lngEventosAmbiguos + 1
+                    Debug.Print "Linha com ausencia e exclusao marcadas. Nao importada | Guia=" & ws.Name & _
+                                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+                ElseIf blnAusente Then
+                    Call SalvarAusenciaExcel(db, ws, wsAusencias, lngLinha, lngAusentes, lngEventosNaoEncontrados)
+                ElseIf blnExclusao Then
+                    Call SalvarExclusaoExcel(db, ws, wsExclusoes, lngLinha, lngExclusoes, lngEventosNaoEncontrados)
+                Else
+                    Call SalvarMilitarEscaladoExcel(db, ws, lngLinha, lngInseridas, lngAtualizadas)
+                End If
+            End If
+        ElseIf Trim$(CStr(Nz(vData, ""))) <> "" Then
+            lngPuladas = lngPuladas + 1
+        End If
+    Next lngLinha
+    
+    MsgBox "Importacao de militares escalados concluida!" & vbCrLf & vbCrLf & _
+           "Linhas de 2026 lidas: " & lngLidas2026 & vbCrLf & _
+           "Inseridos na TblMilEsc: " & lngInseridas & vbCrLf & _
+           "Atualizados na TblMilEsc: " & lngAtualizadas & vbCrLf & _
+           "Importados na TblAusentes: " & lngAusentes & vbCrLf & _
+           "Importados na TblExclusoes: " & lngExclusoes & vbCrLf & _
+           "Sem ID_Escala ou RE: " & lngSemChave & vbCrLf & _
+           "OPM nao encontrada: " & lngOPMNaoEncontrada & vbCrLf & _
+           "Composicao nao encontrada: " & lngComposicaoNaoEncontrada & vbCrLf & _
+           "Ausencias/Exclusoes nao encontradas no Excel: " & lngEventosNaoEncontrados & vbCrLf & _
+           "Linhas com K e L marcados: " & lngEventosAmbiguos & vbCrLf & _
+           "Linhas com data invalida ignoradas: " & lngPuladas, _
+           vbInformation, "Importar Escalados Excel"
+Sair:
+    On Error Resume Next
+    Set dictOPM = Nothing
+    Set dictComposicao = Nothing
+    Set db = Nothing
+    If blnAbriuExcel Then
+        If Not wb Is Nothing Then wb.Close False
+        If Not xlApp Is Nothing Then xlApp.Quit
+    End If
+    Set wb = Nothing
+    Set xlApp = Nothing
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro ImportarMilitaresEscaladosExcel2026: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao importar militares escalados pelo Excel: " & Err.Number & " - " & Err.Description, _
+           vbCritical, "Importar Escalados Excel"
+    Resume Sair
+End Sub
+
+Private Sub SalvarMilitarEscaladoExcel(ByVal db As DAO.Database, ByVal ws As Object, ByVal lngLinha As Long, _
+                                       ByRef lngInseridas As Long, ByRef lngAtualizadas As Long)
+    Dim rs As DAO.Recordset
+    Dim strIDEscala As String
+    Dim strRE As String
+    Dim strConferencia As String
+    
+    On Error GoTo Erro
+    
+    strIDEscala = TextoExcel(ws, lngLinha, "F")
+    strRE = TextoExcel(ws, lngLinha, "G")
+    strConferencia = strIDEscala & strRE
+    
+    Set rs = db.OpenRecordset("SELECT * FROM TblMilEsc WHERE conferencia = " & SQLTexto(strConferencia), dbOpenDynaset)
+    
+    If rs.EOF Then
+        rs.AddNew
+        lngInseridas = lngInseridas + 1
+    Else
+        rs.Edit
+        lngAtualizadas = lngAtualizadas + 1
+    End If
+    
+    SetCampoSeExiste rs, "ID_Cadastro", Null
+    SetCampoSeExiste rs, "ID_Escala", strIDEscala
+    SetCampoSeExiste rs, "Data_Esc", DateValue(CDate(ValorExcel(ws, lngLinha, "A")))
+    SetCampoSeExiste rs, "OPM_Nome", TextoExcel(ws, lngLinha, "B")
+    SetCampoSeExiste rs, "Composicao_Nome", TextoExcel(ws, lngLinha, "C")
+    SetCampoSeExiste rs, "Composicao_Cod", Null
+    SetCampoSeExiste rs, "Horario_Inicial", HoraExcel(ws, lngLinha, "D")
+    SetCampoSeExiste rs, "Horario_Final", HoraExcel(ws, lngLinha, "E")
+    SetCampoSeExiste rs, "Militar_RE", strRE
+    SetCampoSeExiste rs, "Militar_Nome", TextoExcel(ws, lngLinha, "H")
+    SetCampoSeExiste rs, "Militar_Posto_Grad", TextoExcel(ws, lngLinha, "I")
+    SetCampoSeExiste rs, "Militar_OPM", TextoExcel(ws, lngLinha, "J")
+    SetCampoSeExiste rs, "Status", "Concluida"
+    SetCampoSeExiste rs, "conferencia", strConferencia
+    
+    rs.Update
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro SalvarMilitarEscaladoExcel | Guia=" & ws.Name & _
+                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
+                " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub SalvarAusenciaExcel(ByVal db As DAO.Database, ByVal wsDbMilEsc As Object, ByVal wsAusencias As Object, _
+                                ByVal lngLinha As Long, ByRef lngAusentes As Long, _
+                                ByRef lngEventosNaoEncontrados As Long)
+    Dim rs As DAO.Recordset
+    Dim lngLinhaEvento As Long
+    Dim strIDEscala As String
+    Dim strRE As String
+    
+    On Error GoTo Erro
+    
+    strIDEscala = TextoExcel(wsDbMilEsc, lngLinha, "F")
+    strRE = TextoExcel(wsDbMilEsc, lngLinha, "G")
+    
+    If wsAusencias Is Nothing Then
+        lngEventosNaoEncontrados = lngEventosNaoEncontrados + 1
+        Debug.Print "Guia Ausencias nao encontrada. Ausencia nao importada | Guia=" & wsDbMilEsc.Name & _
+                    " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+        Exit Sub
+    End If
+    
+    lngLinhaEvento = EncontrarLinhaEventoExcel(wsAusencias, strIDEscala, strRE, "H")
+    
+    If lngLinhaEvento = 0 Then
+        lngEventosNaoEncontrados = lngEventosNaoEncontrados + 1
+        Debug.Print "Ausencia nao encontrada no Excel | Guia=" & wsDbMilEsc.Name & _
+                    " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+        Exit Sub
+    End If
+    
+    Set rs = db.OpenRecordset("SELECT * FROM TblAusentes WHERE ID_Escala = " & SQLTexto(strIDEscala) & _
+                              " AND Militar_RE = " & SQLTexto(strRE), dbOpenDynaset)
+    
+    If rs.EOF Then
+        rs.AddNew
+    Else
+        rs.Edit
+    End If
+    
+    Call PreencherCamposMilitarHistorico(rs, wsDbMilEsc, lngLinha)
+    SetCampoSeExiste rs, "Data_ConfirmAusencia", ValorExcelOuNull(wsAusencias, lngLinhaEvento, "A")
+    SetCampoSeExiste rs, "Documento", TextoExcel(wsAusencias, lngLinhaEvento, "B")
+    SetCampoSeExiste rs, "Motivo", TextoExcel(wsAusencias, lngLinhaEvento, "J")
+    
+    rs.Update
+    lngAusentes = lngAusentes + 1
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro SalvarAusenciaExcel | Guia=" & wsDbMilEsc.Name & _
+                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
+                " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub SalvarAusenciaDiretaExcel(ByVal db As DAO.Database, ByVal ws As Object, ByVal wsDbMilEsc As Object, _
+                                      ByVal lngLinha As Long, _
+                                      ByRef lngImportadas As Long, ByRef lngAtualizadas As Long)
+    Dim rs As DAO.Recordset
+    Dim rsEsc As DAO.Recordset
+    Dim lngLinhaMilitar As Long
+    Dim strIDEscala As String
+    Dim strRE As String
+    Dim strPostoGrad As String
+    Dim strMilitarOPM As String
+    Dim vDataEsc As Variant
+    Dim vHoraInicial As Variant
+    Dim vHoraFinal As Variant
+    
+    On Error GoTo Erro
+    
+    strIDEscala = TextoExcel(ws, lngLinha, "H")
+    strRE = REInicioTexto(TextoExcel(ws, lngLinha, "C"))
+    lngLinhaMilitar = EncontrarPrimeiraLinhaMilitarRE(wsDbMilEsc, strRE)
+    
+    If lngLinhaMilitar > 0 Then
+        strPostoGrad = TextoExcel(wsDbMilEsc, lngLinhaMilitar, "I")
+        strMilitarOPM = TextoExcel(wsDbMilEsc, lngLinhaMilitar, "J")
+    End If
+    
+    vDataEsc = DataEscalaAusenciaExcel(ws, lngLinha)
+    vHoraInicial = HoraExcel(ws, lngLinha, "F")
+    vHoraFinal = HoraExcel(ws, lngLinha, "G")
+    
+    Set rsEsc = db.OpenRecordset("SELECT * FROM TblEscGeral WHERE ID_Escala = " & SQLTexto(strIDEscala), dbOpenSnapshot)
+    
+    Set rs = db.OpenRecordset("SELECT * FROM TblAusentes WHERE ID_Escala = " & SQLTexto(strIDEscala) & _
+                              " AND Militar_RE = " & SQLTexto(strRE), dbOpenDynaset)
+    
+    If rs.EOF Then
+        rs.AddNew
+        lngImportadas = lngImportadas + 1
+    Else
+        rs.Edit
+        lngAtualizadas = lngAtualizadas + 1
+    End If
+    
+    If Not rsEsc.EOF Then
+        If IsNull(vDataEsc) Then vDataEsc = Nz(rsEsc!Data_Esc, Null)
+        If IsNull(vHoraInicial) Then vHoraInicial = Nz(rsEsc!Horario_Inicial, Null)
+        If IsNull(vHoraFinal) Then vHoraFinal = Nz(rsEsc!Horario_Final, Null)
+        
+        SetCampoSeExiste rs, "OPM_Nome", Nz(rsEsc!OPM_Nome, TextoExcel(ws, lngLinha, "D"))
+        SetCampoSeExiste rs, "Composicao_Nome", Nz(rsEsc!Composicao_Nome, TextoExcel(ws, lngLinha, "E"))
+        SetCampoSeExiste rs, "Composicao_Cod", Nz(rsEsc!Composicao_Cod, TextoExcel(ws, lngLinha, "I"))
+    Else
+        SetCampoSeExiste rs, "OPM_Nome", TextoExcel(ws, lngLinha, "D")
+        SetCampoSeExiste rs, "Composicao_Nome", TextoExcel(ws, lngLinha, "E")
+        SetCampoSeExiste rs, "Composicao_Cod", TextoExcel(ws, lngLinha, "I")
+    End If
+    
+    SetCampoSeExiste rs, "Data_Esc", vDataEsc
+    SetCampoSeExiste rs, "Horario_Inicial", vHoraInicial
+    SetCampoSeExiste rs, "Horario_Final", vHoraFinal
+    SetCampoSeExiste rs, "ID_Escala", strIDEscala
+    SetCampoSeExiste rs, "Militar_RE", strRE
+    SetCampoSeExiste rs, "Militar_Nome", NomeMilitarTextoEvento(TextoExcel(ws, lngLinha, "C"))
+    SetCampoSeExiste rs, "Militar_Posto_Grad", strPostoGrad
+    SetCampoSeExiste rs, "Militar_OPM", strMilitarOPM
+    SetCampoSeExiste rs, "Data_ConfirmAusencia", ValorExcelOuNull(ws, lngLinha, "A")
+    SetCampoSeExiste rs, "Documento", TextoExcel(ws, lngLinha, "B")
+    SetCampoSeExiste rs, "Motivo", TextoExcel(ws, lngLinha, "J")
+    
+    rs.Update
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    If Not rsEsc Is Nothing Then rsEsc.Close
+    Set rs = Nothing
+    Set rsEsc = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro SalvarAusenciaDiretaExcel | Guia=" & ws.Name & _
+                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
+                " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub SalvarExclusaoExcel(ByVal db As DAO.Database, ByVal wsDbMilEsc As Object, ByVal wsExclusoes As Object, _
+                                ByVal lngLinha As Long, ByRef lngExclusoes As Long, _
+                                ByRef lngEventosNaoEncontrados As Long)
+    Dim rs As DAO.Recordset
+    Dim lngLinhaEvento As Long
+    Dim strIDEscala As String
+    Dim strRE As String
+    Dim vDataSolicitacao As Variant
+    
+    On Error GoTo Erro
+    
+    strIDEscala = TextoExcel(wsDbMilEsc, lngLinha, "F")
+    strRE = TextoExcel(wsDbMilEsc, lngLinha, "G")
+    
+    If wsExclusoes Is Nothing Then
+        Debug.Print "Guia Exclusoes nao encontrada. Exclusao sera importada com dados da DbMilEsc | Guia=" & wsDbMilEsc.Name & _
+                    " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+    End If
+    
+    If wsExclusoes Is Nothing Then
+        lngLinhaEvento = 0
+    Else
+        lngLinhaEvento = EncontrarLinhaEventoExcel(wsExclusoes, strIDEscala, strRE, "D")
+    End If
+    
+    Set rs = db.OpenRecordset("SELECT * FROM TblExclusoes WHERE ID_Escala = " & SQLTexto(strIDEscala) & _
+                              " AND Militar_RE = " & SQLTexto(strRE), dbOpenDynaset)
+    
+    If rs.EOF Then
+        rs.AddNew
+    Else
+        rs.Edit
+    End If
+    
+    If lngLinhaEvento = 0 Then
+        lngEventosNaoEncontrados = lngEventosNaoEncontrados + 1
+        Debug.Print "Exclusao nao encontrada no Excel. Importada na TblExclusoes com dados da DbMilEsc | Guia=" & _
+                    wsDbMilEsc.Name & " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+        vDataSolicitacao = Null
+    Else
+        vDataSolicitacao = ValorExcelOuNull(wsExclusoes, lngLinhaEvento, "A")
+    End If
+    
+    Call PreencherCamposMilitarHistorico(rs, wsDbMilEsc, lngLinha)
+    SetCampoSeExiste rs, "Data_Solicitacao", vDataSolicitacao
+    SetCampoSeExiste rs, "Data_Exclusao", vDataSolicitacao
+    If lngLinhaEvento = 0 Then
+        SetCampoSeExiste rs, "Documento", Null
+    Else
+        SetCampoSeExiste rs, "Documento", TextoExcel(wsExclusoes, lngLinhaEvento, "B")
+    End If
+    SetCampoSeExiste rs, "Motivo", TextoExcel(wsDbMilEsc, lngLinha, "M")
+    
+    rs.Update
+    lngExclusoes = lngExclusoes + 1
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro SalvarExclusaoExcel | Guia=" & wsDbMilEsc.Name & _
+                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
+                " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub PreencherCamposMilitarHistorico(ByRef rs As DAO.Recordset, ByVal ws As Object, ByVal lngLinha As Long)
+    SetCampoSeExiste rs, "Data_Esc", DateValue(CDate(ValorExcel(ws, lngLinha, "A")))
+    SetCampoSeExiste rs, "OPM_Nome", TextoExcel(ws, lngLinha, "B")
+    SetCampoSeExiste rs, "Composicao_Nome", TextoExcel(ws, lngLinha, "C")
+    SetCampoSeExiste rs, "Horario_Inicial", HoraExcel(ws, lngLinha, "D")
+    SetCampoSeExiste rs, "Horario_Final", HoraExcel(ws, lngLinha, "E")
+    SetCampoSeExiste rs, "ID_Escala", TextoExcel(ws, lngLinha, "F")
+    SetCampoSeExiste rs, "Militar_RE", TextoExcel(ws, lngLinha, "G")
+    SetCampoSeExiste rs, "Militar_Nome", TextoExcel(ws, lngLinha, "H")
+    SetCampoSeExiste rs, "Militar_Posto_Grad", TextoExcel(ws, lngLinha, "I")
+    SetCampoSeExiste rs, "Militar_OPM", TextoExcel(ws, lngLinha, "J")
+End Sub
+
+Private Sub AtualizarRegistroEscGeralComExcel(ByRef rs As DAO.Recordset, ByVal ws As Object, ByVal lngLinha As Long, _
+                                              ByRef lngCanceladas As Long, ByRef lngSemInscritos As Long)
+    Dim blnCancelada As Boolean
+    Dim blnSemInscritos As Boolean
+    Dim strStatusAdm As String
+    
+    blnCancelada = TextoContem(ValorExcel(ws, lngLinha, "B"), "CANCELADA")
+    blnSemInscritos = TextoContem(ValorExcel(ws, lngLinha, "B"), "NAO HOUVE MAIS INSCRITOS")
+    strStatusAdm = DeterminarStatusAdmExcel(ws, lngLinha, blnCancelada, blnSemInscritos)
+    
+    SetCampoSeExiste rs, "Status_Adm", strStatusAdm
+    
+    If blnCancelada Then
+        SetCampoSeExiste rs, "Status_Inicial", 3
+        lngCanceladas = lngCanceladas + 1
+    Else
+        SetCampoSeExiste rs, "Status_Inicial", 1
+    End If
+    
+    SetCampoSeExiste rs, "Atz_Superior", Nz(rs!Slc_Superior, 0)
+    SetCampoSeExiste rs, "Atz_Intermed", Nz(rs!Slc_Intermed, 0)
+    SetCampoSeExiste rs, "Atz_Subalterno", Nz(rs!Slc_Subalterno, 0)
+    SetCampoSeExiste rs, "Atz_Subten_Sgt", Nz(rs!Slc_Subten_Sgt, 0)
+    SetCampoSeExiste rs, "Atz_Cb_Sd", Nz(rs!Slc_Cb_Sd, 0)
+    
+    If blnCancelada Or blnSemInscritos Then
+        SetCampoSeExiste rs, "Esc_Superior", 0
+        SetCampoSeExiste rs, "Esc_Intermed", 0
+        SetCampoSeExiste rs, "Esc_Subalterno", 0
+        SetCampoSeExiste rs, "Esc_Subten_Sgt", 0
+        SetCampoSeExiste rs, "Esc_Cb_Sd", 0
+        
+        If blnSemInscritos Then lngSemInscritos = lngSemInscritos + 1
+    Else
+        SetCampoSeExiste rs, "Esc_Superior", Nz(rs!Slc_Superior, 0)
+        SetCampoSeExiste rs, "Esc_Intermed", Nz(rs!Slc_Intermed, 0)
+        SetCampoSeExiste rs, "Esc_Subalterno", Nz(rs!Slc_Subalterno, 0)
+        SetCampoSeExiste rs, "Esc_Subten_Sgt", Nz(rs!Slc_Subten_Sgt, 0)
+        SetCampoSeExiste rs, "Esc_Cb_Sd", Nz(rs!Slc_Cb_Sd, 0)
+    End If
+    
+    SetCampoSeExiste rs, "Turno", TextoExcel(ws, lngLinha, "BL")
+    SetCampoSeExiste rs, "Convenio", TextoExcel(ws, lngLinha, "CH")
+    SetCampoSeExiste rs, "Tipo_Escala", TextoExcel(ws, lngLinha, "BM")
+    SetCampoSeExiste rs, "AISP", TextoExcel(ws, lngLinha, "CG")
+    SetCampoSeExiste rs, "OPM_Resp", TextoExcel(ws, lngLinha, "CI")
+    SetCampoSeExiste rs, "EPI", TextoExcel(ws, lngLinha, "BV")
+    SetCampoSeExiste rs, "OBS_Intranet", TextoExcel(ws, lngLinha, "BW")
+    SetCampoSeExiste rs, "ID_Escala", TextoExcel(ws, lngLinha, "H")
+    SetCampoSeExiste rs, "Prazo_Inscricao", ValorExcel(ws, lngLinha, "J")
+    
+    If strStatusAdm = "5" Then
+        SetCampoSeExiste rs, "Pag_Confirm", ValorExcelOuNull(ws, lngLinha, "M")
+        SetCampoSeExiste rs, "RE_Pagamento", TextoExcel(ws, lngLinha, "N")
+    Else
+        SetCampoSeExiste rs, "Pag_Confirm", Null
+        SetCampoSeExiste rs, "RE_Pagamento", Null
+    End If
+End Sub
+
+Private Function DeterminarStatusAdmExcel(ByVal ws As Object, ByVal lngLinha As Long, _
+                                          ByVal blnCancelada As Boolean, ByVal blnSemInscritos As Boolean) As String
+    Dim strL As String
+    Dim strO As String
+    Dim strH As String
+    
+    If blnCancelada Then
+        DeterminarStatusAdmExcel = "2"
+        Exit Function
+    End If
+    
+    strL = TextoExcel(ws, lngLinha, "L")
+    strO = TextoExcel(ws, lngLinha, "O")
+    strH = TextoExcel(ws, lngLinha, "H")
+    
+    If blnSemInscritos Then
+        If strO = "2" Then
+            DeterminarStatusAdmExcel = "5"
+        Else
+            DeterminarStatusAdmExcel = "4"
+        End If
+        Exit Function
+    End If
+    
+    Select Case strL
+        Case "3"
+            If strO = "2" Then
+                DeterminarStatusAdmExcel = "5"
+            Else
+                DeterminarStatusAdmExcel = "4"
+            End If
+        Case "2"
+            DeterminarStatusAdmExcel = "3"
+        Case "1"
+            If strH = "" Then
+                DeterminarStatusAdmExcel = "1"
+            Else
+                DeterminarStatusAdmExcel = "3"
+            End If
+        Case Else
+            If strH = "" Then
+                DeterminarStatusAdmExcel = "1"
+            Else
+                DeterminarStatusAdmExcel = "3"
+            End If
+    End Select
+End Function
+Private Function ObterExcelAplicacao(ByRef blnAbriuExcel As Boolean) As Object
+    Dim xlApp As Object
+    
+    On Error Resume Next
+    
+    Set xlApp = GetObject(, "Excel.Application")
+    
+    If xlApp Is Nothing Then
+        Set xlApp = CreateObject("Excel.Application")
+        blnAbriuExcel = True
+    Else
+        blnAbriuExcel = False
+    End If
+    
+    Set ObterExcelAplicacao = xlApp
+    Set xlApp = Nothing
+    On Error GoTo 0
+End Function
+
+Private Function ObterWorkbookExcel(ByVal xlApp As Object, ByVal strCaminho As String) As Object
+    Dim wb As Object
+    
+    On Error Resume Next
+    
+    If xlApp Is Nothing Then
+        Set ObterWorkbookExcel = Nothing
+        Exit Function
+    End If
+    
+    For Each wb In xlApp.Workbooks
+        If LCase$(wb.FullName) = LCase$(strCaminho) Then
+            Set ObterWorkbookExcel = wb
+            Exit Function
+        End If
+    Next wb
+    
+    Set ObterWorkbookExcel = xlApp.Workbooks.Open(strCaminho, False, True)
+    On Error GoTo 0
+End Function
+
+Private Function ObterWorksheetPorPrefixo(ByVal wb As Object, ByVal strPrefixo As String) As Object
+    Dim ws As Object
+    
+    For Each ws In wb.Worksheets
+        If UCase$(Left$(Trim$(CStr(ws.Name)), Len(strPrefixo))) = UCase$(strPrefixo) Then
+            Set ObterWorksheetPorPrefixo = ws
+            Exit Function
+        End If
+    Next ws
+    
+    Set ObterWorksheetPorPrefixo = Nothing
+End Function
+
+Private Function EncontrarLinhaEventoExcel(ByVal wsEvento As Object, ByVal strIDEscala As String, _
+                                           ByVal strRE As String, ByVal strColunaIDEscala As String) As Long
+    Dim lngLinha As Long
+    Dim lngUltimaLinha As Long
+    Dim strIDEscalaEvento As String
+    Dim strREEvento As String
+    
+    On Error GoTo Erro
+    
+    lngUltimaLinha = wsEvento.Cells(wsEvento.Rows.Count, strColunaIDEscala).End(-4162).Row
+    
+    For lngLinha = 1 To lngUltimaLinha
+        strIDEscalaEvento = TextoExcel(wsEvento, lngLinha, strColunaIDEscala)
+        strREEvento = REInicioTexto(TextoExcel(wsEvento, lngLinha, "C"))
+        
+        If strIDEscalaEvento = strIDEscala And strREEvento = strRE Then
+            EncontrarLinhaEventoExcel = lngLinha
+            Exit Function
+        End If
+    Next lngLinha
+    
+    EncontrarLinhaEventoExcel = 0
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro EncontrarLinhaEventoExcel guia=" & wsEvento.Name & _
+                " | ID_Escala=" & strIDEscala & " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    EncontrarLinhaEventoExcel = 0
+End Function
+
+Private Function EncontrarPrimeiraLinhaMilitarRE(ByVal wsDbMilEsc As Object, ByVal strRE As String) As Long
+    Dim lngLinha As Long
+    Dim lngUltimaLinha As Long
+    
+    On Error GoTo Erro
+    
+    If wsDbMilEsc Is Nothing Then
+        EncontrarPrimeiraLinhaMilitarRE = 0
+        Exit Function
+    End If
+    
+    lngUltimaLinha = wsDbMilEsc.Cells(wsDbMilEsc.Rows.Count, "G").End(-4162).Row
+    
+    For lngLinha = 1 To lngUltimaLinha
+        If TextoExcel(wsDbMilEsc, lngLinha, "G") = strRE Then
+            EncontrarPrimeiraLinhaMilitarRE = lngLinha
+            Exit Function
+        End If
+    Next lngLinha
+    
+    EncontrarPrimeiraLinhaMilitarRE = 0
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro EncontrarPrimeiraLinhaMilitarRE RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    EncontrarPrimeiraLinhaMilitarRE = 0
+End Function
+
+Private Function REInicioTexto(ByVal strValor As String) As String
+    REInicioTexto = Trim$(Left$(Trim$(CStr(Nz(strValor, ""))), 6))
+End Function
+
+Private Function DicionarioGuiaExcel(ByVal wb As Object, ByVal dictGuias As Object, ByVal strGuia As String) As Object
+    Dim ws As Object
+    Dim dict As Object
+    Dim lngLinha As Long
+    Dim strIDCadastro As String
+    
+    On Error GoTo Erro
+    
+    If dictGuias.Exists(strGuia) Then
+        Set DicionarioGuiaExcel = dictGuias(strGuia)
+        Exit Function
+    End If
+    
+    Set ws = wb.Worksheets(strGuia)
+    Set dict = CreateObject("Scripting.Dictionary")
+    
+    On Error Resume Next
+    ws.Calculate
+    On Error GoTo Erro
+    
+    For lngLinha = LINHA_INICIAL_EXCEL To LINHA_FINAL_EXCEL
+        strIDCadastro = IDCadastroExcelBD(ws, lngLinha)
+        Call AdicionarIDCadastroExcel(dict, strGuia, lngLinha, strIDCadastro)
+        
+        strIDCadastro = IDCadastroExcelCalculado(ws, lngLinha)
+        Call AdicionarIDCadastroExcel(dict, strGuia, lngLinha, strIDCadastro)
+    Next lngLinha
+    
+    dictGuias.Add strGuia, dict
+    Set DicionarioGuiaExcel = dict
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro DicionarioGuiaExcel guia=" & strGuia & ": " & Err.Number & " - " & Err.Description
+    Set DicionarioGuiaExcel = Nothing
+End Function
+
+Private Sub AdicionarIDCadastroExcel(ByVal dict As Object, ByVal strGuia As String, _
+                                     ByVal lngLinha As Long, ByVal strIDCadastro As String)
+    strIDCadastro = NormalizarIDCadastro(strIDCadastro)
+    
+    If strIDCadastro <> "" Then
+        If Not dict.Exists(strIDCadastro) Then
+            dict.Add strIDCadastro, lngLinha
+        ElseIf CLng(dict(strIDCadastro)) <> lngLinha Then
+            Debug.Print "ID_Cadastro duplicado no Excel | Guia=" & strGuia & _
+                        " | Linha=" & lngLinha & " | ID=" & strIDCadastro
+        End If
+    End If
+End Sub
+
+Private Function IDCadastroExcelBD(ByVal ws As Object, ByVal lngLinha As Long) As String
+    Dim rng As Object
+    Dim strValor As String
+    
+    On Error GoTo Erro
+    
+    Set rng = ws.Range("BD" & lngLinha)
+    
+    strValor = NormalizarIDCadastro(rng.Value2)
+    If strValor = "" Or InStr(1, strValor, "#", vbTextCompare) > 0 Then
+        strValor = NormalizarIDCadastro(rng.Value)
+    End If
+    If strValor = "" Or InStr(1, strValor, "#", vbTextCompare) > 0 Then
+        strValor = NormalizarIDCadastro(rng.Text)
+    End If
+    
+    IDCadastroExcelBD = strValor
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro IDCadastroExcelBD | Guia=" & ws.Name & " | Linha=" & lngLinha & _
+                ": " & Err.Number & " - " & Err.Description
+    IDCadastroExcelBD = ""
+End Function
+
+Private Function IDCadastroExcelCalculado(ByVal ws As Object, ByVal lngLinha As Long) As String
+    Dim vData As Variant
+    Dim vHora As Variant
+    Dim strOPMCodigo As String
+    Dim strComposicaoCod As String
+    
+    On Error GoTo Erro
+    
+    vData = ws.Range("T" & lngLinha).Value
+    strOPMCodigo = NormalizarIDCadastro(ws.Range("BI" & lngLinha).Value)
+    strComposicaoCod = NormalizarIDCadastro(ws.Range("I" & lngLinha).Value)
+    
+    If Not IsDate(vData) Then
+        IDCadastroExcelCalculado = ""
+        Exit Function
+    End If
+    
+    If strComposicaoCod = "" Then
+        IDCadastroExcelCalculado = ""
+        Exit Function
+    End If
+    
+    vHora = HoraExcel(ws, lngLinha, "F")
+    If IsNull(vHora) Or Not IsDate(vHora) Then
+        IDCadastroExcelCalculado = ""
+        Exit Function
+    End If
+    
+    IDCadastroExcelCalculado = Format(CDate(vData), "yyyymm") & _
+                               strOPMCodigo & _
+                               strComposicaoCod & _
+                               Format(CDate(vData), "dd") & _
+                               Format(CDate(vHora), "hhmm")
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro IDCadastroExcelCalculado | Guia=" & ws.Name & " | Linha=" & lngLinha & _
+                ": " & Err.Number & " - " & Err.Description
+    IDCadastroExcelCalculado = ""
+End Function
+
+Private Function NomeGuiaMes(ByVal dt As Date) As String
+    Select Case Month(dt)
+        Case 1: NomeGuiaMes = "JAN"
+        Case 2: NomeGuiaMes = "FEV"
+        Case 3: NomeGuiaMes = "MAR"
+        Case 4: NomeGuiaMes = "ABR"
+        Case 5: NomeGuiaMes = "MAI"
+        Case 6: NomeGuiaMes = "JUN"
+        Case 7: NomeGuiaMes = "JUL"
+        Case 8: NomeGuiaMes = "AGO"
+        Case 9: NomeGuiaMes = "SET"
+        Case 10: NomeGuiaMes = "OUT"
+        Case 11: NomeGuiaMes = "NOV"
+        Case 12: NomeGuiaMes = "DEZ"
+    End Select
+End Function
+
+Private Function ValorExcel(ByVal ws As Object, ByVal lngLinha As Long, ByVal strColuna As String) As Variant
+    ValorExcel = ws.Range(strColuna & lngLinha).Value
+End Function
+
+Private Function ValorExcelOuNull(ByVal ws As Object, ByVal lngLinha As Long, ByVal strColuna As String) As Variant
+    Dim v As Variant
+    v = ws.Range(strColuna & lngLinha).Value
+
+    If IsEmpty(v) Or Trim$(CStr(v)) = "" Then
+        ValorExcelOuNull = Null
+    Else
+        ValorExcelOuNull = v
+    End If
+End Function
+Private Function TextoExcel(ByVal ws As Object, ByVal lngLinha As Long, ByVal strColuna As String) As String
+    TextoExcel = Trim$(CStr(ws.Range(strColuna & lngLinha).Value))
+End Function
+
+Private Function NormalizarIDCadastro(ByVal vValor As Variant) As String
+    Dim strValor As String
+    
+    strValor = CStr(Nz(vValor, ""))
+    strValor = Replace(strValor, Chr$(13), "")
+    strValor = Replace(strValor, Chr$(10), "")
+    strValor = Replace(strValor, Chr$(9), "")
+    strValor = Replace(strValor, Chr$(160), "")
+    strValor = Replace(strValor, " ", "")
+    
+    NormalizarIDCadastro = Trim$(strValor)
+End Function
+
+Private Function HoraExcel(ByVal ws As Object, ByVal lngLinha As Long, ByVal strColuna As String) As Variant
+    Dim v As Variant
+    Dim strHora As String
+    Dim dblHora As Double
+    
+    v = ValorExcel(ws, lngLinha, strColuna)
+    
+    If IsNumeric(v) Then
+        dblHora = CDbl(v)
+        dblHora = dblHora - Fix(dblHora)
+        If dblHora < 0 Then dblHora = dblHora + 1
+        HoraExcel = CDate(dblHora)
+    ElseIf IsDate(v) Then
+        HoraExcel = TimeValue(CDate(v))
+    ElseIf Trim$(CStr(Nz(v, ""))) = "" Then
+        HoraExcel = Null
+    Else
+        strHora = Trim$(CStr(v))
+        
+        If IsDate(strHora) Then
+            HoraExcel = TimeValue(CDate(strHora))
+        ElseIf Len(strHora) >= 5 And Mid$(strHora, 3, 1) = ":" Then
+            HoraExcel = TimeValue(Left$(strHora, 5))
+        Else
+            HoraExcel = strHora
+        End If
+    End If
+End Function
+
+Private Function DataEscalaAusenciaExcel(ByVal ws As Object, ByVal lngLinha As Long) As Variant
+    Dim v As Variant
+    
+    v = ValorExcel(ws, lngLinha, "F")
+    
+    If IsNumeric(v) Then
+        If Fix(CDbl(v)) > 0 Then
+            DataEscalaAusenciaExcel = DateValue(CDate(Fix(CDbl(v))))
+        Else
+            DataEscalaAusenciaExcel = Null
+        End If
+    ElseIf IsDate(v) Then
+        DataEscalaAusenciaExcel = DateValue(CDate(v))
+    Else
+        DataEscalaAusenciaExcel = Null
+    End If
+End Function
+
+Private Function LinhaAusenciaAno2026(ByVal ws As Object, ByVal lngLinha As Long) As Boolean
+    Dim vDataEsc As Variant
+    Dim vDataConfirm As Variant
+    
+    vDataEsc = DataEscalaAusenciaExcel(ws, lngLinha)
+    
+    If Not IsNull(vDataEsc) Then
+        LinhaAusenciaAno2026 = (Year(CDate(vDataEsc)) = 2026)
+        Exit Function
+    End If
+    
+    vDataConfirm = ValorExcel(ws, lngLinha, "A")
+    
+    If IsDate(vDataConfirm) Then
+        LinhaAusenciaAno2026 = (Year(CDate(vDataConfirm)) = 2026)
+    Else
+        LinhaAusenciaAno2026 = False
+    End If
+End Function
+
+Private Function NomeMilitarTextoEvento(ByVal strValor As String) As String
+    strValor = Trim$(CStr(Nz(strValor, "")))
+    
+    If Len(strValor) > 6 Then
+        NomeMilitarTextoEvento = Trim$(Mid$(strValor, 7))
+    Else
+        NomeMilitarTextoEvento = ""
+    End If
+End Function
+
+Private Function TextoContem(ByVal valor As Variant, ByVal strBusca As String) As Boolean
+    TextoContem = (InStr(1, NormalizarTexto(CStr(Nz(valor, ""))), strBusca, vbTextCompare) > 0)
+End Function
+
+Private Function NormalizarTexto(ByVal strValor As String) As String
+    strValor = UCase$(strValor)
+    strValor = Replace(strValor, "Á", "A")
+    strValor = Replace(strValor, "À", "A")
+    strValor = Replace(strValor, "Â", "A")
+    strValor = Replace(strValor, "Ã", "A")
+    strValor = Replace(strValor, "É", "E")
+    strValor = Replace(strValor, "Ê", "E")
+    strValor = Replace(strValor, "Í", "I")
+    strValor = Replace(strValor, "Ó", "O")
+    strValor = Replace(strValor, "Ô", "O")
+    strValor = Replace(strValor, "Õ", "O")
+    strValor = Replace(strValor, "Ú", "U")
+    strValor = Replace(strValor, "Ç", "C")
+    NormalizarTexto = strValor
+End Function
+
+Private Function DicionarioCampoTabela(ByVal db As DAO.Database, ByVal strTabela As String, ByVal strCampo As String) As Object
+    Dim rs As DAO.Recordset
+    Dim dict As Object
+    Dim strValor As String
+    
+    On Error GoTo Erro
+    
+    Set dict = CreateObject("Scripting.Dictionary")
+    Set rs = db.OpenRecordset("SELECT [" & strCampo & "] FROM [" & strTabela & "] " & _
+                              "WHERE [" & strCampo & "] Is Not Null AND [" & strCampo & "] <> ''", dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        strValor = Trim$(CStr(Nz(rs.Fields(strCampo).Value, "")))
+        If strValor <> "" Then
+            If Not dict.Exists(NormalizarTexto(strValor)) Then dict.Add NormalizarTexto(strValor), strValor
+        End If
+        rs.MoveNext
+    Loop
+    
+    Set DicionarioCampoTabela = dict
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro DicionarioCampoTabela " & strTabela & "." & strCampo & ": " & Err.Number & " - " & Err.Description
+    Set DicionarioCampoTabela = CreateObject("Scripting.Dictionary")
+    Resume Sair
+End Function
+
+Private Function SQLTexto(ByVal valor As Variant) As String
+    SQLTexto = "'" & Replace(Nz(valor, ""), "'", "''") & "'"
+End Function
+
+Private Function IDEscalaExisteTblEscGeral(ByVal db As DAO.Database, ByVal strIDEscala As String) As Boolean
+    Dim rs As DAO.Recordset
+    
+    On Error GoTo Erro
+    
+    Set rs = db.OpenRecordset("SELECT ID_Escala FROM TblEscGeral WHERE ID_Escala = " & SQLTexto(strIDEscala), dbOpenSnapshot)
+    IDEscalaExisteTblEscGeral = Not rs.EOF
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro IDEscalaExisteTblEscGeral ID_Escala=" & strIDEscala & ": " & Err.Number & " - " & Err.Description
+    IDEscalaExisteTblEscGeral = False
+    Resume Sair
+End Function
+
+Private Sub SetCampoSeExiste(ByRef rs As DAO.Recordset, ByVal strCampo As String, ByVal vValor As Variant)
+    On Error Resume Next
+    rs.Fields(strCampo).Value = vValor
+    On Error GoTo 0
+End Sub

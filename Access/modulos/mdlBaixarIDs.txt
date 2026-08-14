@@ -1,0 +1,640 @@
+Option Compare Database
+Option Explicit
+
+Private Const URL_CAD_ESCALA As String = "http://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/CadEsc.aspx?"
+Private mblnBloquearEventosID As Boolean
+
+Public Function ImportarIDEscalasFiltradasIntranet(Optional ByVal blnMostrarMensagem As Boolean = True, _
+                                                   Optional ByVal blnBloquearInteracao As Boolean = False, _
+                                                   Optional ByRef lngPerdidasRetorno As Long = 0) As Long
+    Dim frm As Form
+    Dim rsFiltro As DAO.Recordset
+    Dim driver As ChromeDriver
+    Dim por As New by
+    Dim dtDataInicial As Date
+    Dim dtDataFinal As Date
+    Dim strAISP As String
+    Dim colSite As Collection
+    Dim itemSite As Object
+    Dim lngImportadas As Long
+    Dim lngPerdidas As Long
+    Dim lngIgnoradasForaPeriodo As Long
+    Dim strLink As String
+    
+    On Error GoTo Erro
+    
+    mblnBloquearEventosID = blnBloquearInteracao
+    
+    strLink = LinkUsuarioLogado()
+    If strLink = "" Then
+        MsgBox "Link do usuário logado não encontrado. Faça login novamente.", vbExclamation, "Baixar IDs"
+        GoTo Sair
+    End If
+    
+    Set frm = ObterSubformLinhaEscalasID()
+    If frm Is Nothing Then
+        MsgBox "Não foi possível localizar o subformulário de linhas do frmEscalas.", vbExclamation, "Baixar IDs"
+        GoTo Sair
+    End If
+    
+    Set rsFiltro = frm.RecordsetClone
+    If rsFiltro.BOF And rsFiltro.EOF Then
+        MsgBox "Nenhuma escala filtrada para baixar ID.", vbInformation, "Baixar IDs"
+        GoTo Sair
+    End If
+    
+    If Not ObterBuscaInicialFiltrada(rsFiltro, dtDataInicial, dtDataFinal, strAISP) Then
+        If blnMostrarMensagem Then
+            MsgBox "Nenhuma escala elegivel foi encontrada.", vbInformation, "Baixar IDs"
+        End If
+        GoTo Sair
+    End If
+    
+    Set driver = New ChromeDriver
+    With driver
+        .AddArgument "--headless"
+        .AddArgument "--disable-gpu"
+        .AddArgument "--window-size=1920,1080"
+        .Start
+        .Get URL_CAD_ESCALA & strLink
+        PausarID 1
+    End With
+    
+    Call PesquisarEscalasIntranetID(driver, por, Format(dtDataInicial, "dd/mm/yyyy"), Format(dtDataFinal, "dd/mm/yyyy"), strAISP)
+    Set colSite = CapturarTabelaSiteID(driver, por)
+    
+    For Each itemSite In colSite
+        If CDate(itemSite("Data_Esc")) < dtDataInicial Or CDate(itemSite("Data_Esc")) > dtDataFinal Then
+            lngIgnoradasForaPeriodo = lngIgnoradasForaPeriodo + 1
+            GoTo ProximoItemSite
+        End If
+        
+        If AtualizarEscalaPorLinhaSite(itemSite) Then
+            lngImportadas = lngImportadas + 1
+        Else
+            If InserirEscalaPerdida(itemSite, strAISP) Then
+                lngPerdidas = lngPerdidas + 1
+            End If
+        End If
+        
+ProximoItemSite:
+    Next
+    
+    If lngImportadas > 0 Then
+        On Error Resume Next
+        frm.Requery
+        If CurrentProject.AllForms("frmEscalas").IsLoaded Then Forms!frmEscalas.Requery
+        On Error GoTo Erro
+    End If
+    
+    ImportarIDEscalasFiltradasIntranet = lngImportadas
+    lngPerdidasRetorno = lngPerdidas
+    
+    If blnMostrarMensagem Then
+        On Error Resume Next
+        mblnBloquearEventosID = False
+        If Not driver Is Nothing Then driver.Quit
+        Set driver = Nothing
+        On Error GoTo Erro
+    End If
+    
+    If blnMostrarMensagem Then
+        MsgBox "Baixa de IDs concluída." & vbCrLf & _
+               "ID(s) importada(s): " & lngImportadas & vbCrLf & _
+               "Escala(s) não encontrada(s) gravada(s) em 'Perdidas': " & lngPerdidas, _
+               vbInformation, "Baixar IDs"
+    End If
+    
+'               "Data inicial pesquisada: " & Format(dtDataInicial, "dd/mm/yyyy") & vbCrLf & _
+'               "AISP pesquisada: " & strAISP & vbCrLf & _
+'               "Linha(s) capturada(s) no site: " & colSite.Count & vbCrLf & _
+'               "Linha(s) ignorada(s) fora do período filtrado: " & lngIgnoradasForaPeriodo & vbCrLf & _
+
+Sair:
+    On Error Resume Next
+    lngPerdidasRetorno = lngPerdidas
+    mblnBloquearEventosID = False
+    If Not rsFiltro Is Nothing Then rsFiltro.Close
+    Set rsFiltro = Nothing
+    Set frm = Nothing
+    If Not driver Is Nothing Then driver.Quit
+    Set driver = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro ImportarIDEscalasFiltradasIntranet: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao baixar IDs: " & Err.Number & " - " & Err.Description, vbCritical, "Baixar IDs"
+    mblnBloquearEventosID = False
+    Resume Sair
+End Function
+
+Private Function ObterBuscaInicialFiltrada(ByRef rs As DAO.Recordset, ByRef dtDataInicial As Date, _
+                                           ByRef dtDataFinal As Date, ByRef strAISP As String) As Boolean
+    Dim blnEncontrou As Boolean
+    Dim lngTotal As Long
+    Dim lngElegiveis As Long
+    
+    On Error GoTo Erro
+    
+    If rs.BOF And rs.EOF Then Exit Function
+    If rs.EOF Then rs.MoveFirst
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        lngTotal = lngTotal + 1
+        
+        If EscalaElegivelParaBaixarID(rs) Then
+            lngElegiveis = lngElegiveis + 1
+            
+            If Not blnEncontrou Then
+                dtDataInicial = CDate(rs!Data_Esc)
+                dtDataFinal = CDate(rs!Data_Esc)
+                strAISP = ValorAISPBusca(rs)
+                blnEncontrou = True
+            Else
+                If CDate(rs!Data_Esc) < dtDataInicial Then
+                    dtDataInicial = CDate(rs!Data_Esc)
+                    strAISP = ValorAISPBusca(rs)
+                End If
+                
+                If CDate(rs!Data_Esc) > dtDataFinal Then
+                    dtDataFinal = CDate(rs!Data_Esc)
+                End If
+            End If
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    
+    ObterBuscaInicialFiltrada = blnEncontrou
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro ObterBuscaInicialFiltrada: " & Err.Number & " - " & Err.Description
+    ObterBuscaInicialFiltrada = False
+End Function
+
+Private Function EscalaElegivelParaBaixarID(ByRef rs As DAO.Recordset) As Boolean
+    EscalaElegivelParaBaixarID = (Trim(Nz(rs!Status_Adm, "")) = "1" And _
+                                  Trim(Nz(rs!Prazo_Inscricao, "")) <> "" And _
+                                  IDEscalaVazioID(rs) And _
+                                  IsDate(rs!Data_Esc))
+End Function
+
+Private Sub PesquisarEscalasIntranetID(ByRef driver As ChromeDriver, ByRef por As by, _
+                                       ByVal strDataInicial As String, ByVal strDataFinal As String, _
+                                       ByVal strAISP As String)
+    
+    With driver
+        Call SetValorGeneXusID(driver, por, "vDATAINICIAL", strDataInicial)
+        PausarID 0.5
+        
+        Call SetValorGeneXusID(driver, por, "vDATAFINAL", strDataFinal)
+        PausarID 0.5
+        
+        
+        Call SetValorGeneXusID(driver, por, "vIDFAGPGEOSST", strAISP)
+        PausarID 0.5
+        
+        
+        .FindElement(por.xpath("//*[@id='IMAGE4']")).Click
+        PausarID 3
+        
+    End With
+End Sub
+
+Private Function CapturarTabelaSiteID(ByRef driver As ChromeDriver, ByRef por As by) As Collection
+    Dim col As New Collection
+    Dim item As Object
+    Dim spansID As Object
+    Dim spanID As Object
+    Dim i As Long
+    Dim sufixo As String
+    Dim strIDEscala As String
+    Dim strDataHora As String
+    Dim strDescricao As String
+    Dim strComposicaoCod As String
+    Dim dtDataEsc As Date
+    Dim strHoraInicial As String
+    
+    On Error GoTo Erro
+    
+    Call AguardarTabelaID(driver, por, "Grid1ContainerTbl", 30)
+    
+    Set spansID = driver.FindElements(por.xpath("//*[starts-with(@id,'span_ESCOPRIDF_')]"))
+    
+    
+    For Each spanID In spansID
+        i = i + 1
+        sufixo = Right(Trim(Nz(spanID.Attribute("id"), "")), 4)
+        
+        strIDEscala = Trim(Nz(spanID.Text, ""))
+        strDataHora = TextoElementoPorID(driver, por, "span_ESCOPRDATINIESC_" & sufixo)
+        strDescricao = TextoElementoPorID(driver, por, "span_vGRIDLOCAL_" & sufixo)
+        strComposicaoCod = SomenteNumerosID(TextoElementoPorID(driver, por, "span_LOCDJMCOD_" & sufixo))
+        
+        strIDEscala = SomenteNumerosID(strIDEscala)
+        
+        If strIDEscala <> "" And strDataHora <> "" And strDescricao <> "" Then
+            If ExtrairDataHoraSite(strDataHora, dtDataEsc, strHoraInicial) Then
+                Set item = CreateObject("Scripting.Dictionary")
+                item.Add "ID_Escala", strIDEscala
+                item.Add "Data_Esc", dtDataEsc
+                item.Add "Horario_Inicial", strHoraInicial
+                item.Add "Descricao", NormalizarTextoID(strDescricao)
+                item.Add "DescricaoOriginal", Trim(strDescricao)
+                item.Add "Composicao_Cod", strComposicaoCod
+                col.Add item
+            End If
+        End If
+    Next
+    
+    
+    Set CapturarTabelaSiteID = col
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro CapturarTabelaSiteID: " & Err.Number & " - " & Err.Description
+    Set CapturarTabelaSiteID = col
+End Function
+
+Private Sub AguardarTabelaID(ByRef driver As ChromeDriver, ByRef por As by, _
+                             ByVal strIDTabela As String, ByVal lngTentativas As Long)
+    Dim i As Long
+    Dim tbl As Object
+    
+    On Error Resume Next
+    
+    For i = 1 To lngTentativas
+        Err.Clear
+        Set tbl = driver.FindElement(por.id(strIDTabela))
+        
+        If Err.Number = 0 Then
+            If Len(Trim(Nz(tbl.Text, ""))) > 0 Then Exit Sub
+        End If
+        
+        PausarID 0.5
+    Next
+End Sub
+
+Private Function AtualizarEscalaPorLinhaSite(ByVal itemSite As Object) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strIDCadastro As String
+    Dim strWhere As String
+    
+    On Error GoTo Erro
+    
+    Set db = CurrentDb
+    
+    strWhere = "TblEscGeral.Status_Adm = '1' " & _
+               "AND (TblEscGeral.ID_Escala Is Null OR TblEscGeral.ID_Escala = '' OR TblEscGeral.ID_Escala = '0') " & _
+               "AND TblEscGeral.Data_Esc = #" & Format(CDate(itemSite("Data_Esc")), "yyyy-mm-dd") & "# " & _
+               "AND Format(TblEscGeral.Horario_Inicial, 'hh:nn') = " & SQLTextoID(itemSite("Horario_Inicial")) & " " & _
+               "AND Trim(Nz(TblEscGeral.Composicao_Cod,'')) = " & SQLTextoID(itemSite("Composicao_Cod"))
+    
+    strSQL = "SELECT TOP 1 TblEscGeral.ID_Cadastro " & _
+             "FROM TblEscGeral " & _
+             "WHERE " & strWhere & " " & _
+             "ORDER BY TblEscGeral.ID_Cadastro"
+    
+    
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    If rs.EOF Then
+        GoTo Sair
+    End If
+    
+    strIDCadastro = Trim(Nz(rs!ID_Cadastro, ""))
+    rs.Close
+    Set rs = Nothing
+    
+    If strIDCadastro <> "" Then
+        strSQL = "UPDATE TblEscGeral SET " & _
+                 "ID_Escala = " & SQLTextoID(itemSite("ID_Escala")) & ", " & _
+                 "Status_Adm = '3', " & _
+                 "Alteracao = 1 " & _
+                 "WHERE ID_Cadastro = " & SQLTextoID(strIDCadastro) & " " & _
+                 "AND Status_Adm = '1' " & _
+                 "AND (ID_Escala Is Null OR ID_Escala = '' OR ID_Escala = '0')"
+    Else
+        strSQL = "UPDATE TblEscGeral SET " & _
+                 "ID_Escala = " & SQLTextoID(itemSite("ID_Escala")) & ", " & _
+                 "Status_Adm = '3', " & _
+                 "Alteracao = 1 " & _
+                 "WHERE " & strWhere
+    End If
+    
+    
+    db.Execute strSQL, dbFailOnError
+    AtualizarEscalaPorLinhaSite = (db.RecordsAffected > 0)
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro AtualizarEscalaPorLinhaSite: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
+
+
+Private Function InserirEscalaPerdida(ByVal itemSite As Object, ByVal strAISP As String) As Boolean
+    Dim db As DAO.Database
+    Dim rsComp As DAO.Recordset
+    Dim rsCheck As DAO.Recordset
+    Dim strSQL As String
+    Dim strOPMNome As String
+    Dim strComposicaoNome As String
+    Dim strConvenio As String
+    Dim strOPMResp As String
+    Dim strComposicaoCod As String
+    
+    On Error GoTo Erro
+    
+    Set db = CurrentDb
+    
+    If IDEscalaJaExisteLocal(db, itemSite("ID_Escala")) Then
+        GoTo Sair
+    End If
+    
+    strSQL = "SELECT TOP 1 CODIGO, LOCAL, [COMPOSIÇÃO], [Convênio], [OPM RESP] " & _
+             "FROM TblComposicao " & _
+             "WHERE Trim(Nz(CODIGO,'')) = " & SQLTextoID(itemSite("Composicao_Cod"))
+    
+    
+    Set rsComp = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rsComp.EOF Then
+        strOPMNome = Nz(rsComp!LOCAL, "")
+        strComposicaoNome = Nz(rsComp![COMPOSIÇÃO], "")
+        strConvenio = Nz(rsComp![Convênio], "")
+        strOPMResp = Nz(rsComp![OPM RESP], "")
+        strComposicaoCod = Nz(rsComp!CODIGO, "")
+    End If
+    
+    strSQL = "SELECT ID_Escala FROM TblEscPerdidas " & _
+             "WHERE ID_Escala = " & SQLTextoID(itemSite("ID_Escala")) & _
+             " AND Data_Deletada Is Null"
+    Set rsCheck = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rsCheck.EOF Then
+        GoTo Sair
+    End If
+    
+    strSQL = "INSERT INTO TblEscPerdidas (" & _
+             "Data_Esc, ID_Escala, Horario_Inicial, AISP, OPM_Nome, Composicao_Nome, Convenio, OPM_Resp, Composicao_Cod" & _
+             ") VALUES (" & _
+             SQLDataID(itemSite("Data_Esc")) & ", " & _
+             SQLTextoID(itemSite("ID_Escala")) & ", " & _
+             SQLTextoID(itemSite("Horario_Inicial")) & ", " & _
+             SQLTextoID(strAISP) & ", " & _
+             SQLTextoID(strOPMNome) & ", " & _
+             SQLTextoID(strComposicaoNome) & ", " & _
+             SQLTextoID(strConvenio) & ", " & _
+             SQLTextoID(strOPMResp) & ", " & _
+             SQLTextoID(strComposicaoCod) & ")"
+    
+    
+    db.Execute strSQL, dbFailOnError
+    InserirEscalaPerdida = (db.RecordsAffected > 0)
+    
+Sair:
+    On Error Resume Next
+    If Not rsCheck Is Nothing Then rsCheck.Close
+    If Not rsComp Is Nothing Then rsComp.Close
+    Set rsCheck = Nothing
+    Set rsComp = Nothing
+    Set db = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro InserirEscalaPerdida: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
+
+Private Function IDEscalaJaExisteLocal(ByVal db As DAO.Database, ByVal strIDEscala As String) As Boolean
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Sair
+    
+    strSQL = "SELECT TOP 1 ID_Escala FROM TblEscGeral WHERE ID_Escala = " & SQLTextoID(strIDEscala)
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    IDEscalaJaExisteLocal = Not rs.EOF
+    
+Sair:
+    On Error Resume Next
+    If Err.Number <> 0 Then
+        Debug.Print "Erro IDEscalaJaExisteLocal: " & Err.Number & " - " & Err.Description
+        Err.Clear
+    End If
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+End Function
+
+Private Function ObterSubformLinhaEscalasID() As Form
+    Dim frmEscalas As Form
+    
+    On Error Resume Next
+    
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Set frmEscalas = Forms!frmApp!frmNavegar.Form
+        If Err.Number <> 0 Then
+            Debug.Print "ObterSubformLinhaEscalasID - Erro frmApp!frmNavegar: " & Err.Number & " - " & Err.Description
+            Err.Clear
+        End If
+        
+        If Not frmEscalas Is Nothing Then
+            If frmEscalas.Name <> "frmEscalas" Then Set frmEscalas = Nothing
+        End If
+    End If
+    
+    If frmEscalas Is Nothing Then
+        If CurrentProject.AllForms("frmEscalas").IsLoaded Then
+            Set frmEscalas = Forms!frmEscalas
+            If Err.Number <> 0 Then
+                Debug.Print "ObterSubformLinhaEscalasID - Erro Forms!frmEscalas: " & Err.Number & " - " & Err.Description
+                Err.Clear
+            End If
+        End If
+    End If
+    
+    If frmEscalas Is Nothing Then Exit Function
+    
+    Set ObterSubformLinhaEscalasID = frmEscalas!sfrmLinhaEscala.Form
+    If Err.Number <> 0 Then
+        Debug.Print "ObterSubformLinhaEscalasID - Erro sfrmLinhaEscala: " & Err.Number & " - " & Err.Description
+        Err.Clear
+    End If
+End Function
+
+Private Function IDEscalaVazioID(ByRef rs As DAO.Recordset) As Boolean
+    Dim strID As String
+    
+    strID = Trim(Nz(rs!ID_Escala, ""))
+    IDEscalaVazioID = (strID = "" Or strID = "0")
+End Function
+
+Private Function ValorAISPBusca(ByRef rs As DAO.Recordset) As String
+    ValorAISPBusca = Trim(Nz(rs!AISP, ""))
+    If ValorAISPBusca = "" Then ValorAISPBusca = "83355"
+End Function
+
+Private Sub SetValorGeneXusID(ByRef driver As ChromeDriver, ByRef por As by, ByVal strID As String, ByVal strValor As String)
+    Dim js As String
+    
+    On Error GoTo Fallback
+    
+    js = "var e=document.getElementById('" & JsTextoID(strID) & "');" & _
+         "if(e){" & _
+         "e.focus();" & _
+         "e.value='" & JsTextoID(strValor) & "';" & _
+         "e.setAttribute('gxctrlchanged','1');" & _
+         "e.setAttribute('gxvalid','0');" & _
+         "if(typeof gx!='undefined' && gx.evt && gx.evt.onchange){gx.evt.onchange(e);}" & _
+         "var ev=document.createEvent('HTMLEvents');" & _
+         "ev.initEvent('change',true,false);" & _
+         "e.dispatchEvent(ev);" & _
+         "e.blur();" & _
+         "}"
+    
+    driver.ExecuteScript js
+    Exit Sub
+    
+Fallback:
+    Debug.Print "Erro SetValorGeneXusID JS: " & Err.Number & " - " & Err.Description & " | ID=" & strID
+    Err.Clear
+    
+    On Error Resume Next
+    driver.FindElement(por.id(strID)).Click
+    driver.FindElement(por.id(strID)).Clear
+    driver.FindElement(por.id(strID)).SendKeys strValor
+End Sub
+
+Private Function ValorElementoPorID(ByRef driver As ChromeDriver, ByRef por As by, ByVal strID As String) As String
+    On Error GoTo Sair
+    
+    ValorElementoPorID = Trim(Nz(driver.FindElement(por.id(strID)).Attribute("value"), ""))
+    Exit Function
+    
+Sair:
+    ValorElementoPorID = ""
+End Function
+
+Private Function TextoElementoPorID(ByRef driver As ChromeDriver, ByRef por As by, ByVal strID As String) As String
+    Dim el As Object
+    Dim strValor As String
+    
+    On Error GoTo Sair
+    
+    Set el = driver.FindElement(por.id(strID))
+    
+    On Error Resume Next
+    
+    strValor = Trim(Nz(el.Text, ""))
+    If strValor = "" Then strValor = Trim(Nz(el.Attribute("innerText"), ""))
+    If strValor = "" Then strValor = Trim(Nz(el.Attribute("textContent"), ""))
+    If strValor = "" Then strValor = Trim(Nz(el.Attribute("value"), ""))
+    
+    On Error GoTo Sair
+    
+    TextoElementoPorID = strValor
+    Exit Function
+    
+Sair:
+    TextoElementoPorID = ""
+End Function
+
+Private Function ExtrairDataHoraSite(ByVal strDataHora As String, ByRef dtData As Date, ByRef strHora As String) As Boolean
+    Dim partes() As String
+    Dim partesData() As String
+    Dim strData As String
+    
+    On Error GoTo Sair
+    
+    strDataHora = Trim(strDataHora)
+    partes = Split(strDataHora, " ")
+    
+    If UBound(partes) < 1 Then Exit Function
+    
+    strData = Trim(partes(0))
+    strHora = Left(Trim(partes(1)), 5)
+    
+    partesData = Split(strData, "/")
+    If UBound(partesData) <> 2 Then Exit Function
+    
+    dtData = DateSerial(CInt(partesData(2)), CInt(partesData(1)), CInt(partesData(0)))
+    
+    If Not strHora Like "##:##" Then Exit Function
+    
+    ExtrairDataHoraSite = True
+    Exit Function
+    
+Sair:
+    Debug.Print "Erro ExtrairDataHoraSite: " & Err.Number & " - " & Err.Description
+    ExtrairDataHoraSite = False
+End Function
+
+Private Function NormalizarTextoID(ByVal vTexto As Variant) As String
+    Dim strTexto As String
+    
+    strTexto = UCase(Trim(Nz(vTexto, "")))
+    strTexto = Replace(strTexto, vbCr, " ")
+    strTexto = Replace(strTexto, vbLf, " ")
+    strTexto = Replace(strTexto, vbTab, " ")
+    
+    Do While InStr(strTexto, "  ") > 0
+        strTexto = Replace(strTexto, "  ", " ")
+    Loop
+    
+    NormalizarTextoID = strTexto
+End Function
+
+Private Function SomenteNumerosID(ByVal strValor As String) As String
+    Dim i As Long
+    Dim ch As String
+    
+    For i = 1 To Len(strValor)
+        ch = Mid(strValor, i, 1)
+        If ch >= "0" And ch <= "9" Then SomenteNumerosID = SomenteNumerosID & ch
+    Next
+End Function
+
+Private Function SQLTextoID(ByVal v As Variant) As String
+    SQLTextoID = "'" & Replace(Nz(v, ""), "'", "''") & "'"
+End Function
+
+Private Function SQLDataID(ByVal v As Variant) As String
+    If IsDate(v) Then
+        SQLDataID = "#" & Format(CDate(v), "yyyy-mm-dd") & "#"
+    Else
+        SQLDataID = "Null"
+    End If
+End Function
+
+Private Function JsTextoID(ByVal v As Variant) As String
+    JsTextoID = Replace(Nz(v, ""), "\", "\\")
+    JsTextoID = Replace(JsTextoID, "'", "\'")
+    JsTextoID = Replace(JsTextoID, vbCr, "\n")
+    JsTextoID = Replace(JsTextoID, vbLf, "\n")
+End Function
+
+Private Sub PausarID(ByVal segundos As Double)
+    Dim inicio As Double
+    Dim decorrido As Double
+    
+    inicio = Timer
+    
+    Do
+        If Timer >= inicio Then
+            decorrido = Timer - inicio
+        Else
+            decorrido = (86400 - inicio) + Timer
+        End If
+        If Not mblnBloquearEventosID Then DoEvents
+    Loop While decorrido < segundos
+End Sub

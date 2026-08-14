@@ -1,0 +1,497 @@
+﻿Option Explicit
+
+Private Const FIREBASE_URL As String = "https://dejem-9gb-default-rtdb.firebaseio.com/"
+Private Const LINHA_INICIAL As Long = 9
+Private Const LINHA_FINAL As Long = 1403
+
+Public Sub EnviarSolicitacoesGuiaAtivaFirebase()
+    Dim ws As Worksheet
+    Dim strUploadEm As String
+    Dim strBody As String
+    Dim strUpdates As String
+    Dim lngEnviadas As Long
+    Dim lngIgnoradas As Long
+    Dim lngDuplicadas As Long
+    Dim lngCanceladas As Long
+    Dim lngSemInscritos As Long
+    Dim lngLinha As Long
+    Dim strErroLinhas As String
+    Dim dictIDs As Object
+    Dim strIDFirebase As String
+    Dim strSolicJson As String
+    Dim strPendJson As String
+    Dim strErroLinha As String
+    
+    On Error GoTo TrataErro
+    
+    Set ws = ActiveSheet
+    Set dictIDs = CreateObject("Scripting.Dictionary")
+    strUploadEm = DataHoraISO8601(Now)
+    
+    Debug.Print "EnviarSolicitacoesGuiaAtivaFirebase - Iniciando"
+    Debug.Print "Guia ativa: " & ws.Name
+    Debug.Print "Intervalo: " & LINHA_INICIAL & " ate " & LINHA_FINAL
+    Debug.Print "Upload em: " & strUploadEm
+    
+    If MsgBox("Enviar as solicitacoes da guia ativa '" & ws.Name & "' para o Firebase?" & vbCrLf & vbCrLf & _
+              "Linhas verificadas: " & LINHA_INICIAL & " ate " & LINHA_FINAL & vbCrLf & _
+              "Esta acao ira criar/atualizar os nos /solicitacoes e /SolicPendentes.", _
+              vbYesNo + vbQuestion, "Upload Firebase") = vbNo Then
+        Exit Sub
+    End If
+    
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.StatusBar = "Montando solicitacoes para envio ao Firebase..."
+    
+    For lngLinha = LINHA_INICIAL To LINHA_FINAL
+        strErroLinha = ""
+        
+        If LinhaPossuiDados(ws, lngLinha) Then
+            If MontarSolicitacaoLinha(ws, lngLinha, strUploadEm, strIDFirebase, strSolicJson, strPendJson, strErroLinha) Then
+                If dictIDs.Exists(strIDFirebase) Then
+                    lngDuplicadas = lngDuplicadas + 1
+                    strErroLinhas = AcrescentarErroLinha(strErroLinhas, "Linha " & lngLinha & ": ID_Firebase duplicado na guia - " & strIDFirebase)
+                    Debug.Print "Linha " & lngLinha & " ignorada por ID_Firebase duplicado: " & strIDFirebase
+                Else
+                    dictIDs.Add strIDFirebase, True
+                    
+                    If Len(strUpdates) > 0 Then strUpdates = strUpdates & ","
+                    strUpdates = strUpdates & _
+                                 """" & JsonEscape("solicitacoes/" & strIDFirebase) & """:" & strSolicJson & "," & _
+                                 """" & JsonEscape("SolicPendentes/" & strIDFirebase) & """:" & strPendJson
+                    
+                    lngEnviadas = lngEnviadas + 1
+                    
+                    If LinhaCancelada(ws, lngLinha) Then
+                        lngCanceladas = lngCanceladas + 1
+                    ElseIf LinhaSemInscritos(ws, lngLinha) Then
+                        lngSemInscritos = lngSemInscritos + 1
+                    End If
+                    
+                    If lngEnviadas <= 10 Then
+                        Debug.Print "Linha " & lngLinha & " OK | ID_Firebase=" & strIDFirebase & _
+                                    " | Cancelada=" & LinhaCancelada(ws, lngLinha) & _
+                                    " | SemInscritos=" & LinhaSemInscritos(ws, lngLinha)
+                    End If
+                End If
+            Else
+                lngIgnoradas = lngIgnoradas + 1
+                If Len(strErroLinha) > 0 Then
+                    strErroLinhas = AcrescentarErroLinha(strErroLinhas, "Linha " & lngLinha & ": " & strErroLinha)
+                    Debug.Print "Linha " & lngLinha & " ignorada: " & strErroLinha
+                End If
+            End If
+        Else
+            Debug.Print "Linha " & lngLinha & " pulada: coluna B vazia"
+        End If
+    Next lngLinha
+    
+    Debug.Print "Montagem concluida | Enviadas=" & lngEnviadas & _
+                " | Ignoradas=" & lngIgnoradas & _
+                " | Duplicadas=" & lngDuplicadas & _
+                " | Canceladas=" & lngCanceladas & _
+                " | SemInscritos=" & lngSemInscritos
+    
+    If lngEnviadas = 0 Then
+        MsgBox "Nenhuma solicitacao valida encontrada na guia ativa." & vbCrLf & vbCrLf & _
+               "Ignoradas: " & lngIgnoradas & TextoErros(strErroLinhas), _
+               vbExclamation, "Upload Firebase"
+        GoTo Finalizar
+    End If
+    
+    strBody = "{" & strUpdates & "}"
+    Debug.Print "Tamanho do JSON PATCH: " & Len(strBody) & " caracteres"
+    
+    Application.StatusBar = "Enviando " & lngEnviadas & " solicitacao(oes) para o Firebase..."
+    
+    If PatchFirebase(strBody) Then
+        MsgBox "Upload concluido com sucesso!" & vbCrLf & vbCrLf & _
+               "Guia: " & ws.Name & vbCrLf & _
+               "Solicitacoes enviadas: " & lngEnviadas & vbCrLf & _
+               "Canceladas: " & lngCanceladas & vbCrLf & _
+               "Nao houve mais inscritos: " & lngSemInscritos & vbCrLf & _
+               "Linhas ignoradas: " & lngIgnoradas & vbCrLf & _
+               "IDs repetidos na guia: " & lngDuplicadas & TextoErros(strErroLinhas), _
+               vbInformation, "Upload Firebase"
+    Else
+        MsgBox "Erro ao enviar dados para o Firebase." & vbCrLf & _
+               "Nenhuma confirmacao de sucesso foi recebida.", _
+               vbCritical, "Upload Firebase"
+    End If
+    
+Finalizar:
+    Application.StatusBar = False
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+    
+TrataErro:
+    Debug.Print "Erro EnviarSolicitacoesGuiaAtivaFirebase: " & Err.Number & " - " & Err.Description
+    Application.StatusBar = False
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "Erro " & Err.Number & " - " & Err.Description, vbCritical, "Upload Firebase"
+End Sub
+
+Private Function MontarSolicitacaoLinha(ByVal ws As Worksheet, _
+                                        ByVal lngLinha As Long, _
+                                        ByVal strUploadEm As String, _
+                                        ByRef strIDFirebase As String, _
+                                        ByRef strSolicJson As String, _
+                                        ByRef strPendJson As String, _
+                                        ByRef strErroLinha As String) As Boolean
+    Dim dtEscala As Date
+    Dim strAno As String
+    Dim strMes As String
+    Dim strDia As String
+    Dim strDataFirebase As String
+    Dim strOPMCodigo As String
+    Dim strOPMNome As String
+    Dim strComposicaoCod As String
+    Dim strComposicaoNome As String
+    Dim strHorarioInicial As String
+    Dim strHorarioFinal As String
+    Dim strDiaHora As String
+    Dim blnCancelada As Boolean
+    Dim blnSemInscritos As Boolean
+    Dim strStatusInicialJson As String
+    Dim strStatusAdmJson As String
+    Dim strSolicSuperiorJson As String
+    Dim strSolicIntermedJson As String
+    Dim strSolicSubalternoJson As String
+    Dim strSolicSubtenSgtJson As String
+    Dim strSolicCbSdJson As String
+    Dim strCamposHistoricosJson As String
+    
+    On Error GoTo Erro
+    
+    MontarSolicitacaoLinha = False
+    
+    If Not ObterDataEscala(ws.Cells(lngLinha, "T").Value, dtEscala) Then
+        strErroLinha = "data invalida na coluna T"
+        Debug.Print "MontarSolicitacaoLinha linha " & lngLinha & " - " & strErroLinha & _
+                    " | Valor T=" & TextoCelula(ws.Cells(lngLinha, "T"))
+        Exit Function
+    End If
+    
+    strOPMCodigo = TextoCelula(ws.Cells(lngLinha, "BI"))
+    strOPMNome = UCase$(TextoCelula(ws.Cells(lngLinha, "D")))
+    strComposicaoCod = TextoCelula(ws.Cells(lngLinha, "I"))
+    strComposicaoNome = TextoCelula(ws.Cells(lngLinha, "E"))
+    strHorarioInicial = HoraTexto(ws.Cells(lngLinha, "F"))
+    strHorarioFinal = HoraTexto(ws.Cells(lngLinha, "G"))
+    blnCancelada = LinhaCancelada(ws, lngLinha)
+    blnSemInscritos = LinhaSemInscritos(ws, lngLinha)
+    
+    If strOPMCodigo = "" Then
+        strErroLinha = "opm_codigo vazio na coluna BI"
+        Debug.Print "MontarSolicitacaoLinha linha " & lngLinha & " - " & strErroLinha
+        Exit Function
+    End If
+    
+    If strComposicaoCod = "" Then
+        strErroLinha = "composicao_cod vazio na coluna I"
+        Debug.Print "MontarSolicitacaoLinha linha " & lngLinha & " - " & strErroLinha
+        Exit Function
+    End If
+    
+    If strHorarioInicial = "" Then
+        strErroLinha = "horario_inicial invalido na coluna F"
+        Debug.Print "MontarSolicitacaoLinha linha " & lngLinha & " - " & strErroLinha & _
+                    " | Valor F=" & TextoCelula(ws.Cells(lngLinha, "F"))
+        Exit Function
+    End If
+    
+    If strHorarioFinal = "" Then
+        strErroLinha = "horario_final invalido na coluna G"
+        Debug.Print "MontarSolicitacaoLinha linha " & lngLinha & " - " & strErroLinha & _
+                    " | Valor G=" & TextoCelula(ws.Cells(lngLinha, "G"))
+        Exit Function
+    End If
+    
+    strAno = Format$(dtEscala, "yyyy")
+    strMes = Format$(dtEscala, "mm")
+    strDia = Format$(dtEscala, "dd")
+    strDataFirebase = Format$(dtEscala, "yyyy-mm-dd")
+    strDiaHora = strDia & Replace(strHorarioInicial, ":", "")
+    
+    strIDFirebase = strAno & "/" & strMes & "/" & strOPMCodigo & "/" & strComposicaoCod & "/" & strDiaHora
+    
+    If blnCancelada Then
+        strStatusInicialJson = "3"
+        strStatusAdmJson = "2"
+        strSolicSuperiorJson = "0"
+        strSolicIntermedJson = "0"
+        strSolicSubalternoJson = "0"
+        strSolicSubtenSgtJson = "0"
+        strSolicCbSdJson = "1"
+        strCamposHistoricosJson = ""
+    ElseIf blnSemInscritos Then
+        strStatusInicialJson = "1"
+        strStatusAdmJson = "5"
+        strSolicSuperiorJson = "0"
+        strSolicIntermedJson = "0"
+        strSolicSubalternoJson = "0"
+        strSolicSubtenSgtJson = "0"
+        strSolicCbSdJson = "1"
+        strCamposHistoricosJson = "," & _
+            """Atz_Superior"":0," & _
+            """Atz_Intermed"":0," & _
+            """Atz_Subalterno"":0," & _
+            """Atz_Subten_Sgt"":0," & _
+            """Atz_Cb_Sd"":1," & _
+            """Esc_Superior"":0," & _
+            """Esc_Intermed"":0," & _
+            """Esc_Subalterno"":0," & _
+            """Esc_Subten_Sgt"":0," & _
+            """Esc_Cb_Sd"":0"
+    Else
+        strStatusInicialJson = "null"
+        strStatusAdmJson = "null"
+        strSolicSuperiorJson = "0"
+        strSolicIntermedJson = NumeroJson(ws.Cells(lngLinha, "BE").Value)
+        strSolicSubalternoJson = NumeroJson(ws.Cells(lngLinha, "BF").Value)
+        strSolicSubtenSgtJson = NumeroJson(ws.Cells(lngLinha, "BG").Value)
+        strSolicCbSdJson = NumeroJson(ws.Cells(lngLinha, "BH").Value)
+        strCamposHistoricosJson = ""
+    End If
+    
+    strSolicJson = "{" & _
+        """data"":""" & JsonEscape(strDataFirebase) & """," & _
+        """opm_codigo"":""" & JsonEscape(strOPMCodigo) & """," & _
+        """opm_nome"":""" & JsonEscape(strOPMNome) & """," & _
+        """composicao_cod"":""" & JsonEscape(strComposicaoCod) & """," & _
+        """composicao_nome"":""" & JsonEscape(strComposicaoNome) & """," & _
+        """horario_inicial"":""" & JsonEscape(strHorarioInicial) & """," & _
+        """horario_final"":""" & JsonEscape(strHorarioFinal) & """," & _
+        """Solic_Subten_Sgt"":" & strSolicSubtenSgtJson & "," & _
+        """Solic_Cb_Sd"":" & strSolicCbSdJson & "," & _
+        """Solic_Superior"":" & strSolicSuperiorJson & "," & _
+        """Solic_Intermed"":" & strSolicIntermedJson & "," & _
+        """Solic_Subalterno"":" & strSolicSubalternoJson & "," & _
+        """ID_Firebase"":""" & JsonEscape(strIDFirebase) & """," & _
+        """necessidade"":""viatura_extra""," & _
+        """motivo"":""Sistema anterior""," & _
+        """observacoes"":null," & _
+        """comprovante_anexo"":null," & _
+        """criado_por_re"":""127893""," & _
+        """criado_por_nome"":""Alexandre Alves Ferreira""," & _
+        """criado_em"":""" & JsonEscape(strUploadEm) & """," & _
+        """Status_Inicial"":" & strStatusInicialJson & "," & _
+        """Status_Adm"":" & strStatusAdmJson & _
+        strCamposHistoricosJson & _
+    "}"
+    
+    strPendJson = "{" & _
+        """ID_Firebase"":""" & JsonEscape(strIDFirebase) & """," & _
+        """atualizado_em"":""" & JsonEscape(strUploadEm) & """" & _
+    "}"
+    
+    MontarSolicitacaoLinha = True
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro MontarSolicitacaoLinha linha " & lngLinha & ": " & Err.Number & " - " & Err.Description
+    strErroLinha = "erro ao montar JSON: " & Err.Description
+    MontarSolicitacaoLinha = False
+End Function
+
+Private Function LinhaCancelada(ByVal ws As Worksheet, ByVal lngLinha As Long) As Boolean
+    LinhaCancelada = (InStr(1, TextoNormalizado(ws.Cells(lngLinha, "B")), "CANCELADA", vbTextCompare) > 0)
+End Function
+
+Private Function LinhaSemInscritos(ByVal ws As Worksheet, ByVal lngLinha As Long) As Boolean
+    LinhaSemInscritos = (InStr(1, TextoNormalizado(ws.Cells(lngLinha, "B")), "NAO HOUVE MAIS INSCRITOS", vbTextCompare) > 0)
+End Function
+
+Private Function LinhaPossuiDados(ByVal ws As Worksheet, ByVal lngLinha As Long) As Boolean
+    LinhaPossuiDados = (Trim$(TextoCelula(ws.Cells(lngLinha, "B"))) <> "")
+End Function
+
+Private Function ObterDataEscala(ByVal valor As Variant, ByRef dtRetorno As Date) As Boolean
+    Dim partes() As String
+    Dim strValor As String
+    
+    On Error GoTo Erro
+    
+    If IsDate(valor) Then
+        dtRetorno = DateSerial(Year(CDate(valor)), Month(CDate(valor)), Day(CDate(valor)))
+        ObterDataEscala = True
+        Exit Function
+    End If
+    
+    strValor = Trim$(CStr(valor))
+    If strValor = "" Then Exit Function
+    
+    partes = Split(strValor, "/")
+    If UBound(partes) <> 2 Then Exit Function
+    
+    dtRetorno = DateSerial(CInt(partes(2)), CInt(partes(1)), CInt(partes(0)))
+    ObterDataEscala = True
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro ObterDataEscala: " & Err.Number & " - " & Err.Description & " | Valor=" & CStr(valor)
+    ObterDataEscala = False
+End Function
+
+Private Function HoraTexto(ByVal cel As Range) As String
+    Dim v As Variant
+    Dim strTexto As String
+    Dim partes() As String
+    Dim dtHora As Date
+    
+    On Error GoTo Erro
+    
+    v = cel.Value
+    
+    If IsDate(v) Then
+        dtHora = CDate(v)
+        HoraTexto = Format$(TimeSerial(Hour(dtHora), Minute(dtHora), 0), "hh:nn")
+        Exit Function
+    End If
+    
+    If IsNumeric(v) And v > 0 And v < 1 Then
+        HoraTexto = Format$(v, "hh:nn")
+        Exit Function
+    End If
+    
+    strTexto = Trim$(cel.Text)
+    If strTexto = "" Then strTexto = Trim$(CStr(v))
+    strTexto = Replace(strTexto, ".", ":")
+    
+    If IsDate(strTexto) Then
+        dtHora = CDate(strTexto)
+        HoraTexto = Format$(TimeSerial(Hour(dtHora), Minute(dtHora), 0), "hh:nn")
+        Exit Function
+    End If
+    
+    If InStr(1, strTexto, " ", vbTextCompare) > 0 Then
+        strTexto = Trim$(Mid$(strTexto, InStrRev(strTexto, " ") + 1))
+    End If
+    
+    If InStr(1, strTexto, ":", vbTextCompare) > 0 Then
+        partes = Split(strTexto, ":")
+        If UBound(partes) >= 1 Then
+            HoraTexto = Format$(CLng(partes(0)), "00") & ":" & Format$(CLng(partes(1)), "00")
+            Exit Function
+        End If
+    End If
+    
+    strTexto = SomenteNumeros(strTexto)
+    If Len(strTexto) = 3 Then strTexto = "0" & strTexto
+    If Len(strTexto) = 4 Then
+        HoraTexto = Left$(strTexto, 2) & ":" & Right$(strTexto, 2)
+    End If
+    
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro HoraTexto celula " & cel.Address(False, False) & ": " & Err.Number & " - " & Err.Description & _
+                " | Valor=" & CStr(cel.Value) & " | Texto=" & cel.Text
+    HoraTexto = ""
+End Function
+
+Private Function TextoCelula(ByVal cel As Range) As String
+    TextoCelula = Trim$(CStr(cel.Value))
+End Function
+
+Private Function TextoNormalizado(ByVal cel As Range) As String
+    Dim strValor As String
+    
+    strValor = UCase$(TextoCelula(cel))
+    strValor = Replace(strValor, "Á", "A")
+    strValor = Replace(strValor, "À", "A")
+    strValor = Replace(strValor, "Â", "A")
+    strValor = Replace(strValor, "Ã", "A")
+    strValor = Replace(strValor, "É", "E")
+    strValor = Replace(strValor, "Ê", "E")
+    strValor = Replace(strValor, "Í", "I")
+    strValor = Replace(strValor, "Ó", "O")
+    strValor = Replace(strValor, "Ô", "O")
+    strValor = Replace(strValor, "Õ", "O")
+    strValor = Replace(strValor, "Ú", "U")
+    strValor = Replace(strValor, "Ç", "C")
+    
+    TextoNormalizado = strValor
+End Function
+
+Private Function NumeroJson(ByVal valor As Variant) As String
+    If IsNumeric(valor) Then
+        NumeroJson = CStr(CLng(valor))
+    Else
+        NumeroJson = "0"
+    End If
+End Function
+
+Private Function SomenteNumeros(ByVal strValor As String) As String
+    Dim i As Long
+    Dim ch As String
+    
+    For i = 1 To Len(strValor)
+        ch = Mid$(strValor, i, 1)
+        If ch >= "0" And ch <= "9" Then
+            SomenteNumeros = SomenteNumeros & ch
+        End If
+    Next i
+End Function
+
+Private Function DataHoraISO8601(ByVal dt As Date) As String
+    DataHoraISO8601 = Format$(dt, "yyyy-mm-dd\Thh:nn:ss") & ".000-03:00"
+End Function
+
+Private Function JsonEscape(ByVal valor As String) As String
+    JsonEscape = Replace(valor, "\", "\\")
+    JsonEscape = Replace(JsonEscape, Chr$(34), "\" & Chr$(34))
+    JsonEscape = Replace(JsonEscape, vbCrLf, "\n")
+    JsonEscape = Replace(JsonEscape, vbCr, "\n")
+    JsonEscape = Replace(JsonEscape, vbLf, "\n")
+End Function
+
+Private Function PatchFirebase(ByVal strJson As String) As Boolean
+    Dim objHTTP As Object
+    Dim strURL As String
+    
+    On Error GoTo Erro
+    
+    strURL = FIREBASE_URL & ".json?print=silent"
+    
+    Set objHTTP = CreateObject("MSXML2.XMLHTTP")
+    objHTTP.Open "PATCH", strURL, False
+    objHTTP.setRequestHeader "Content-Type", "application/json; charset=utf-8"
+    objHTTP.Send strJson
+    
+    PatchFirebase = (objHTTP.Status = 200 Or objHTTP.Status = 204)
+    
+    Debug.Print "PatchFirebase - Status HTTP: " & objHTTP.Status
+    
+    If Not PatchFirebase Then
+        Debug.Print "PatchFirebase - ResponseText: " & Left$(objHTTP.ResponseText, 2000)
+        MsgBox "Firebase retornou status " & objHTTP.Status & "." & vbCrLf & _
+               Left$(objHTTP.ResponseText, 1000), vbCritical, "Upload Firebase"
+    End If
+    
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro PatchFirebase: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro PatchFirebase: " & Err.Number & " - " & Err.Description, vbCritical, "Upload Firebase"
+    PatchFirebase = False
+End Function
+
+Private Function AcrescentarErroLinha(ByVal strAtual As String, ByVal strNovo As String) As String
+    If Len(strAtual) > 2000 Then
+        AcrescentarErroLinha = strAtual
+    Else
+        AcrescentarErroLinha = strAtual & vbCrLf & strNovo
+    End If
+End Function
+
+Private Function TextoErros(ByVal strErros As String) As String
+    If Len(strErros) = 0 Then
+        TextoErros = ""
+    Else
+        TextoErros = vbCrLf & vbCrLf & "Primeiros erros/avisos:" & strErros
+    End If
+End Function

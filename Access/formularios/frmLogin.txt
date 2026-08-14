@@ -1,0 +1,398 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Pausar(ByVal segundos As Double)
+    Dim fim As Date
+    fim = DateAdd("s", segundos, Now)
+    Do While Now < fim
+        DoEvents
+    Loop
+End Sub
+
+Private Sub Comando11_Click()
+    Me.txtRE.Value = "127893"
+    Me.txtPassword.Value = "Cr1st40##"
+    Call btnLogin_Click
+End Sub
+
+Private Sub Form_Load()
+    Me.txtPassword.InputMask = "Password"
+    Me.selExibSenha.Value = False
+    Me.txtRE.Value = ""
+    Me.txtPassword.Value = ""
+    Me.txtRE.SetFocus
+End Sub
+
+Private Sub selExibSenha_Click()
+    If Me.selExibSenha.Value = True Then
+        Me.txtPassword.InputMask = ""
+    Else
+        Me.txtPassword.InputMask = "Password"
+    End If
+End Sub
+
+Private Sub txtRE_GotFocus()
+    Dim strValor As String
+    strValor = Nz(Me.txtRE.Value, "")
+    Me.txtRE.SelStart = 0
+    Me.txtRE.SelLength = Len(strValor)
+End Sub
+
+Private Sub txtRE_KeyPress(KeyAscii As Integer)
+    If (KeyAscii < 48 Or KeyAscii > 57) And KeyAscii <> 8 Then
+        KeyAscii = 0
+        Beep
+        Exit Sub
+    End If
+
+    If KeyAscii <> 8 Then
+        If Len(Nz(Me.txtRE.Text, "")) >= 6 Then
+            KeyAscii = 0
+            Beep
+        End If
+    End If
+End Sub
+
+Private Sub Form_KeyPress(KeyAscii As Integer)
+    If KeyAscii = 13 Then
+        KeyAscii = 0
+        If Me.btnLogin.Enabled Then Call btnLogin_Click
+    End If
+End Sub
+
+Private Sub btnAltSenha_Click()
+    ' Abre o formulário de alteração de senha
+    DoCmd.OpenForm "frmLoginAltSenha", , , , , , Me.txtRE.Value
+End Sub
+
+Private Sub btnLogin_Click()
+    On Error GoTo ErrorHandler
+
+    Dim rs           As DAO.Recordset
+    Dim strRE        As String
+    Dim strSenha     As String
+    Dim strCPF       As String
+    Dim lngUsuarioID As Long
+    Dim strLink      As String
+    Dim strDataLogin As String
+    Dim driver       As ChromeDriver
+    Dim by           As by
+    Dim blnPrecisaAtualizar As Boolean
+
+    strRE = Trim(Nz(Me.txtRE.Value, ""))
+    strSenha = Trim(Nz(Me.txtPassword.Value, ""))
+
+    If Len(strRE) = 0 Then
+        MsgBox "Por favor, digite o RE.", vbExclamation, "Campo Obrigatório"
+        Me.txtRE.SetFocus
+        Exit Sub
+    End If
+
+    If Len(strRE) < 6 Then
+        MsgBox "O RE deve conter 6 dígitos.", vbExclamation, "RE Inválido"
+        Me.txtRE.SetFocus
+        Me.txtRE.SelStart = 0
+        Me.txtRE.SelLength = Len(strRE)
+        Exit Sub
+    End If
+
+    If Len(strSenha) = 0 Then
+        MsgBox "Por favor, digite a senha.", vbExclamation, "Campo Obrigatório"
+        Me.txtPassword.SetFocus
+        Exit Sub
+    End If
+
+    DoCmd.Hourglass True
+
+    If Not BancoConectado() Then
+        If Not ConectarBackend() Then
+            MsgBox "Não foi possível conectar ao banco de dados.", vbCritical, "Erro de Conexão"
+            GoTo Cleanup
+        End If
+    End If
+
+    Set rs = BuscarUsuarioPorRE(strRE)
+
+    If rs Is Nothing Then
+        MsgBox "Erro ao consultar a base de dados.", vbCritical, "Erro"
+        GoTo Cleanup
+    End If
+
+    If rs.EOF Then
+        MsgBox "RE não encontrado na base de dados.", vbCritical, "Usuário Não Encontrado"
+        Me.txtRE.SetFocus
+        GoTo Cleanup
+    End If
+
+    ' VERIFICA SE A SENHA ESTÁ VAZIA NA BASE DE DADOS
+    Dim strSenhaBD As String
+    strSenhaBD = Nz(rs!Senha, "")
+    
+    If strSenhaBD = "" Then
+        MsgBox "Sua senha não está cadastrada ou foi apagada." & vbCrLf & _
+               "Você será redirecionado para cadastrar uma nova senha.", _
+               vbInformation, "Senha não cadastrada"
+        rs.Close
+        DoCmd.OpenForm "frmLoginAltSenha", , , , , , strRE
+        GoTo Cleanup
+    End If
+
+    If Not ValidarSenhaUsuario(rs, strSenha) Then
+        MsgBox "Senha inválida. Verifique e tente novamente.", vbCritical, "Senha Incorreta"
+        Me.txtPassword.SetFocus
+        Me.txtPassword.SelStart = 0
+        Me.txtPassword.SelLength = Len(Me.txtPassword.Value)
+        GoTo Cleanup
+    End If
+
+    lngUsuarioID = rs!id
+    strCPF = Nz(rs!CPF, "")
+    strLink = Nz(rs!Link, "")
+    strDataLogin = Nz(rs!dataLogin, "")
+
+    rs.Close
+
+    ' Verifica se precisa fazer login no site
+    blnPrecisaAtualizar = True
+    
+    If strDataLogin = Format(Date, "dd/mm/yyyy") Then
+        If Len(strLink) > 0 Then
+            ' Data é hoje E link não está vazio -> pergunta se quer refazer
+            Dim resposta As Integer
+            resposta = MsgBox("Login já realizado hoje com sucesso!" & vbCrLf & vbCrLf & _
+                   "Deseja refazer o login e obter um novo link?", _
+                   vbQuestion + vbYesNo, "Login já realizado")
+            
+            If resposta = vbYes Then
+                ' Usuário quer refazer
+                blnPrecisaAtualizar = True
+            Else
+                ' Usuário não quer refazer
+                blnPrecisaAtualizar = False
+                Call DefinirUsuarioLogado(strRE, lngUsuarioID)
+                DoCmd.OpenForm "frmApp"
+                DoCmd.Close acForm, Me.Name
+                GoTo Cleanup
+            End If
+        Else
+            ' Data é hoje MAS link está vazio -> precisa atualizar
+            MsgBox "Login já realizado hoje, mas o link não foi encontrado." & vbCrLf & _
+                   "Será feita uma nova tentativa de obter o link.", vbExclamation, "Atenção"
+            blnPrecisaAtualizar = True
+        End If
+    Else
+        ' Data não é hoje -> precisa atualizar
+        blnPrecisaAtualizar = True
+    End If
+
+    If blnPrecisaAtualizar Then
+        If Len(strCPF) = 0 Then
+            MsgBox "CPF não cadastrado para este RE. Contate o administrador.", vbCritical, "CPF não encontrado"
+            GoTo Cleanup
+        End If
+
+        If Not ValidarCPF(strCPF) Then
+            MsgBox "CPF cadastrado é inválido. Contate o administrador.", vbCritical, "CPF Inválido"
+            GoTo Cleanup
+        End If
+
+        Call LimparLinkUsuario(lngUsuarioID)
+
+        Set driver = New ChromeDriver
+        Set by = New by
+
+        On Error GoTo SeleniumError
+
+        With driver
+            .AddArgument ("--headless")
+            .Start
+            .Window.Maximize
+            .Get "http://ms.policiamilitar.sp.gov.br/login.aspx"
+
+            Pausar 2
+
+            .FindElement(by.id("vUSRNUMCPFAUX")).SendKeys (strCPF)
+            .FindElement(by.id("vSENHA")).SendKeys (strSenha)
+            .FindElement(by.Name("BTN_LOGIN")).Click
+
+            Pausar 3
+
+            If .IsElementPresent(by.xpath("//*[@id='gxErrorViewer']/div")) Then
+                Dim erroTexto As String
+                erroTexto = .FindElement(by.xpath("//*[@id='gxErrorViewer']/div")).Text
+
+                If erroTexto = "Senha inválida!" Then
+                    MsgBox "Erro. Senha inválida no sistema MS da PM. Sua senha será apagada para cadastro de uma nova.", vbCritical, "Erro no Site"
+                    
+                    ' LIMPA A SENHA NA BASE DE DADOS
+                    Call LimparSenhaUsuario(lngUsuarioID)
+                    
+                    ' Fecha o driver
+                    .Close
+                    
+                    ' Abre o formulário de alteração de senha
+                    DoCmd.OpenForm "frmLoginAltSenha", , , , , , strRE
+                    GoTo Cleanup
+                Else
+                    MsgBox "Erro no sistema da PM: " & erroTexto, vbCritical, "Erro no Site"
+                End If
+                GoTo SeleniumError
+            End If
+
+            Pausar 2
+
+            On Error Resume Next
+            If .Window.Title <> "Home" Then
+                .SwitchToNextWindow
+            End If
+
+            If Err.Number <> 0 Then
+                MsgBox "Erro ao trocar de janela. Contate o desenvolvedor.", vbCritical, "Erro"
+                GoTo SeleniumError
+            End If
+            On Error GoTo 0
+
+            ' ============================================
+            ' NAVEGAÇÃO HIERÁRQUICA: SIRH > Escala > Cadastro de Escala
+            ' ============================================
+            
+            Dim menuSIRH As Object
+            Dim menuEscala As Object
+            Dim menuCadastro As Object
+            Dim textFull As String
+            Dim textLink As String
+            Dim posInitial As Long
+            Dim posEnd As Long
+            
+            ' 1. CLICA NO MENU SIRH
+            On Error Resume Next
+            Set menuSIRH = .FindElement(by.xpath("//*[contains(text(), 'SIRH')]"))
+            On Error GoTo 0
+            
+            If Not menuSIRH Is Nothing Then
+                menuSIRH.Click
+                Pausar 1
+            Else
+                Debug.Print "Menu SIRH não encontrado!"
+                GoTo SeleniumError
+            End If
+            
+            ' 2. PASSA O MOUSE SOBRE O MENU ESCALA (hover)
+            On Error Resume Next
+            Set menuEscala = .FindElement(by.xpath("//td[@class='ThemeClassicMenuFolderText' and text()='Escala']"))
+            If menuEscala Is Nothing Then
+                Set menuEscala = .FindElement(by.xpath("//td[text()='Escala']"))
+            End If
+            If menuEscala Is Nothing Then
+                Set menuEscala = .FindElement(by.xpath("//*[text()='Escala']"))
+            End If
+            On Error GoTo 0
+            
+            If Not menuEscala Is Nothing Then
+                .ExecuteScript "var evt = new MouseEvent('mouseover', {bubbles: true}); arguments[0].dispatchEvent(evt);", menuEscala
+                Pausar 1
+            Else
+                Debug.Print "Menu Escala não encontrado!"
+                GoTo SeleniumError
+            End If
+            
+            ' 3. CLICA NO CADASTRO DE ESCALA
+            On Error Resume Next
+            Set menuCadastro = .FindElement(by.xpath("//td[@class='ThemeClassicMenuItemText' and contains(text(), 'Cadastro de Escala')]"))
+            If menuCadastro Is Nothing Then
+                Set menuCadastro = .FindElement(by.xpath("//*[contains(text(), 'Cadastro de Escala')]"))
+            End If
+            On Error GoTo 0
+            
+            If Not menuCadastro Is Nothing Then
+                menuCadastro.Click
+                Pausar 2
+            Else
+                MsgBox "'Cadastro de Escala' não encontrado!", vbExclamation
+                GoTo SeleniumError
+            End If
+            
+            ' ============================================
+            ' EXTRAIR O LINK
+            ' ============================================
+            
+            On Error Resume Next
+            textFull = .FindElement(by.xpath("//*[@id='MAINFORM']/div/input")).Value
+            On Error GoTo 0
+            
+            posInitial = InStr(textFull, "Escala/CadEsc.aspx?")
+            
+            If posInitial > 0 Then
+                posInitial = posInitial + Len("Escala/CadEsc.aspx?")
+                posEnd = InStr(posInitial, textFull, """,")
+                If posEnd > 0 Then
+                    textLink = Mid(textFull, posInitial, posEnd - posInitial)
+                Else
+                    textLink = Mid(textFull, posInitial)
+                End If
+                textLink = Trim(textLink)
+            Else
+                Debug.Print "String 'Escala/CadEsc.aspx' não foi encontrada."
+                textLink = ""
+            End If
+            
+            On Error Resume Next
+            .SwitchToNextWindow
+            
+            If .Window.Title = "Cadastro de Escala" Then
+                .Close
+                .SwitchToNextWindow
+            End If
+            If .Window.Title <> "Chama_ Rotina" Then
+                .SwitchToNextWindow
+            End If
+            .Close
+            On Error GoTo 0
+
+        End With
+
+        If Len(textLink) > 0 Then
+            Call AtualizarLinkUsuario(lngUsuarioID, textLink)
+            Call AtualizarDataLogin(lngUsuarioID)
+            MsgBox "Link importado com sucesso!", vbInformation, "Sucesso"
+        Else
+            MsgBox "Link não encontrado. Nenhum dado foi salvo.", vbExclamation, "Atenção"
+        End If
+
+        Call DefinirUsuarioLogado(strRE, lngUsuarioID)
+        DoCmd.OpenForm "frmApp"
+        DoCmd.Close acForm, Me.Name
+    End If
+
+    GoTo Cleanup
+
+SeleniumError:
+    On Error Resume Next
+    If Not driver Is Nothing Then driver.Close
+    Set driver = Nothing
+    Set by = Nothing
+    MsgBox "Erro na automação do site. Verifique sua conexão e tente novamente.", vbCritical, "Erro de Automação"
+    GoTo Cleanup
+
+Cleanup:
+    On Error Resume Next
+    DoCmd.Hourglass False
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    If Not driver Is Nothing Then driver.Close
+    Set driver = Nothing
+    Set by = Nothing
+    On Error GoTo 0
+    Exit Sub
+
+ErrorHandler:
+    Debug.Print "Erro " & Err.Number & ": " & Err.Description
+    MsgBox "Erro ao realizar login: " & Err.Number & " – " & Err.Description, vbCritical, "Erro"
+    GoTo Cleanup
+End Sub
+
+Private Sub btnSair_Click()
+    If MsgBox("Tem certeza que deseja sair?", vbQuestion + vbYesNo, "Sair") = vbYes Then
+        DoCmd.Quit
+    End If
+End Sub

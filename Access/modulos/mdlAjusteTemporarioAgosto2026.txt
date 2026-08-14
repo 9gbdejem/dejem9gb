@@ -1,0 +1,109 @@
+Option Compare Database
+Option Explicit
+
+' Modulo temporario.
+' Execute AjustarHorarioComposicao2025Agosto2026 com F5.
+
+Public Sub AjustarHorarioComposicao2025Agosto2026()
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strPatch As String
+    Dim strIDFirebase As String
+    Dim lngLocalAtualizadas As Long
+    Dim lngFirebaseAtualizadas As Long
+    Dim lngSemIDFirebase As Long
+    Dim resposta As VbMsgBoxResult
+    
+    On Error GoTo Erro
+    
+    resposta = MsgBox("Deseja ajustar as escalas da composicao 2025 em agosto/2026?" & vbCrLf & vbCrLf & _
+                      "Sera alterado:" & vbCrLf & _
+                      "- Horario_Inicial: 11:30 para 11:00" & vbCrLf & _
+                      "- Horario_Final: 19:30 para 19:00" & vbCrLf & vbCrLf & _
+                      "Tambem sera enviado PATCH para o Firebase quando houver ID_Firebase.", _
+                      vbYesNo + vbQuestion, "Ajuste temporario")
+    
+    If resposta = vbNo Then Exit Sub
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Ajustando horarios da composicao 2025 em agosto/2026..."
+    
+    Set db = CurrentDb
+    
+    strSQL = "SELECT ID_Cadastro, ID_Firebase, Data_Esc, Composicao_Cod, Horario_Inicial, Horario_Final " & _
+             "FROM TblEscGeral " & _
+             "WHERE Trim(Nz(Composicao_Cod,'')) = '2025' " & _
+             "AND Data_Esc >= #2026-08-01# " & _
+             "AND Data_Esc <= #2026-08-31# " & _
+             "AND Format(Horario_Inicial, 'hh:nn') = '11:30'"
+    
+    Set rs = db.OpenRecordset(strSQL, dbOpenDynaset)
+    
+    strPatch = "{"
+    
+    Do While Not rs.EOF
+        strIDFirebase = Trim(Nz(rs!ID_Firebase, ""))
+        
+        rs.Edit
+        rs!Horario_Inicial = "11:00"
+        rs!Horario_Final = "19:00"
+        rs.Update
+        lngLocalAtualizadas = lngLocalAtualizadas + 1
+        
+        If strIDFirebase <> "" Then
+            If Len(strPatch) > 1 Then strPatch = strPatch & ","
+            strPatch = strPatch & _
+                       """" & JsonEscapeAjuste("solicitacoes/" & strIDFirebase & "/horario_inicial") & """:""11:00""," & _
+                       """" & JsonEscapeAjuste("solicitacoes/" & strIDFirebase & "/horario_final") & """:""19:00"""
+            lngFirebaseAtualizadas = lngFirebaseAtualizadas + 1
+        Else
+            lngSemIDFirebase = lngSemIDFirebase + 1
+            Debug.Print "Ajuste agosto/2026 sem ID_Firebase | ID_Cadastro=" & Nz(rs!ID_Cadastro, "") & _
+                        " | Data_Esc=" & Nz(rs!Data_Esc, "")
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    strPatch = strPatch & "}"
+    
+    If lngLocalAtualizadas = 0 Then
+        MsgBox "Nenhuma escala encontrada para ajustar.", vbInformation, "Ajuste temporario"
+        GoTo Sair
+    End If
+    
+    If lngFirebaseAtualizadas > 0 Then
+        If Not PatchDadosFirebase(strPatch) Then
+            MsgBox "Os dados locais foram atualizados, mas houve erro ao atualizar o Firebase." & vbCrLf & _
+                   "Verifique o Debug.Print.", vbExclamation, "Ajuste temporario"
+            Debug.Print "Erro no PATCH Firebase AjustarHorarioComposicao2025Agosto2026: " & strPatch
+            GoTo Sair
+        End If
+    End If
+    
+    MsgBox "Ajuste concluido!" & vbCrLf & vbCrLf & _
+           "Registros locais atualizados: " & lngLocalAtualizadas & vbCrLf & _
+           "Registros enviados ao Firebase: " & lngFirebaseAtualizadas & vbCrLf & _
+           "Registros sem ID_Firebase: " & lngSemIDFirebase, _
+           vbInformation, "Ajuste temporario"
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro AjustarHorarioComposicao2025Agosto2026: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro no ajuste temporario: " & Err.Number & " - " & Err.Description, vbCritical, "Ajuste temporario"
+    Resume Sair
+End Sub
+
+Private Function JsonEscapeAjuste(ByVal v As String) As String
+    JsonEscapeAjuste = Replace(v, "\", "\\")
+    JsonEscapeAjuste = Replace(JsonEscapeAjuste, Chr(34), "\" & Chr(34))
+End Function

@@ -1,0 +1,1020 @@
+Option Compare Database
+Option Explicit
+
+Private Const URL_CAD_ESCALA As String = "http://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/CadEsc.aspx?"
+Private mstrUltimoDiagnostico As String
+
+Private Sub Pausar(ByVal segundos As Double)
+    Dim inicio As Double
+    Dim decorrido As Double
+    
+    inicio = Timer
+    
+    Do
+        If Timer >= inicio Then
+            decorrido = Timer - inicio
+        Else
+            decorrido = (86400 - inicio) + Timer
+        End If
+        DoEvents
+    Loop While decorrido < segundos
+End Sub
+
+Private Sub Form_Load()
+    On Error Resume Next
+    If Nz(Me.txtDataPrazo, "") = "" Then Me.txtDataPrazo = Format(Date, "dd/mm/yyyy")
+    If Nz(Me.txtHoraPrazo, "") = "" Then Me.txtHoraPrazo = Format(Time, "hh:nn")
+    On Error GoTo 0
+End Sub
+
+Private Sub txtDataPrazo_AfterUpdate()
+    Dim strValor As String
+    strValor = Trim(Nz(Me.txtDataPrazo, ""))
+    
+    If strValor <> "" Then
+        If IsDateBrasileiro(strValor) Then
+            Me.txtDataPrazo = Format(ConverterStringParaData(strValor), "dd/mm/yyyy")
+        Else
+            MsgBox "Data inválida. Use o formato dd/mm/aaaa (exemplo: 31/12/2026)", vbExclamation
+            Me.txtDataPrazo = ""
+            Me.txtDataPrazo.SetFocus
+        End If
+    End If
+End Sub
+
+Private Sub txtHoraPrazo_AfterUpdate()
+    Dim strValor As String
+    strValor = Trim(Nz(Me.txtHoraPrazo, ""))
+    
+    If strValor <> "" Then
+        If Not NormalizarHoraPrazo() Then Me.txtHoraPrazo.SetFocus
+    End If
+End Sub
+
+Private Sub txtHoraPrazo_GotFocus()
+    Dim strValor As String
+    
+    strValor = Replace(Trim(Nz(Me.txtHoraPrazo, "")), ":", "")
+    Me.txtHoraPrazo = strValor
+    Me.txtHoraPrazo.SelStart = 0
+    Me.txtHoraPrazo.SelLength = Len(strValor)
+End Sub
+
+Private Sub txtHoraPrazo_KeyPress(KeyAscii As Integer)
+    If KeyAscii = 8 Then Exit Sub
+    
+    If KeyAscii < 48 Or KeyAscii > 57 Then
+        KeyAscii = 0
+        Beep
+        Exit Sub
+    End If
+    
+    If Len(Nz(Me.txtHoraPrazo.Text, "")) >= 4 Then
+        KeyAscii = 0
+        Beep
+    End If
+End Sub
+
+Private Sub btnCadIniciar_Click()
+    Dim dtPrazo As Date
+    Dim strPrazo As String
+    Dim blnSubstituir As Boolean
+    Dim resposta As VbMsgBoxResult
+    Dim lngAtualizados As Long
+    Dim blnOcultouFormulario As Boolean
+    Dim lngErro As Long
+    Dim strErro As String
+    
+    On Error GoTo Erro
+    
+    
+    If Not ObterPrazoInformado(dtPrazo) Then Exit Sub
+    
+    strPrazo = Format(dtPrazo, "dd/mm/yyyy hh:nn")
+    
+    resposta = MsgBox("Deseja substituir os prazos já preenchidos?", _
+                      vbQuestion + vbYesNo, "Prazo de inscrição")
+    blnSubstituir = (resposta = vbYes)
+    
+    lngAtualizados = AtualizarEscalasElegiveis(strPrazo, blnSubstituir)
+    
+    If lngAtualizados = 0 Then
+        MsgBox "Nenhuma escala elegível foi encontrada." & vbCrLf & _
+               "Critérios: filtro atual, Status_Adm = 1 e ID_Escala vazio/nulo/0." & _
+               vbCrLf & vbCrLf & mstrUltimoDiagnostico, _
+               vbInformation, "Cadastro na Intranet"
+        Debug.Print "Nenhuma escala elegível foi encontrada." & vbCrLf & _
+               "Critérios: filtro atual, Status_Adm = 1 e ID_Escala vazio/nulo/0." & _
+               vbCrLf & vbCrLf & mstrUltimoDiagnostico
+        Exit Sub
+    End If
+    
+    resposta = MsgBox("Deseja iniciar o cadastro na Intranet?", _
+                      vbQuestion + vbYesNo, "Cadastro na Intranet")
+    
+    If resposta = vbNo Then
+        DoCmd.Close acForm, Me.Name
+        Exit Sub
+    End If
+    
+    Me.Visible = False
+    blnOcultouFormulario = True
+    DoEvents
+    
+    Call CadastrarEscalasNaIntranet
+    DoCmd.Close acForm, Me.Name
+    
+    Exit Sub
+    
+Erro:
+    lngErro = Err.Number
+    strErro = Err.Description
+    
+    On Error Resume Next
+    If blnOcultouFormulario Then Me.Visible = True
+    On Error GoTo 0
+    
+    Debug.Print "Erro frmCadastrar.btnCadIniciar_Click: " & lngErro & " - " & strErro
+    MsgBox "Erro ao iniciar cadastro: " & lngErro & " - " & strErro, vbCritical
+End Sub
+
+Private Sub btnBaixarIDs_Click()
+    Dim lngErro As Long
+    Dim strErro As String
+    Dim lngImportadas As Long
+    Dim lngPerdidas As Long
+    
+    On Error GoTo Erro
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Baixando IDs da Intranet... aguarde."
+    Me.Repaint
+    
+    lngImportadas = ImportarIDEscalasFiltradasIntranet(False, True, lngPerdidas)
+    If lngImportadas > 0 Then Call AtualizarEscalasAbertasResumoFirebase(False)
+    
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    
+    MsgBox "Baixa de IDs concluida." & vbCrLf & _
+           "ID(s) importada(s): " & lngImportadas & vbCrLf & _
+           "Escala(s) nao encontrada(s) gravada(s) em 'Perdidas': " & lngPerdidas, _
+           vbInformation, "Baixar IDs"
+    
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    lngErro = Err.Number
+    strErro = Err.Description
+    On Error Resume Next
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Debug.Print "Erro frmCadastrar.btnBaixarIDs_Click: " & lngErro & " - " & strErro
+    MsgBox "Erro ao baixar IDs: " & lngErro & " - " & strErro, vbCritical, "Baixar IDs"
+End Sub
+
+Private Function ObterPrazoInformado(ByRef dtPrazo As Date) As Boolean
+    Dim strData As String
+    Dim strHora As String
+    Dim partesData() As String
+    
+    strData = Trim(Nz(Me.txtDataPrazo, ""))
+    strHora = Trim(Nz(Me.txtHoraPrazo, ""))
+    
+    If strData = "" Or strHora = "" Then
+        MsgBox "Informe a data e o horário do prazo.", vbExclamation, "Prazo de inscrição"
+        ObterPrazoInformado = False
+        Exit Function
+    End If
+    
+    If Not strData Like "##/##/####" Then
+        MsgBox "Data inválida. Use o formato dd/mm/aaaa.", vbExclamation, "Prazo de inscrição"
+        ObterPrazoInformado = False
+        Exit Function
+    End If
+    
+    partesData = Split(strData, "/")
+    If UBound(partesData) <> 2 Then
+        ObterPrazoInformado = False
+        Exit Function
+    End If
+    
+    If Not NormalizarHoraPrazo() Then
+        ObterPrazoInformado = False
+        Exit Function
+    End If
+    
+    strHora = Trim(Nz(Me.txtHoraPrazo, ""))
+    
+    If Not IsDate(strHora) Then
+        MsgBox "Horário inválido. Use o formato hh:mm.", vbExclamation, "Prazo de inscrição"
+        ObterPrazoInformado = False
+        Exit Function
+    End If
+    
+    dtPrazo = DateSerial(CInt(partesData(2)), CInt(partesData(1)), CInt(partesData(0))) + TimeValue(strHora)
+    ObterPrazoInformado = True
+End Function
+
+Private Function NormalizarHoraPrazo() As Boolean
+    Dim strValor As String
+    Dim intHora As Integer
+    Dim intMinuto As Integer
+    
+    On Error GoTo Invalido
+    
+    strValor = Trim(Nz(Me.txtHoraPrazo, ""))
+    strValor = Replace(strValor, ":", "")
+    
+    If Len(strValor) < 3 Or Len(strValor) > 4 Then GoTo Invalido
+    If Not SomenteNumeros(strValor) Then GoTo Invalido
+    
+    If Len(strValor) = 3 Then strValor = "0" & strValor
+    
+    intHora = CInt(Left(strValor, 2))
+    intMinuto = CInt(Right(strValor, 2))
+    
+    If intHora < 0 Or intHora > 23 Then GoTo Invalido
+    If intMinuto < 0 Or intMinuto > 59 Then GoTo Invalido
+    
+    Me.txtHoraPrazo = Format(TimeSerial(intHora, intMinuto, 0), "hh:nn")
+    NormalizarHoraPrazo = True
+    Exit Function
+    
+Invalido:
+    MsgBox "Horário inválido. Digite 3 ou 4 números." & vbCrLf & _
+           "Exemplos: 330 vira 03:30; 1830 vira 18:30.", _
+           vbExclamation, "Prazo de inscrição"
+    Me.txtHoraPrazo = ""
+    NormalizarHoraPrazo = False
+End Function
+
+Private Function SomenteNumeros(ByVal strValor As String) As Boolean
+    Dim i As Long
+    Dim strChar As String
+    
+    If strValor = "" Then
+        SomenteNumeros = False
+        Exit Function
+    End If
+    
+    For i = 1 To Len(strValor)
+        strChar = Mid(strValor, i, 1)
+        If strChar < "0" Or strChar > "9" Then
+            SomenteNumeros = False
+            Exit Function
+        End If
+    Next i
+    
+    SomenteNumeros = True
+End Function
+
+Private Function ConverterStringParaData(ByVal strData As String) As Date
+    Dim partes() As String
+    Dim dia As Integer
+    Dim mes As Integer
+    Dim ano As Integer
+    
+    If strData = "" Then Exit Function
+    
+    partes = Split(strData, "/")
+    
+    If UBound(partes) = 2 Then
+        dia = CInt(partes(0))
+        mes = CInt(partes(1))
+        ano = CInt(partes(2))
+        ConverterStringParaData = DateSerial(ano, mes, dia)
+    End If
+End Function
+
+Private Function IsDateBrasileiro(ByVal strData As String) As Boolean
+    Dim partes() As String
+    Dim dia As Integer
+    Dim mes As Integer
+    Dim ano As Integer
+    
+    If strData = "" Then
+        IsDateBrasileiro = False
+        Exit Function
+    End If
+    
+    If Not strData Like "##/##/####" Then
+        IsDateBrasileiro = False
+        Exit Function
+    End If
+    
+    partes = Split(strData, "/")
+    
+    If UBound(partes) = 2 Then
+        dia = CInt(partes(0))
+        mes = CInt(partes(1))
+        ano = CInt(partes(2))
+        
+        If mes >= 1 And mes <= 12 And dia >= 1 And dia <= DiaNoMes(mes, ano) Then
+            IsDateBrasileiro = True
+        Else
+            IsDateBrasileiro = False
+        End If
+    Else
+        IsDateBrasileiro = False
+    End If
+End Function
+
+Private Function DiaNoMes(ByVal mes As Integer, ByVal ano As Integer) As Integer
+    Select Case mes
+        Case 1, 3, 5, 7, 8, 10, 12
+            DiaNoMes = 31
+        Case 4, 6, 9, 11
+            DiaNoMes = 30
+        Case 2
+            If (ano Mod 4 = 0 And ano Mod 100 <> 0) Or (ano Mod 400 = 0) Then
+                DiaNoMes = 29
+            Else
+                DiaNoMes = 28
+            End If
+    End Select
+End Function
+
+Private Function AtualizarEscalasElegiveis(ByVal strPrazo As String, ByVal blnSubstituirPrazo As Boolean) As Long
+    Dim frm As Form
+    Dim rs As DAO.Recordset
+    Dim db As DAO.Database
+    Dim dictComp As Object
+    Dim dictDados As Object
+    Dim strIDCadastro As String
+    Dim strComposicaoCod As String
+    Dim strSQL As String
+    Dim strSetPrazo As String
+    Dim strWhereUpdate As String
+    Dim strHoraInicial As String
+    Dim lngLinha As Long
+    Dim lngTotal As Long
+    Dim blnElegivel As Boolean
+    Dim lngStatusAdm1 As Long
+    Dim lngIDEscalaVazio As Long
+    Dim lngElegiveis As Long
+    Dim strLinhaDebug As String
+    
+    On Error GoTo Erro
+    
+    mstrUltimoDiagnostico = ""
+    
+    
+    On Error Resume Next
+    Set frm = ObterSubformLinhaEscalas()
+    If Err.Number <> 0 Then
+        Debug.Print "ERRO ao executar ObterSubformLinhaEscalas: " & Err.Number & " - " & Err.Description
+        mstrUltimoDiagnostico = "Erro ao localizar o subformulário: " & Err.Number & " - " & Err.Description
+        Err.Clear
+        On Error GoTo Erro
+        GoTo Sair
+    End If
+    On Error GoTo Erro
+    
+    
+    If frm Is Nothing Then
+        mstrUltimoDiagnostico = "Não foi possível localizar o subformulário de linhas." & vbCrLf & _
+                                "Verifique se o frmEscalas está aberto no frmApp e se o controle se chama sfrmLinhaEscala ou sfrmLinhaEscalas."
+        GoTo Sair
+    End If
+    
+    
+    Set db = CurrentDb
+    Set rs = frm.RecordsetClone
+    
+    
+    If rs.BOF And rs.EOF Then
+        On Error Resume Next
+        rs.Close
+        Set rs = Nothing
+        Set rs = db.OpenRecordset(frm.RecordSource, dbOpenSnapshot)
+        If Err.Number <> 0 Then
+            Debug.Print "frmCadastrar.AtualizarEscalasElegiveis - Erro no fallback OpenRecordset: " & Err.Number & " - " & Err.Description
+            Err.Clear
+        End If
+        On Error GoTo Erro
+    End If
+    
+    Set dictComp = CarregarComposicoes()
+    
+    
+    
+    If rs.BOF And rs.EOF Then
+        GoTo Sair
+    End If
+    
+    If rs.EOF Then
+        rs.MoveFirst
+    End If
+    
+    rs.MoveLast
+    lngTotal = rs.RecordCount
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        lngLinha = lngLinha + 1
+        blnElegivel = EscalaElegivel(rs)
+        If Trim(Nz(rs!Status_Adm, "")) = "1" Then lngStatusAdm1 = lngStatusAdm1 + 1
+        If IDEscalaVazio(rs) Then lngIDEscalaVazio = lngIDEscalaVazio + 1
+        If blnElegivel Then lngElegiveis = lngElegiveis + 1
+        
+        strLinhaDebug = "Linha " & lngLinha & "/" & lngTotal & _
+                        " | ID_Cadastro=" & Nz(rs!ID_Cadastro, "") & _
+                        " | Status_Adm=" & Nz(rs!Status_Adm, "") & _
+                        " | ID_Escala=" & Nz(rs!ID_Escala, "") & _
+                        " | Prazo_Inscricao=" & Nz(rs!Prazo_Inscricao, "") & _
+                        " | Composicao_Cod=" & Nz(rs!Composicao_Cod, "") & _
+                        " | Elegivel=" & blnElegivel
+        
+        If lngLinha <= 10 Then
+            mstrUltimoDiagnostico = mstrUltimoDiagnostico & strLinhaDebug & vbCrLf
+        End If
+        
+        If blnElegivel Then
+            strIDCadastro = Trim(Nz(rs!ID_Cadastro, ""))
+            strComposicaoCod = Trim(Nz(rs!Composicao_Cod, ""))
+            
+            If dictComp.Exists(strComposicaoCod) Then
+                Set dictDados = dictComp(strComposicaoCod)
+            Else
+                Set dictDados = CreateObject("Scripting.Dictionary")
+            End If
+            
+            If blnSubstituirPrazo Or Trim(Nz(rs!Prazo_Inscricao, "")) = "" Then
+                strSetPrazo = "Prazo_Inscricao = " & SQLTexto(strPrazo) & ", "
+            Else
+                strSetPrazo = ""
+            End If
+            
+            If strIDCadastro <> "" Then
+                strWhereUpdate = "ID_Cadastro = " & SQLTexto(strIDCadastro)
+            Else
+                strHoraInicial = Format(CDate(Nz(rs!Horario_Inicial, "00:00")), "hh:nn")
+                strWhereUpdate = "Status_Adm = '1' " & _
+                                 "AND (ID_Escala Is Null OR ID_Escala = '' OR ID_Escala = '0') " & _
+                                 "AND Data_Esc = #" & Format(CDate(rs!Data_Esc), "yyyy-mm-dd") & "# " & _
+                                 "AND Format(Horario_Inicial, 'hh:nn') = " & SQLTexto(strHoraInicial) & " " & _
+                                 "AND Trim(Nz(Composicao_Cod,'')) = " & SQLTexto(strComposicaoCod)
+            End If
+            
+            strSQL = "UPDATE TblEscGeral SET " & _
+                     strSetPrazo & _
+                     "Turno = " & SQLTexto(CalcularTurno(rs!Horario_Inicial)) & ", " & _
+                     "Convenio = " & SQLTexto(DictVal(dictDados, "Convenio", "")) & ", " & _
+                     "Tipo_Escala = " & SQLTexto(DictVal(dictDados, "Tipo_Escala", "")) & ", " & _
+                     "AISP = " & SQLTexto(DictVal(dictDados, "AISP", "")) & ", " & _
+                     "OPM_Resp = " & SQLTexto(DictVal(dictDados, "OPM_Resp", "")) & ", " & _
+                     "EPI = " & SQLTexto(DictVal(dictDados, "EPI", "")) & ", " & _
+                     "OBS_Intranet = " & SQLTexto(DictVal(dictDados, "OBS_Intranet", "")) & ", " & _
+                     "Alteracao = 1 " & _
+                     "WHERE " & strWhereUpdate
+            
+            db.Execute strSQL, dbFailOnError
+            AtualizarEscalasElegiveis = AtualizarEscalasElegiveis + db.RecordsAffected
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    mstrUltimoDiagnostico = "Total no subform filtrado: " & lngTotal & vbCrLf & _
+                            "Linhas com Status_Adm = 1: " & lngStatusAdm1 & vbCrLf & _
+                            "Linhas com ID_Escala vazio/nulo/0: " & lngIDEscalaVazio & vbCrLf & _
+                            "Linhas elegíveis: " & lngElegiveis & vbCrLf & vbCrLf & _
+                            "Amostra:" & vbCrLf & mstrUltimoDiagnostico
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    
+    If Not frm Is Nothing Then frm.Requery
+    Exit Function
+    
+Erro:
+    MsgBox "Erro ao atualizar prazos: " & Err.Number & " - " & Err.Description, vbCritical
+    Debug.Print "Erro frmCadastrar.AtualizarEscalasElegiveis: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
+
+Private Function CarregarComposicoes() As Object
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim dict As Object
+    Dim item As Object
+    Dim strSQL As String
+    Dim strCodigo As String
+    
+    
+    Set dict = CreateObject("Scripting.Dictionary")
+    Set db = CurrentDb
+    
+    strSQL = "SELECT CODIGO, [Convênio], TIPO, AISP, [OPM RESP], EPI, OBS FROM TblComposicao"
+    
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        strCodigo = Trim(Nz(rs!CODIGO, ""))
+        
+        Set item = CreateObject("Scripting.Dictionary")
+        item.Add "Convenio", Nz(rs![Convênio], "")
+        item.Add "Tipo_Escala", Nz(rs!TIPO, "")
+        item.Add "AISP", Nz(rs!AISP, "")
+        item.Add "OPM_Resp", Nz(rs![OPM RESP], "")
+        item.Add "EPI", Nz(rs!EPI, "")
+        item.Add "OBS_Intranet", Nz(rs!OBS, "")
+        
+        If strCodigo <> "" Then
+            If dict.Exists(strCodigo) Then
+                dict.Remove strCodigo
+            End If
+            
+            dict.Add strCodigo, item
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    
+    rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    
+    Set CarregarComposicoes = dict
+End Function
+
+Private Sub CadastrarEscalasNaIntranet()
+    Dim frm As Form
+    Dim rs As DAO.Recordset
+    Dim driver As ChromeDriver
+    Dim por As New by
+    Dim strLink As String
+    Dim strURL As String
+    Dim strP1 As String
+    Dim strCoord As String
+    Dim strSubcmd As String
+    Dim lngPreenchidas As Long
+    Dim lngIDsImportadas As Long
+    Dim lngIDsPerdidas As Long
+    
+    On Error GoTo Erro
+    
+    strLink = LinkUsuarioLogado()
+    If strLink = "" Then
+        MsgBox "Link do usuário logado não encontrado. Faça login novamente.", vbExclamation, "Cadastro na Intranet"
+        Exit Sub
+    End If
+    
+    strURL = URL_CAD_ESCALA & strLink
+    
+    Set frm = ObterSubformLinhaEscalas()
+    If frm Is Nothing Then
+        MsgBox "Não foi possível localizar o subformulário de linhas do frmEscalas.", _
+               vbExclamation, "Cadastro na Intranet"
+        GoTo Sair
+    End If
+    
+    Set rs = frm.RecordsetClone
+    
+    If rs.BOF And rs.EOF Then
+        MsgBox "Nenhuma escala filtrada para cadastrar.", vbInformation, "Cadastro na Intranet"
+        GoTo Sair
+    End If
+    
+    If rs.EOF Then rs.MoveFirst
+    
+    If ExisteEscalaForaPrazo(rs) Then
+        strP1 = BuscarRESuperior(3)
+        strCoord = BuscarRESuperior(2)
+        strSubcmd = BuscarRESuperior(1)
+        
+        If strP1 = "" Or strCoord = "" Or strSubcmd = "" Then
+            MsgBox "Há escala fora do prazo, mas não foi possível localizar todos os REs na tabela/lista de superiores." & _
+                   vbCrLf & vbCrLf & MontarMensagemSuperiores(strP1, strCoord, strSubcmd), _
+                   vbExclamation, "Cadastro na Intranet"
+            GoTo Sair
+        End If
+    End If
+    
+    Set driver = New ChromeDriver
+    
+    With driver
+        .Start
+        .Window.Maximize
+        .Get strURL
+        Pausar 2
+        
+        rs.MoveFirst
+        Do While Not rs.EOF
+            If EscalaElegivel(rs) Then
+                Call PreencherEscalaNoSite(driver, por, rs, strP1, strCoord, strSubcmd)
+                lngPreenchidas = lngPreenchidas + 1
+                .Refresh
+                Pausar 1
+            End If
+            
+            rs.MoveNext
+        Loop
+    End With
+    
+    SysCmd acSysCmdSetStatus, "Cadastro de escalas concluído. Baixando as IDs... aguarde."
+    
+    If lngPreenchidas > 0 Then
+        On Error Resume Next
+        driver.Quit
+        Set driver = Nothing
+        DoCmd.Hourglass True
+        SysCmd acSysCmdSetStatus, "Baixando IDs da Intranet... aguarde."
+        On Error GoTo Erro
+        
+        lngIDsImportadas = ImportarIDEscalasFiltradasIntranet(False, True, lngIDsPerdidas)
+        
+        On Error Resume Next
+        SysCmd acSysCmdClearStatus
+        DoCmd.Hourglass False
+        On Error GoTo Erro
+        
+        MsgBox "Baixa de IDs concluida." & vbCrLf & _
+               "ID(s) importada(s): " & lngIDsImportadas & vbCrLf & _
+               "Escala(s) nao encontrada(s) gravada(s) em 'Perdidas': " & lngIDsPerdidas, _
+               vbInformation, "Baixar IDs"
+        
+        Call AtualizarEscalasAbertasResumoFirebase(False)
+    End If
+    
+Sair:
+    On Error Resume Next
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set driver = Nothing
+    Exit Sub
+    
+Erro:
+    MsgBox "Erro na automação da Intranet: " & Err.Number & " - " & Err.Description, vbCritical
+    Resume Sair
+End Sub
+
+Private Sub PreencherEscalaNoSite(ByRef driver As ChromeDriver, ByRef por As by, ByRef rs As DAO.Recordset, _
+                                  ByVal strP1 As String, ByVal strCoord As String, ByVal strSubcmd As String)
+    Dim blnForaPrazo As Boolean
+    
+    blnForaPrazo = ForaPrazo(Nz(rs!Prazo_Inscricao, ""))
+    
+    With driver
+        .FindElement(por.Name("vESCOPRDATINIESC")).SendKeys (FormatarDataHoraEscala(rs!Data_Esc, rs!Horario_Inicial, False))
+        .FindElement(por.Name("vESCOPRHORFIMESC")).Click
+        .FindElement(por.Name("vESCOPRHORFIMESC")).SendKeys (FormatarDataHoraEscala(rs!Data_Esc, rs!Horario_Final, True, rs!Horario_Inicial))
+        .FindElement(por.Name("vESCOPRIDCTRN")).SendKeys (Nz(rs!Turno, ""))
+        .FindElement(por.Name("vCODAJU")).Click
+        .FindElement(por.Name("vCODAJU")).SendKeys (Nz(rs!Convenio, ""))
+        .FindElement(por.Name("vTIPESCIDF")).SendKeys (Nz(rs!Tipo_Escala, ""))
+        .FindElement(por.Name("vQTDOFSUP")).SendKeys (Nz(rs!Atz_Superior, 0))
+        .FindElement(por.Name("vQTDOFINT")).SendKeys (Nz(rs!Atz_Intermed, 0))
+        .FindElement(por.Name("vQTDOFSUB")).SendKeys (Nz(rs!Atz_Subalterno, 0))
+        .FindElement(por.Name("vQTDPRASUBTEN")).SendKeys (Nz(rs!Atz_Subten_Sgt, 0))
+        .FindElement(por.Name("vQTDPRACBSD")).SendKeys (Nz(rs!Atz_Cb_Sd, 0))
+        .FindElement(por.Name("vIDF_AGP_GEO_SST")).SendKeys (Nz(rs!AISP, ""))
+        .FindElement(por.Name("vLOCDJMCOD")).SendKeys (Nz(rs!Composicao_Cod, ""))
+        .FindElement(por.Name("vESCOPROPMRSP")).Click
+        .FindElement(por.Name("vESCOPROPMRSP")).SendKeys (Nz(rs!OPM_Resp, ""))
+        .FindElement(por.Name("vESCOPRDATFIMISC")).Click
+        .FindElement(por.Name("vESCOPRDATFIMISC")).SendKeys (Nz(rs!Prazo_Inscricao, ""))
+        .FindElement(por.Name("vESCOPRDLGATVNOM")).SendKeys (Nz(rs!Composicao_Nome, ""))
+        .FindElement(por.Name("vESCATVTIPCOD")).SendKeys ("2")
+        .FindElement(por.Name("vHOR")).SendKeys (FormatarHoraParte(rs!Horario_Inicial, "hh"))
+        .FindElement(por.Name("vMIN")).SendKeys (FormatarHoraParte(rs!Horario_Inicial, "nn"))
+        .FindElement(por.Name("vESCOPRLOCAPS")).SendKeys (Nz(rs!OPM_Nome, ""))
+        .FindElement(por.Name("vEPIOUTROS")).Click
+        .FindElement(por.Name("vEPIOUTROSTEXTO")).SendKeys (Nz(rs!EPI, ""))
+        .FindElement(por.Name("vESCOPRDLGOBS")).SendKeys (Nz(rs!OBS_Intranet, ""))
+        
+        If blnForaPrazo Then
+            .FindElement(por.id("vRADIOJUSTDTESCALAREMANEJ")).Click
+            Call SelecionarSuperioresForaPrazo(driver, por, strP1, strCoord, strSubcmd)
+        End If
+        
+        .FindElement(por.Name("vESCOPRDLGOBS")).Click
+        .FindElement(por.Name("INCLUIR")).Click
+    End With
+End Sub
+
+Private Sub SelecionarSuperioresForaPrazo(ByRef driver As ChromeDriver, ByRef por As by, _
+                                          ByVal strP1 As String, ByVal strCoord As String, ByVal strSubcmd As String)
+    Dim lngTentativas As Long
+    
+    On Error GoTo Erro
+    
+    Do While Not SuperioresPreenchidos(driver, por, strP1, strCoord, strSubcmd)
+        lngTentativas = lngTentativas + 1
+        If lngTentativas > 30 Then
+            Err.Raise vbObjectError + 513, "SelecionarSuperioresForaPrazo", _
+                      "Não foi possível manter P1, Coordenador e Subcomandante preenchidos após 30 tentativas."
+        End If
+        
+        Call SelecionarComboPorValor(driver, por, "vCOMBOP1", strP1)
+        Pausar 0.5
+        
+        Call SelecionarComboPorValor(driver, por, "vCOMBOCOORD", strCoord)
+        Pausar 0.5
+        
+        Call SelecionarComboPorValor(driver, por, "vCOMBOSUCMD", strSubcmd)
+        Pausar 0.5
+    Loop
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro SelecionarSuperioresForaPrazo: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Function SuperioresPreenchidos(ByRef driver As ChromeDriver, ByRef por As by, _
+                                       ByVal strP1 As String, ByVal strCoord As String, ByVal strSubcmd As String) As Boolean
+    SuperioresPreenchidos = (ValorElementoPorID(driver, por, "vCOMBOP1") = strP1 And _
+                             ValorElementoPorID(driver, por, "vCOMBOCOORD") = strCoord And _
+                             ValorElementoPorID(driver, por, "vCOMBOSUCMD") = strSubcmd)
+End Function
+
+Private Sub SelecionarComboPorValor(ByRef driver As ChromeDriver, ByRef por As by, _
+                                    ByVal strID As String, ByVal strValor As String)
+    driver.FindElement(por.id(strID)).AsSelect.SelectByValue (strValor)
+End Sub
+
+Private Function ValorElementoPorID(ByRef driver As ChromeDriver, ByRef por As by, _
+                                    ByVal strID As String) As String
+    On Error GoTo Erro
+    
+    ValorElementoPorID = Trim(Nz(driver.FindElement(por.id(strID)).Attribute("value"), ""))
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro ValorElementoPorID: " & Err.Number & " - " & Err.Description
+    ValorElementoPorID = ""
+End Function
+
+Private Function EscalaElegivel(ByRef rs As DAO.Recordset) As Boolean
+    EscalaElegivel = (Trim(Nz(rs!Status_Adm, "")) = "1" And IDEscalaVazio(rs))
+End Function
+
+Private Function ObterFormEscalas() As Form
+    On Error Resume Next
+    
+    If CurrentProject.AllForms("frmEscalas").IsLoaded Then
+        Set ObterFormEscalas = Forms!frmEscalas
+        If Err.Number <> 0 Then
+            Debug.Print "ObterFormEscalas - Erro ao setar Forms!frmEscalas: " & Err.Number & " - " & Err.Description
+            Err.Clear
+        End If
+        If Not ObterFormEscalas Is Nothing Then Exit Function
+    End If
+    
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Set ObterFormEscalas = Forms!frmApp!frmNavegar.Form
+        If Err.Number <> 0 Then
+            Debug.Print "ObterFormEscalas - Erro ao setar Forms!frmApp!frmNavegar.Form: " & Err.Number & " - " & Err.Description
+            Err.Clear
+        End If
+        If Not ObterFormEscalas Is Nothing Then
+            If ObterFormEscalas.Name <> "frmEscalas" Then
+                Set ObterFormEscalas = Nothing
+            End If
+        End If
+    End If
+    
+    On Error GoTo 0
+End Function
+
+Private Function ObterSubformLinhaEscalas() As Form
+    Dim frmEscalas As Form
+    
+    On Error Resume Next
+    
+    Set frmEscalas = ObterFormEscalasPreferencial()
+    If Err.Number <> 0 Then
+        Debug.Print "ObterSubformLinhaEscalas - Erro em ObterFormEscalasPreferencial: " & Err.Number & " - " & Err.Description
+        Err.Clear
+    End If
+    
+    If frmEscalas Is Nothing Then
+        Exit Function
+    End If
+    
+    Set ObterSubformLinhaEscalas = frmEscalas.Controls("sfrmLinhaEscala").Form
+    If Err.Number <> 0 Then
+        Debug.Print "ObterSubformLinhaEscalas - Erro em sfrmLinhaEscala: " & Err.Number & " - " & Err.Description
+        Err.Clear
+    End If
+    
+    If Not ObterSubformLinhaEscalas Is Nothing Then Exit Function
+    
+    Set ObterSubformLinhaEscalas = frmEscalas.Controls("sfrmLinhaEscalas").Form
+    If Err.Number <> 0 Then
+        Debug.Print "ObterSubformLinhaEscalas - Erro em sfrmLinhaEscalas: " & Err.Number & " - " & Err.Description
+        Err.Clear
+    End If
+    
+    On Error GoTo 0
+End Function
+
+Private Function ObterFormEscalasPreferencial() As Form
+    On Error Resume Next
+    
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Set ObterFormEscalasPreferencial = Forms!frmApp!frmNavegar.Form
+        If Err.Number <> 0 Then
+            Debug.Print "ObterFormEscalasPreferencial - Erro no frmApp/frmNavegar: " & Err.Number & " - " & Err.Description
+            Err.Clear
+        End If
+        
+        If Not ObterFormEscalasPreferencial Is Nothing Then
+            If ObterFormEscalasPreferencial.Name = "frmEscalas" Then Exit Function
+            Set ObterFormEscalasPreferencial = Nothing
+        End If
+    End If
+    
+    If CurrentProject.AllForms("frmEscalas").IsLoaded Then
+        Set ObterFormEscalasPreferencial = Forms!frmEscalas
+        If Err.Number <> 0 Then
+            Debug.Print "ObterFormEscalasPreferencial - Erro em Forms!frmEscalas: " & Err.Number & " - " & Err.Description
+            Err.Clear
+        End If
+    End If
+    
+    On Error GoTo 0
+End Function
+
+
+Private Function IDEscalaVazio(ByRef rs As DAO.Recordset) As Boolean
+    Dim strIDEscala As String
+    
+    strIDEscala = Trim(Nz(rs!ID_Escala, ""))
+    IDEscalaVazio = (strIDEscala = "" Or strIDEscala = "0")
+End Function
+
+Private Function CalcularTurno(ByVal vHorario As Variant) As String
+    Dim dblHora As Double
+    
+    If Not IsDate(vHorario) Then
+        CalcularTurno = ""
+        Exit Function
+    End If
+    
+    dblHora = CDbl(TimeValue(vHorario))
+    
+    If dblHora < 0.1875 Then
+        CalcularTurno = "Madrugada"
+    ElseIf dblHora < 0.4375 Then
+        CalcularTurno = "Matutino"
+    ElseIf dblHora < 0.7291 Then
+        CalcularTurno = "Vespertino"
+    ElseIf dblHora < 0.916 Then
+        CalcularTurno = "Noturno"
+    Else
+        CalcularTurno = "Madrugada"
+    End If
+End Function
+
+Private Function FormatarDataHoraEscala(ByVal vData As Variant, ByVal vHora As Variant, _
+                                        Optional ByVal blnFinal As Boolean = False, _
+                                        Optional ByVal vHoraInicial As Variant) As String
+    Dim dt As Date
+    
+    If Not IsDate(vData) Then
+        FormatarDataHoraEscala = ""
+        Exit Function
+    End If
+    
+    If Not IsDate(vHora) Then
+        FormatarDataHoraEscala = ""
+        Exit Function
+    End If
+    
+    dt = DateValue(vData) + TimeValue(vHora)
+    
+    If blnFinal Then
+        If Not IsMissing(vHoraInicial) Then
+            If IsDate(vHoraInicial) Then
+                If TimeValue(vHora) < TimeValue(vHoraInicial) Then
+                    dt = DateAdd("d", 1, dt)
+                End If
+            End If
+        End If
+    End If
+    
+    FormatarDataHoraEscala = Format(dt, "dd/mm/yyyy hh:nn")
+End Function
+
+Private Function FormatarHoraParte(ByVal vHora As Variant, ByVal strFormato As String) As String
+    If IsDate(vHora) Then
+        FormatarHoraParte = Format(TimeValue(vHora), strFormato)
+    Else
+        FormatarHoraParte = ""
+    End If
+End Function
+
+Private Function ForaPrazo(ByVal strPrazo As String) As Boolean
+    If IsDate(strPrazo) Then
+        ForaPrazo = (DateAdd("d", -2, CDate(strPrazo)) < Now())
+    Else
+        ForaPrazo = False
+    End If
+End Function
+
+Private Function ExisteEscalaForaPrazo(ByRef rs As DAO.Recordset) As Boolean
+    Dim lngPosicao As Long
+    
+    On Error GoTo Sair
+    
+    If rs.BOF And rs.EOF Then Exit Function
+    
+    lngPosicao = rs.AbsolutePosition
+    
+    If rs.EOF Then rs.MoveFirst
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If EscalaElegivel(rs) Then
+            If ForaPrazo(Nz(rs!Prazo_Inscricao, "")) Then
+                ExisteEscalaForaPrazo = True
+                Exit Do
+            End If
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    If lngPosicao >= 0 Then
+        rs.MoveFirst
+        rs.Move lngPosicao
+    Else
+        rs.MoveFirst
+    End If
+    
+Sair:
+    If Err.Number <> 0 Then
+        Debug.Print "Erro ExisteEscalaForaPrazo: " & Err.Number & " - " & Err.Description
+        Err.Clear
+    End If
+End Function
+
+Private Function BuscarRESuperior(ByVal lngSelecionado As Long) As String
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim vSelecionado As Variant
+    Dim strRE As String
+    
+    On Error GoTo Sair
+    
+    strSQL = "SELECT Selecionado, RE FROM TblListSuperiores"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        vSelecionado = Nz(rs!Selecionado, "")
+        strRE = Trim(Nz(rs!RE, ""))
+        
+        If strRE <> "" Then
+            If Val(CStr(vSelecionado)) = lngSelecionado Then
+                BuscarRESuperior = strRE
+                Exit Do
+            End If
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+Sair:
+    If Err.Number <> 0 Then
+        Debug.Print "Erro BuscarRESuperior: " & Err.Number & " - " & Err.Description
+        Err.Clear
+    End If
+    
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+End Function
+
+Private Function MontarMensagemSuperiores(ByVal strP1 As String, ByVal strCoord As String, ByVal strSubcmd As String) As String
+    Dim strMsg As String
+    
+    strMsg = "Selecionado = 3 (P1): " & IIf(strP1 = "", "não encontrado", strP1) & vbCrLf & _
+             "Selecionado = 2 (Coordenador): " & IIf(strCoord = "", "não encontrado", strCoord) & vbCrLf & _
+             "Selecionado = 1 (Subcomandante): " & IIf(strSubcmd = "", "não encontrado", strSubcmd)
+    
+    MontarMensagemSuperiores = strMsg
+End Function
+
+Private Function SQLTexto(ByVal v As Variant) As String
+    SQLTexto = "'" & Replace(Nz(v, ""), "'", "''") & "'"
+End Function
+
+Private Function DictVal(ByVal dict As Object, ByVal campo As String, Optional ByVal padrao As Variant = "") As Variant
+    If Not dict Is Nothing Then
+        If dict.Exists(campo) Then
+            DictVal = dict(campo)
+            Exit Function
+        End If
+    End If
+    
+    DictVal = padrao
+End Function

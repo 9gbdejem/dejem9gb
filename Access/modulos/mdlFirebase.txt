@@ -1,0 +1,973 @@
+Option Compare Database
+Option Explicit
+
+Private Const FIREBASE_URL As String = "https://dejem-9gb-default-rtdb.firebaseio.com/"
+
+Public Type FirebaseResponse
+    Success As Boolean
+    StatusCode As Long
+    ResponseText As String
+    Data As Variant
+End Type
+
+Public Function BuscarDadosFirebase(strNode As String) As FirebaseResponse
+    Dim strURL As String
+    Dim objXML As Object
+    Dim resp As FirebaseResponse
+    
+    On Error GoTo Erro
+    
+    strURL = FIREBASE_URL & strNode & ".json"
+    
+    Set objXML = CreateObject("MSXML2.XMLHTTP")
+    objXML.Open "GET", strURL, False
+    objXML.setRequestHeader "Content-Type", "application/json"
+    objXML.Send
+    
+    resp.StatusCode = objXML.status
+    resp.ResponseText = objXML.ResponseText
+    resp.Success = (objXML.status = 200)
+    resp.Data = resp.ResponseText
+    
+    BuscarDadosFirebase = resp
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro BuscarDadosFirebase: " & Err.Description
+    BuscarDadosFirebase = resp
+End Function
+
+Public Function EnviarDadosFirebase(strNode As String, strDados As String) As Boolean
+    Dim strURL As String
+    Dim objXML As Object
+    
+    On Error GoTo Erro
+    
+    strURL = FIREBASE_URL & strNode & ".json"
+    
+    Set objXML = CreateObject("MSXML2.XMLHTTP")
+    objXML.Open "PUT", strURL, False
+    objXML.setRequestHeader "Content-Type", "application/json"
+    objXML.Send strDados
+    
+    EnviarDadosFirebase = (objXML.status = 200)
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro EnviarDadosFirebase: " & Err.Description
+    EnviarDadosFirebase = False
+End Function
+
+Public Function TestarConexaoFirebase() As Boolean
+    Dim resp As FirebaseResponse
+    resp = BuscarDadosFirebase("SolicPendentes")
+    TestarConexaoFirebase = resp.Success
+End Function
+
+Public Function VerificarSolicPendentes() As Integer
+    Dim resp As FirebaseResponse
+    
+    resp = BuscarDadosFirebase("SolicPendentes")
+    
+    If Not resp.Success Then
+        VerificarSolicPendentes = -1
+    ElseIf Trim(resp.ResponseText) = "" Or Trim(resp.ResponseText) = "null" Then
+        VerificarSolicPendentes = 0
+    Else
+        VerificarSolicPendentes = 1
+    End If
+End Function
+
+Public Function ContarRegistrosPendentes(strJson As String) As Long
+    Dim col As Collection
+    Set col = ObterIDsFirebasePendentes(strJson)
+    
+    If col Is Nothing Then
+        ContarRegistrosPendentes = 0
+    Else
+        ContarRegistrosPendentes = col.Count
+    End If
+End Function
+
+Public Function ObterIDsFirebasePendentes(strJson As String) As Collection
+    Dim col As New Collection
+    Dim vistos As Object
+    Dim regex As Object
+    Dim matches As Object
+    Dim m As Object
+    Dim strIDFirebase As String
+    
+    On Error GoTo Erro
+    
+    If Trim(strJson) = "" Or Trim(strJson) = "null" Then
+        Set ObterIDsFirebasePendentes = Nothing
+        Exit Function
+    End If
+    
+    Set vistos = CreateObject("Scripting.Dictionary")
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Global = True
+    regex.IgnoreCase = False
+    regex.MultiLine = True
+    regex.Pattern = """ID_Firebase""\s*:\s*""([^""]+)"""
+    
+    Set matches = regex.Execute(strJson)
+    
+    For Each m In matches
+        strIDFirebase = m.subMatches(0)
+        
+        If strIDFirebase <> "" Then
+            If Not vistos.Exists(strIDFirebase) Then
+                vistos.Add strIDFirebase, True
+                col.Add strIDFirebase
+            End If
+        End If
+    Next
+    
+    If col.Count = 0 Then
+        Set ObterIDsFirebasePendentes = Nothing
+    Else
+        Set ObterIDsFirebasePendentes = col
+    End If
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro ObterIDsFirebasePendentes: " & Err.Number & " - " & Err.Description
+    Set ObterIDsFirebasePendentes = Nothing
+End Function
+
+Private Function JsonEscape(ByVal v As String) As String
+    JsonEscape = Replace(v, "\", "\\")
+    JsonEscape = Replace(JsonEscape, Chr(34), "\" & Chr(34))
+    JsonEscape = Replace(JsonEscape, vbCrLf, "\n")
+    JsonEscape = Replace(JsonEscape, vbCr, "\n")
+    JsonEscape = Replace(JsonEscape, vbLf, "\n")
+End Function
+
+Public Function AtualizarComposicoesFirebase(Optional ByVal blnExibirMensagem As Boolean = True) As Boolean
+    Dim strJsonLocal As String
+    Dim strJsonLocalOPM As String
+    Dim lngLocais As Long
+    Dim lngComposicoes As Long
+    
+    On Error GoTo Erro
+    
+    If Not MontarJsonComposicoesFirebase(strJsonLocal, strJsonLocalOPM, lngLocais, lngComposicoes) Then
+        If blnExibirMensagem Then
+            MsgBox "Nao foi possivel montar os dados da TblComposicao para envio ao Firebase.", vbCritical, "Atualizar Online"
+        End If
+        AtualizarComposicoesFirebase = False
+        Exit Function
+    End If
+    
+    If Not EnviarDadosFirebase("local", strJsonLocal) Then
+        If blnExibirMensagem Then
+            MsgBox "Erro ao atualizar o no /local no Firebase.", vbCritical, "Atualizar Online"
+        End If
+        AtualizarComposicoesFirebase = False
+        Exit Function
+    End If
+    
+    If Not EnviarDadosFirebase("LocalOPM", strJsonLocalOPM) Then
+        If blnExibirMensagem Then
+            MsgBox "Erro ao atualizar o no /LocalOPM no Firebase.", vbCritical, "Atualizar Online"
+        End If
+        AtualizarComposicoesFirebase = False
+        Exit Function
+    End If
+    
+    AtualizarComposicoesFirebase = True
+    
+    If blnExibirMensagem Then
+        MsgBox "Firebase atualizado com sucesso!" & vbCrLf & _
+               "Locais enviados: " & lngLocais & vbCrLf & _
+               "Composicoes enviadas: " & lngComposicoes, vbInformation, "Atualizar Online"
+    End If
+    
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro AtualizarComposicoesFirebase: " & Err.Number & " - " & Err.Description
+    If blnExibirMensagem Then
+        MsgBox "Erro ao atualizar composicoes no Firebase: " & Err.Description, vbCritical, "Atualizar Online"
+    End If
+    AtualizarComposicoesFirebase = False
+End Function
+
+Private Function MontarJsonComposicoesFirebase(ByRef strJsonLocal As String, _
+                                               ByRef strJsonLocalOPM As String, _
+                                               ByRef lngLocais As Long, _
+                                               ByRef lngComposicoes As Long) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim dictLocais As Object
+    Dim dictOPMs As Object
+    Dim dictComposicoes As Object
+    Dim strOPM As String
+    Dim strLocal As String
+    Dim strCodigo As String
+    Dim strComposicao As String
+    Dim strJsonComps As String
+    Dim varOPM As Variant
+    Dim varCodigo As Variant
+    
+    On Error GoTo Erro
+    
+    Set dictLocais = CreateObject("Scripting.Dictionary")
+    Set dictOPMs = CreateObject("Scripting.Dictionary")
+    Set db = CurrentDb
+    
+    Set rs = db.OpenRecordset( _
+        "SELECT * FROM [TblComposicao] ORDER BY [OPM], [CODIGO]", _
+        dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        strOPM = Trim$(Nz(ValorCampoRS(rs, "OPM"), ""))
+        strLocal = Trim$(Nz(ValorCampoRS(rs, "LOCAL"), ""))
+        strCodigo = Trim$(Nz(ValorCampoRS(rs, "CODIGO"), ""))
+        strComposicao = Trim$(Nz(ValorCampoRS(rs, "COMPOSI��O", "COMPOSICAO", "Composicao", "Composi��o"), ""))
+        If strComposicao = "" Then strComposicao = Trim$(Nz(ValorCampoIndiceRS(rs, 4), ""))
+        
+        If strOPM <> "" And strLocal <> "" Then
+            If Not dictLocais.Exists(strOPM) Then
+                dictLocais.Add strOPM, strLocal
+            End If
+        End If
+        
+        If strOPM <> "" And strCodigo <> "" And strComposicao <> "" Then
+            If Not dictOPMs.Exists(strOPM) Then
+                dictOPMs.Add strOPM, CreateObject("Scripting.Dictionary")
+            End If
+            
+            Set dictComposicoes = dictOPMs(strOPM)
+            If Not dictComposicoes.Exists(strCodigo) Then
+                lngComposicoes = lngComposicoes + 1
+            End If
+            dictComposicoes(strCodigo) = strComposicao
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    
+    strJsonLocal = "{"
+    For Each varOPM In dictLocais.Keys
+        If Len(strJsonLocal) > 1 Then strJsonLocal = strJsonLocal & ","
+        strJsonLocal = strJsonLocal & """" & JsonEscape(CStr(varOPM)) & """:""" & JsonEscape(CStr(dictLocais(varOPM))) & """"
+    Next
+    strJsonLocal = strJsonLocal & "}"
+    lngLocais = dictLocais.Count
+    
+    strJsonLocalOPM = "{"
+    For Each varOPM In dictOPMs.Keys
+        If Len(strJsonLocalOPM) > 1 Then strJsonLocalOPM = strJsonLocalOPM & ","
+        
+        Set dictComposicoes = dictOPMs(varOPM)
+        strJsonComps = "{"
+        For Each varCodigo In dictComposicoes.Keys
+            If Len(strJsonComps) > 1 Then strJsonComps = strJsonComps & ","
+            strJsonComps = strJsonComps & """" & JsonEscape(CStr(varCodigo)) & """:{" & _
+                           """composicao"":""" & JsonEscape(CStr(dictComposicoes(varCodigo))) & """}"
+        Next
+        strJsonComps = strJsonComps & "}"
+        
+        strJsonLocalOPM = strJsonLocalOPM & """" & JsonEscape(CStr(varOPM)) & """:" & strJsonComps
+    Next
+    strJsonLocalOPM = strJsonLocalOPM & "}"
+    
+    MontarJsonComposicoesFirebase = True
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro MontarJsonComposicoesFirebase: " & Err.Number & " - " & Err.Description
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    MontarJsonComposicoesFirebase = False
+End Function
+
+Private Function ValorCampoIndiceRS(ByVal rs As DAO.Recordset, ByVal indice As Long) As Variant
+    On Error GoTo Erro
+    
+    If indice >= 0 And indice < rs.Fields.Count Then
+        ValorCampoIndiceRS = rs.Fields(indice).Value
+    Else
+        ValorCampoIndiceRS = Null
+    End If
+    
+    Exit Function
+    
+Erro:
+    ValorCampoIndiceRS = Null
+End Function
+Private Function ValorCampoRS(ByVal rs As DAO.Recordset, ParamArray nomes() As Variant) As Variant
+    Dim i As Long
+    
+    On Error Resume Next
+    
+    For i = LBound(nomes) To UBound(nomes)
+        Err.Clear
+        ValorCampoRS = rs.Fields(CStr(nomes(i))).Value
+        If Err.Number = 0 Then
+            On Error GoTo 0
+            Exit Function
+        End If
+    Next i
+    
+    On Error GoTo 0
+    ValorCampoRS = Null
+End Function
+
+Private Function MarcarSolicitacaoImportada(ByVal strIDFirebase As String) As Boolean
+    Dim strBody As String
+    
+    If Trim(strIDFirebase) = "" Then
+        MarcarSolicitacaoImportada = False
+        Exit Function
+    End If
+    
+    strBody = "{" & _
+              """" & JsonEscape("solicitacoes/" & strIDFirebase & "/Status_Inicial") & """:2," & _
+              """" & JsonEscape("SolicPendentes/" & strIDFirebase) & """:null" & _
+              "}"
+    
+    MarcarSolicitacaoImportada = PatchDadosFirebase(strBody)
+End Function
+
+Public Function ParseJSON(strJson As String) As Collection
+    Dim col As New Collection
+    Dim regex As Object
+    Dim matches As Object
+    Dim m As Object
+    Dim bloco As String
+    Dim dict As Object
+    
+    On Error GoTo Erro
+    
+    If Trim(strJson) = "" Or Trim(strJson) = "null" Then
+        Set ParseJSON = Nothing
+        Exit Function
+    End If
+    
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Global = True
+    regex.IgnoreCase = False
+    regex.MultiLine = True
+    
+    ' Captura somente blocos que possuem ID_Firebase.
+    regex.Pattern = """ID_Firebase""\s*:\s*""([^""]+)"""
+    
+    Set matches = regex.Execute(strJson)
+    
+    For Each m In matches
+        bloco = m.Value
+        Set dict = CreateObject("Scripting.Dictionary")
+        
+        AddJsonValue dict, bloco, "ID_Firebase", True
+        AddJsonValue dict, bloco, "Solic_Cb_Sd", False
+        AddJsonValue dict, bloco, "Solic_Intermed", False
+        AddJsonValue dict, bloco, "Solic_Subalterno", False
+        AddJsonValue dict, bloco, "Solic_Subten_Sgt", False
+        AddJsonValue dict, bloco, "Solic_Superior", False
+        AddJsonValue dict, bloco, "Status_Inicial", False
+        AddJsonValue dict, bloco, "composicao_cod", True
+        AddJsonValue dict, bloco, "composicao_nome", True
+        AddJsonValue dict, bloco, "data", True
+        AddJsonValue dict, bloco, "horario_final", True
+        AddJsonValue dict, bloco, "horario_inicial", True
+        AddJsonValue dict, bloco, "motivo", True
+        AddJsonValue dict, bloco, "observacoes", True
+        AddJsonValue dict, bloco, "opm_codigo", True
+        AddJsonValue dict, bloco, "opm_nome", True
+        AddJsonValue dict, bloco, "necessidade", True
+        
+        If dict.Exists("ID_Firebase") Then col.Add dict
+    Next
+    
+    Set ParseJSON = col
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro ParseJSON: " & Err.Number & " - " & Err.Description
+    Set ParseJSON = Nothing
+End Function
+
+Private Sub AddJsonValue(ByRef dict As Object, ByVal bloco As String, ByVal campo As String, ByVal texto As Boolean)
+    Dim regex As Object
+    Dim matches As Object
+    Dim valor As Variant
+    
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Global = False
+    regex.IgnoreCase = False
+    
+    If texto Then
+        regex.Pattern = """" & campo & """" & "\s*:\s*""([^""]*)"""
+    Else
+        regex.Pattern = """" & campo & """" & "\s*:\s*(\d+)"
+    End If
+    
+    Set matches = regex.Execute(bloco)
+    
+    If matches.Count > 0 Then
+        If texto Then
+            valor = matches(0).subMatches(0)
+        Else
+            valor = CLng(matches(0).subMatches(0))
+        End If
+        
+        If dict.Exists(campo) Then
+            dict(campo) = valor
+        Else
+            dict.Add campo, valor
+        End If
+    End If
+End Sub
+
+Private Function ParseSolicitacaoUnica(strJson As String, Optional ByVal strIDFirebasePadrao As String = "") As Object
+    Dim dict As Object
+    
+    On Error GoTo Erro
+    
+    If Trim(strJson) = "" Or Trim(strJson) = "null" Then
+        Set ParseSolicitacaoUnica = Nothing
+        Exit Function
+    End If
+    
+    Set dict = CreateObject("Scripting.Dictionary")
+    
+    AddJsonValue dict, strJson, "ID_Firebase", True
+    AddJsonValue dict, strJson, "Solic_Cb_Sd", False
+    AddJsonValue dict, strJson, "Solic_Intermed", False
+    AddJsonValue dict, strJson, "Solic_Subalterno", False
+    AddJsonValue dict, strJson, "Solic_Subten_Sgt", False
+    AddJsonValue dict, strJson, "Solic_Superior", False
+    AddJsonValue dict, strJson, "Status_Inicial", False
+    AddJsonValue dict, strJson, "composicao_cod", True
+    AddJsonValue dict, strJson, "composicao_nome", True
+    AddJsonValue dict, strJson, "data", True
+    AddJsonValue dict, strJson, "horario_final", True
+    AddJsonValue dict, strJson, "horario_inicial", True
+    AddJsonValue dict, strJson, "motivo", True
+    AddJsonValue dict, strJson, "observacoes", True
+    AddJsonValue dict, strJson, "opm_codigo", True
+    AddJsonValue dict, strJson, "opm_nome", True
+    AddJsonValue dict, strJson, "necessidade", True
+    
+    If Not dict.Exists("ID_Firebase") And strIDFirebasePadrao <> "" Then
+        dict.Add "ID_Firebase", strIDFirebasePadrao
+    End If
+    
+    If dict.Exists("ID_Firebase") Then
+        Set ParseSolicitacaoUnica = dict
+    Else
+        Set ParseSolicitacaoUnica = Nothing
+    End If
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro ParseSolicitacaoUnica: " & Err.Number & " - " & Err.Description
+    Set ParseSolicitacaoUnica = Nothing
+End Function
+
+Private Function SQLTexto(ByVal v As Variant) As String
+    SQLTexto = "'" & Replace(Nz(v, ""), "'", "''") & "'"
+End Function
+
+Private Function SqlDataFirebase(ByVal v As Variant) As String
+    If IsDate(v) Then
+        SqlDataFirebase = "#" & Format(CDate(v), "yyyy-mm-dd") & "#"
+    Else
+        SqlDataFirebase = "Null"
+    End If
+End Function
+
+Private Function DictVal(ByVal dict As Object, ByVal campo As String, Optional ByVal padrao As Variant = "") As Variant
+    If dict.Exists(campo) Then
+        DictVal = dict(campo)
+    Else
+        DictVal = padrao
+    End If
+End Function
+
+Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As Object, ByRef importados As Long, ByRef atualizados As Long)
+    Dim rsCheck As DAO.Recordset
+    Dim strSQL As String
+    Dim strIDFirebase As String
+    Dim strIDCadastro As String
+    Dim slcCbSd As Long
+    Dim slcIntermed As Long
+    Dim slcSubalterno As Long
+    Dim slcSubtenSgt As Long
+    Dim slcSuperior As Long
+    
+    strIDFirebase = DictVal(objSolic, "ID_Firebase", "")
+    strIDCadastro = Replace(strIDFirebase, "/", "")
+    
+    If strIDCadastro = "" Then Exit Sub
+    
+    slcCbSd = DictVal(objSolic, "Solic_Cb_Sd", 0)
+    slcIntermed = DictVal(objSolic, "Solic_Intermed", 0)
+    slcSubalterno = DictVal(objSolic, "Solic_Subalterno", 0)
+    slcSubtenSgt = DictVal(objSolic, "Solic_Subten_Sgt", 0)
+    slcSuperior = DictVal(objSolic, "Solic_Superior", 0)
+    
+    Set rsCheck = db.OpenRecordset( _
+        "SELECT ID_Cadastro FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strIDCadastro), _
+        dbOpenSnapshot)
+    
+    If rsCheck.EOF Then
+        strSQL = "INSERT INTO TblEscGeral (" & _
+                 "ID_Cadastro, ID_Firebase, " & _
+                 "Slc_Cb_Sd, Slc_Intermed, Slc_Subalterno, Slc_Subten_Sgt, Slc_Superior, " & _
+                 "Status_Inicial, Status_Adm, Composicao_Cod, " & _
+                 "Composicao_Nome, Data_Esc, Horario_Final, Horario_Inicial, Motivo, " & _
+                 "Observacoes_Slc, OPM_Codigo, OPM_Nome, Necessidade" & _
+                 ") VALUES (" & _
+                 SQLTexto(strIDCadastro) & ", " & _
+                 SQLTexto(strIDFirebase) & ", " & _
+                 slcCbSd & ", " & slcIntermed & ", " & slcSubalterno & ", " & slcSubtenSgt & ", " & slcSuperior & ", " & _
+                 DictVal(objSolic, "Status_Inicial", 0) & ", " & _
+                 SQLTexto("1") & ", " & _
+                 SQLTexto(DictVal(objSolic, "composicao_cod", "")) & ", " & _
+                 SQLTexto(DictVal(objSolic, "composicao_nome", "")) & ", " & _
+                 SqlDataFirebase(DictVal(objSolic, "data", "")) & ", " & _
+                 SQLTexto(DictVal(objSolic, "horario_final", "")) & ", " & _
+                 SQLTexto(DictVal(objSolic, "horario_inicial", "")) & ", " & _
+                 SQLTexto(DictVal(objSolic, "motivo", "")) & ", " & _
+                 SQLTexto(DictVal(objSolic, "observacoes", "")) & ", " & _
+                 SQLTexto(DictVal(objSolic, "opm_codigo", "")) & ", " & _
+                 SQLTexto(DictVal(objSolic, "opm_nome", "")) & ", " & _
+                 SQLTexto(DictVal(objSolic, "necessidade", "")) & ")"
+        
+        db.Execute strSQL, dbFailOnError
+        importados = importados + 1
+    Else
+        strSQL = "UPDATE TblEscGeral SET " & _
+                 "ID_Firebase = " & SQLTexto(strIDFirebase) & ", " & _
+                 "Slc_Cb_Sd = " & slcCbSd & ", " & _
+                 "Slc_Intermed = " & slcIntermed & ", " & _
+                 "Slc_Subalterno = " & slcSubalterno & ", " & _
+                 "Slc_Subten_Sgt = " & slcSubtenSgt & ", " & _
+                 "Slc_Superior = " & slcSuperior & ", " & _
+                 "Status_Inicial = " & DictVal(objSolic, "Status_Inicial", 0) & ", " & _
+                 "Status_Adm = IIf(Nz(Status_Adm,'')='', '1', Status_Adm), " & _
+                 "Composicao_Cod = " & SQLTexto(DictVal(objSolic, "composicao_cod", "")) & ", " & _
+                 "Composicao_Nome = " & SQLTexto(DictVal(objSolic, "composicao_nome", "")) & ", " & _
+                 "Data_Esc = " & SqlDataFirebase(DictVal(objSolic, "data", "")) & ", " & _
+                 "Horario_Final = " & SQLTexto(DictVal(objSolic, "horario_final", "")) & ", " & _
+                 "Horario_Inicial = " & SQLTexto(DictVal(objSolic, "horario_inicial", "")) & ", " & _
+                 "Motivo = " & SQLTexto(DictVal(objSolic, "motivo", "")) & ", " & _
+                 "Observacoes_Slc = " & SQLTexto(DictVal(objSolic, "observacoes", "")) & ", " & _
+                 "OPM_Codigo = " & SQLTexto(DictVal(objSolic, "opm_codigo", "")) & ", " & _
+                 "OPM_Nome = " & SQLTexto(DictVal(objSolic, "opm_nome", "")) & ", " & _
+                 "Necessidade = " & SQLTexto(DictVal(objSolic, "necessidade", "")) & " " & _
+                 "WHERE ID_Cadastro = " & SQLTexto(strIDCadastro)
+        
+        db.Execute strSQL, dbFailOnError
+        atualizados = atualizados + 1
+    End If
+    
+    rsCheck.Close
+    
+    strSQL = "UPDATE TblEscGeral SET " & _
+             "Atz_Cb_Sd = Slc_Cb_Sd, " & _
+             "Atz_Intermed = Slc_Intermed, " & _
+             "Atz_Subalterno = Slc_Subalterno, " & _
+             "Atz_Subten_Sgt = Slc_Subten_Sgt, " & _
+             "Atz_Superior = Slc_Superior " & _
+             "WHERE ID_Cadastro = " & SQLTexto(strIDCadastro)
+    
+    db.Execute strSQL, dbFailOnError
+End Sub
+
+Public Function ImportarSolicitacoesFirebase() As Boolean
+    Dim db As DAO.Database
+    Dim respPendentes As FirebaseResponse
+    Dim respSolicitacoes As FirebaseResponse
+    Dim colIDsPendentes As Collection
+    Dim colIDsImportados As Collection
+    Dim objSolic As Object
+    Dim strIDFirebase As Variant
+    Dim strJsonSolicitacao As String
+    Dim importados As Long
+    Dim atualizados As Long
+    Dim ignorados As Long
+    Dim falhasBusca As Long
+    Dim falhasFinalizacao As Long
+    
+    On Error GoTo Erro
+    
+    Set db = CurrentDb
+    Set colIDsImportados = New Collection
+    
+    respPendentes = BuscarDadosFirebase("SolicPendentes")
+    
+    If Not respPendentes.Success Then
+        MsgBox "Erro ao verificar SolicPendentes.", vbCritical
+        ImportarSolicitacoesFirebase = False
+        Exit Function
+    End If
+    
+    If Trim(respPendentes.ResponseText) = "" Or Trim(respPendentes.ResponseText) = "null" Then
+        MsgBox "Nao ha solicitacoes pendentes para importar.", vbInformation
+        ImportarSolicitacoesFirebase = True
+        Exit Function
+    End If
+    
+    Set colIDsPendentes = ObterIDsFirebasePendentes(respPendentes.ResponseText)
+    
+    If colIDsPendentes Is Nothing Or colIDsPendentes.Count = 0 Then
+        MsgBox "Nenhuma solicitacao pendente valida encontrada em SolicPendentes.", vbExclamation
+        ImportarSolicitacoesFirebase = False
+        Exit Function
+    End If
+    
+    respSolicitacoes = BuscarDadosFirebase("solicitacoes")
+    
+    If Not respSolicitacoes.Success Or Trim(respSolicitacoes.ResponseText) = "" Or Trim(respSolicitacoes.ResponseText) = "null" Then
+        MsgBox "Erro ao buscar o no solicitacoes para importacao em lote.", vbCritical
+        ImportarSolicitacoesFirebase = False
+        Exit Function
+    End If
+    
+    For Each strIDFirebase In colIDsPendentes
+        strJsonSolicitacao = ExtrairObjetoSolicitacaoPorID(respSolicitacoes.ResponseText, CStr(strIDFirebase))
+        
+        If Trim(strJsonSolicitacao) = "" Or Trim(strJsonSolicitacao) = "null" Then
+            falhasBusca = falhasBusca + 1
+            GoTo ProximaSolicitacao
+        End If
+        
+        Set objSolic = ParseSolicitacaoUnica(strJsonSolicitacao, CStr(strIDFirebase))
+        
+        If objSolic Is Nothing Then
+            ignorados = ignorados + 1
+            GoTo ProximaSolicitacao
+        End If
+        
+        Call SalvarSolicitacaoLocal(db, objSolic, importados, atualizados)
+        colIDsImportados.Add CStr(strIDFirebase)
+        
+ProximaSolicitacao:
+    Next
+    
+    If colIDsImportados.Count > 0 Then
+        If Not MarcarSolicitacoesImportadasEmLote(colIDsImportados) Then
+            falhasFinalizacao = colIDsImportados.Count
+        End If
+    End If
+    
+    MsgBox "Importacao concluida!" & vbCrLf & _
+           "Novos registros: " & importados & vbCrLf & _
+           "Atualizados: " & atualizados & vbCrLf & _
+           "Ignorados: " & ignorados & vbCrLf & _
+           "Falhas ao buscar no Firebase: " & falhasBusca & vbCrLf & _
+           "Falhas ao finalizar pendencia: " & falhasFinalizacao, vbInformation
+    
+    ImportarSolicitacoesFirebase = True
+    Exit Function
+    
+Erro:
+    MsgBox "Erro na importacao: " & Err.Number & " - " & Err.Description, vbCritical
+    ImportarSolicitacoesFirebase = False
+End Function
+
+Private Function ExtrairObjetoSolicitacaoPorID(ByVal strJson As String, ByVal strIDFirebase As String) As String
+    Dim strBusca As String
+    Dim lngPos As Long
+    Dim lngInicio As Long
+    Dim lngFim As Long
+    
+    On Error GoTo Erro
+    
+    strBusca = """ID_Firebase"":""" & JsonEscape(strIDFirebase) & """"
+    lngPos = InStr(1, strJson, strBusca, vbBinaryCompare)
+    
+    If lngPos = 0 Then
+        strBusca = """ID_Firebase"": """ & JsonEscape(strIDFirebase) & """"
+        lngPos = InStr(1, strJson, strBusca, vbBinaryCompare)
+    End If
+    
+    If lngPos = 0 Then
+        ExtrairObjetoSolicitacaoPorID = ""
+        Exit Function
+    End If
+    
+    lngInicio = EncontrarInicioObjetoJson(strJson, lngPos)
+    lngFim = EncontrarFimObjetoJson(strJson, lngInicio)
+    
+    If lngInicio > 0 And lngFim >= lngInicio Then
+        ExtrairObjetoSolicitacaoPorID = Mid$(strJson, lngInicio, lngFim - lngInicio + 1)
+    Else
+        ExtrairObjetoSolicitacaoPorID = ""
+    End If
+    
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro ExtrairObjetoSolicitacaoPorID: " & Err.Number & " - " & Err.Description
+    ExtrairObjetoSolicitacaoPorID = ""
+End Function
+
+Private Function EncontrarInicioObjetoJson(ByVal strJson As String, ByVal lngPos As Long) As Long
+    Dim i As Long
+    
+    For i = lngPos To 1 Step -1
+        If Mid$(strJson, i, 1) = "{" Then
+            EncontrarInicioObjetoJson = i
+            Exit Function
+        End If
+    Next i
+    
+    EncontrarInicioObjetoJson = 0
+End Function
+
+Private Function EncontrarFimObjetoJson(ByVal strJson As String, ByVal lngInicio As Long) As Long
+    Dim i As Long
+    Dim lngNivel As Long
+    Dim blnEmString As Boolean
+    Dim blnEscape As Boolean
+    Dim strChar As String
+    
+    If lngInicio <= 0 Then
+        EncontrarFimObjetoJson = 0
+        Exit Function
+    End If
+    
+    For i = lngInicio To Len(strJson)
+        strChar = Mid$(strJson, i, 1)
+        
+        If blnEscape Then
+            blnEscape = False
+        ElseIf strChar = "\" And blnEmString Then
+            blnEscape = True
+        ElseIf strChar = """" Then
+            blnEmString = Not blnEmString
+        ElseIf Not blnEmString Then
+            If strChar = "{" Then
+                lngNivel = lngNivel + 1
+            ElseIf strChar = "}" Then
+                lngNivel = lngNivel - 1
+                
+                If lngNivel = 0 Then
+                    EncontrarFimObjetoJson = i
+                    Exit Function
+                End If
+            End If
+        End If
+    Next i
+    
+    EncontrarFimObjetoJson = 0
+End Function
+
+Private Function MarcarSolicitacoesImportadasEmLote(ByVal colIDsImportados As Collection) As Boolean
+    Dim strBody As String
+    Dim vID As Variant
+    
+    On Error GoTo Erro
+    
+    strBody = "{"
+    
+    For Each vID In colIDsImportados
+        If Len(strBody) > 1 Then strBody = strBody & ","
+        
+        strBody = strBody & _
+                  """" & JsonEscape("solicitacoes/" & CStr(vID) & "/Status_Inicial") & """:2," & _
+                  """" & JsonEscape("SolicPendentes/" & CStr(vID)) & """:null"
+    Next vID
+    
+    strBody = strBody & "}"
+    
+    MarcarSolicitacoesImportadasEmLote = PatchDadosFirebase(strBody)
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro MarcarSolicitacoesImportadasEmLote: " & Err.Number & " - " & Err.Description
+    MarcarSolicitacoesImportadasEmLote = False
+End Function
+Private Function ImportarSolicitacoesFirebaseAntigo() As Boolean
+    Dim db As DAO.Database
+    Dim rsCheck As DAO.Recordset
+    Dim respPendentes As FirebaseResponse
+    Dim respSolicitacoes As FirebaseResponse
+    Dim backupPendentes As String
+    Dim colSolic As Collection
+    Dim objSolic As Object
+    Dim strSQL As String
+    Dim strIDFirebase As String
+    Dim strIDCadastro As String
+    Dim importados As Long
+    Dim atualizados As Long
+    Dim slcCbSd As Long
+    Dim slcIntermed As Long
+    Dim slcSubalterno As Long
+    Dim slcSubtenSgt As Long
+    Dim slcSuperior As Long
+    
+    On Error GoTo Erro
+    
+    Set db = CurrentDb
+    
+    respPendentes = BuscarDadosFirebase("SolicPendentes")
+    
+    If Not respPendentes.Success Then
+        MsgBox "Erro ao verificar SolicPendentes.", vbCritical
+        ImportarSolicitacoesFirebaseAntigo = False
+        Exit Function
+    End If
+    
+    If Trim(respPendentes.ResponseText) = "" Or Trim(respPendentes.ResponseText) = "null" Then
+        MsgBox "Não há solicitações pendentes para importar.", vbInformation
+        ImportarSolicitacoesFirebaseAntigo = True
+        Exit Function
+    End If
+    
+    backupPendentes = respPendentes.ResponseText
+    
+    respSolicitacoes = BuscarDadosFirebase("solicitacoes")
+    
+    If Not respSolicitacoes.Success Then
+        MsgBox "Erro ao buscar o nó solicitacoes.", vbCritical
+        ImportarSolicitacoesFirebaseAntigo = False
+        Exit Function
+    End If
+    
+    Set colSolic = ParseJSON(respSolicitacoes.ResponseText)
+    
+    If colSolic Is Nothing Or colSolic.Count = 0 Then
+        MsgBox "Nenhuma solicitação válida encontrada no JSON.", vbExclamation
+        ImportarSolicitacoesFirebaseAntigo = False
+        Exit Function
+    End If
+    
+    For Each objSolic In colSolic
+        strIDFirebase = DictVal(objSolic, "ID_Firebase", "")
+        strIDCadastro = Replace(strIDFirebase, "/", "")
+        
+        ' Extrai os valores Slc_ para usar depois
+        slcCbSd = DictVal(objSolic, "Solic_Cb_Sd", 0)
+        slcIntermed = DictVal(objSolic, "Solic_Intermed", 0)
+        slcSubalterno = DictVal(objSolic, "Solic_Subalterno", 0)
+        slcSubtenSgt = DictVal(objSolic, "Solic_Subten_Sgt", 0)
+        slcSuperior = DictVal(objSolic, "Solic_Superior", 0)
+        
+        If strIDCadastro <> "" Then
+            Set rsCheck = db.OpenRecordset( _
+                "SELECT ID_Cadastro FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strIDCadastro), _
+                dbOpenSnapshot)
+            
+            If rsCheck.EOF Then
+                ' INSERT
+                strSQL = "INSERT INTO TblEscGeral (" & _
+                         "ID_Cadastro, ID_Firebase, " & _
+                         "Slc_Cb_Sd, Slc_Intermed, Slc_Subalterno, Slc_Subten_Sgt, Slc_Superior, " & _
+                         "Status_Inicial, Status_Adm, Composicao_Cod, " & _
+                         "Composicao_Nome, Data_Esc, Horario_Final, Horario_Inicial, Motivo, " & _
+                         "Observacoes_Slc, OPM_Codigo, OPM_Nome, Necessidade" & _
+                         ") VALUES (" & _
+                         SQLTexto(strIDCadastro) & ", " & _
+                         SQLTexto(strIDFirebase) & ", " & _
+                         slcCbSd & ", " & slcIntermed & ", " & slcSubalterno & ", " & slcSubtenSgt & ", " & slcSuperior & ", " & _
+                         DictVal(objSolic, "Status_Inicial", 0) & ", " & _
+                         SQLTexto("1") & ", " & _
+                         SQLTexto(DictVal(objSolic, "composicao_cod", "")) & ", " & _
+                         SQLTexto(DictVal(objSolic, "composicao_nome", "")) & ", " & _
+                         SqlDataFirebase(DictVal(objSolic, "data", "")) & ", " & _
+                         SQLTexto(DictVal(objSolic, "horario_final", "")) & ", " & _
+                         SQLTexto(DictVal(objSolic, "horario_inicial", "")) & ", " & _
+                         SQLTexto(DictVal(objSolic, "motivo", "")) & ", " & _
+                         SQLTexto(DictVal(objSolic, "observacoes", "")) & ", " & _
+                         SQLTexto(DictVal(objSolic, "opm_codigo", "")) & ", " & _
+                         SQLTexto(DictVal(objSolic, "opm_nome", "")) & ", " & _
+                         SQLTexto(DictVal(objSolic, "necessidade", "")) & ")"
+                
+                db.Execute strSQL, dbFailOnError
+                importados = importados + 1
+            Else
+                ' UPDATE
+                strSQL = "UPDATE TblEscGeral SET " & _
+                         "ID_Firebase = " & SQLTexto(strIDFirebase) & ", " & _
+                         "Slc_Cb_Sd = " & slcCbSd & ", " & _
+                         "Slc_Intermed = " & slcIntermed & ", " & _
+                         "Slc_Subalterno = " & slcSubalterno & ", " & _
+                         "Slc_Subten_Sgt = " & slcSubtenSgt & ", " & _
+                         "Slc_Superior = " & slcSuperior & ", " & _
+                         "Status_Inicial = " & DictVal(objSolic, "Status_Inicial", 0) & ", " & _
+                         "Status_Adm = IIf(Nz(Status_Adm,'')='', '1', Status_Adm), " & _
+                         "Composicao_Cod = " & SQLTexto(DictVal(objSolic, "composicao_cod", "")) & ", " & _
+                         "Composicao_Nome = " & SQLTexto(DictVal(objSolic, "composicao_nome", "")) & ", " & _
+                         "Data_Esc = " & SqlDataFirebase(DictVal(objSolic, "data", "")) & ", " & _
+                         "Horario_Final = " & SQLTexto(DictVal(objSolic, "horario_final", "")) & ", " & _
+                         "Horario_Inicial = " & SQLTexto(DictVal(objSolic, "horario_inicial", "")) & ", " & _
+                         "Motivo = " & SQLTexto(DictVal(objSolic, "motivo", "")) & ", " & _
+                         "Observacoes_Slc = " & SQLTexto(DictVal(objSolic, "observacoes", "")) & ", " & _
+                         "OPM_Codigo = " & SQLTexto(DictVal(objSolic, "opm_codigo", "")) & ", " & _
+                         "OPM_Nome = " & SQLTexto(DictVal(objSolic, "opm_nome", "")) & ", " & _
+                         "Necessidade = " & SQLTexto(DictVal(objSolic, "necessidade", "")) & " " & _
+                         "WHERE ID_Cadastro = " & SQLTexto(strIDCadastro)
+                
+                db.Execute strSQL, dbFailOnError
+                atualizados = atualizados + 1
+            End If
+            
+            rsCheck.Close
+            
+            ' ============================================================
+            ' APÓS O INSERT/UPDATE, COPIA Slc_ PARA Atz_
+            ' ============================================================
+            strSQL = "UPDATE TblEscGeral SET " & _
+                     "Atz_Cb_Sd = Slc_Cb_Sd, " & _
+                     "Atz_Intermed = Slc_Intermed, " & _
+                     "Atz_Subalterno = Slc_Subalterno, " & _
+                     "Atz_Subten_Sgt = Slc_Subten_Sgt, " & _
+                     "Atz_Superior = Slc_Superior " & _
+                     "WHERE ID_Cadastro = " & SQLTexto(strIDCadastro)
+            
+            db.Execute strSQL, dbFailOnError
+            
+        End If
+    Next
+    
+    EnviarDadosFirebase "SolicPendentes", "null"
+    
+    MsgBox "Importação concluída!" & vbCrLf & _
+           "Novos registros: " & importados & vbCrLf & _
+           "Atualizados: " & atualizados, vbInformation
+    
+    ImportarSolicitacoesFirebaseAntigo = True
+    Exit Function
+    
+Erro:
+    On Error Resume Next
+    If Len(backupPendentes) > 0 Then EnviarDadosFirebase "SolicPendentes", backupPendentes
+    MsgBox "Erro na importação: " & Err.Number & " - " & Err.Description, vbCritical
+    ImportarSolicitacoesFirebaseAntigo = False
+End Function
+
+Public Function PatchDadosFirebase(strDados As String) As Boolean
+    Dim strURL As String
+    Dim objXML As Object
+    
+    On Error GoTo Erro
+    
+    strURL = FIREBASE_URL & ".json?print=silent"
+    
+    Set objXML = CreateObject("MSXML2.XMLHTTP")
+    objXML.Open "PATCH", strURL, False
+    objXML.setRequestHeader "Content-Type", "application/json"
+    objXML.Send strDados
+    
+    PatchDadosFirebase = (objXML.status = 200 Or objXML.status = 204)
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro PatchDadosFirebase: " & Err.Description
+    PatchDadosFirebase = False
+End Function
+
+

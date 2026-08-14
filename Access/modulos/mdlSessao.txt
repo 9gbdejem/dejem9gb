@@ -1,0 +1,118 @@
+Option Compare Database
+Option Explicit
+
+Public Sub DefinirUsuarioLogado(ByVal strRE As String, ByVal lngUsuarioID As Long)
+    Call DefinirTempVar("UsuarioRE", Trim(Nz(strRE, "")))
+    Call DefinirTempVar("UsuarioID", lngUsuarioID)
+End Sub
+
+Public Sub LimparUsuarioLogado()
+    On Error Resume Next
+    TempVars.Remove "UsuarioRE"
+    TempVars.Remove "UsuarioID"
+    On Error GoTo 0
+End Sub
+
+Public Function UsuarioLogadoRE() As String
+    On Error GoTo Sair
+    UsuarioLogadoRE = Trim(Nz(TempVars("UsuarioRE").Value, ""))
+    Exit Function
+
+Sair:
+    UsuarioLogadoRE = ""
+End Function
+
+Public Function UsuarioLogadoID() As Long
+    On Error GoTo Sair
+    UsuarioLogadoID = CLng(Nz(TempVars("UsuarioID").Value, 0))
+    Exit Function
+
+Sair:
+    UsuarioLogadoID = 0
+End Function
+
+Public Function LinkUsuarioLogado() As String
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strRE As String
+    Dim lngUsuarioID As Long
+    Dim strSQL As String
+
+    On Error GoTo Sair
+
+    strRE = UsuarioLogadoRE()
+    lngUsuarioID = UsuarioLogadoID()
+
+    If strRE = "" And lngUsuarioID = 0 Then
+        LinkUsuarioLogado = ""
+        Exit Function
+    End If
+
+    If lngUsuarioID > 0 Then
+        strSQL = "SELECT Link FROM TblUsuarios WHERE ID = " & lngUsuarioID
+    Else
+        strSQL = "SELECT Link FROM TblUsuarios WHERE RE = '" & Replace(strRE, "'", "''") & "'"
+    End If
+
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+
+    If Not rs.EOF Then
+        LinkUsuarioLogado = Trim(Nz(rs!Link, ""))
+    Else
+        LinkUsuarioLogado = ""
+    End If
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+End Function
+
+Public Function CPFUsuarioLogado() As String
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strRE As String
+    Dim lngUsuarioID As Long
+    Dim strSQL As String
+
+    On Error GoTo Sair
+
+    strRE = UsuarioLogadoRE()
+    lngUsuarioID = UsuarioLogadoID()
+
+    If strRE = "" And lngUsuarioID = 0 Then
+        CPFUsuarioLogado = ""
+        Exit Function
+    End If
+
+    If lngUsuarioID > 0 Then
+        strSQL = "SELECT CPF FROM TblUsuarios WHERE ID = " & lngUsuarioID
+    Else
+        strSQL = "SELECT CPF FROM TblUsuarios WHERE RE = '" & Replace(strRE, "'", "''") & "'"
+    End If
+
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+
+    If Not rs.EOF Then
+        CPFUsuarioLogado = Trim(Nz(rs!CPF, ""))
+    Else
+        CPFUsuarioLogado = ""
+    End If
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+End Function
+
+Private Sub DefinirTempVar(ByVal strNome As String, ByVal vValor As Variant)
+    On Error Resume Next
+    TempVars.Remove strNome
+    On Error GoTo 0
+
+    TempVars.Add strNome, vValor
+End Sub

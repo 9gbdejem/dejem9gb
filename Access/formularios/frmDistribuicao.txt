@@ -1,0 +1,964 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Form_Load()
+    On Error GoTo Erro
+    
+    Call VerificarTabelasDistribuicao
+    Call CarregarComboMeses
+    Call CarregarComboOperacao
+    Call CarregarComboMatematica
+    Call AtualizarListas
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.Form_Load: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub btnMesCorrente_Click()
+    Dim dtPrimeiroDia As Date
+    
+    dtPrimeiroDia = DateSerial(Year(Date), Month(Date), 1)
+    
+    Me.cboMesInicial = TextoMesAno(dtPrimeiroDia)
+    Me.cboMesFinal = TextoMesAno(dtPrimeiroDia)
+    Me.cboMesRef = TextoMesAno(dtPrimeiroDia)
+    
+    Call AtualizarListas
+End Sub
+
+Private Sub btnMesAnterior_Click()
+    Dim dtAtual As Date
+    Dim dtPrimeiroDia As Date
+    
+    dtAtual = DataInicialFiltro()
+    dtPrimeiroDia = DateSerial(Year(dtAtual), Month(dtAtual) - 1, 1)
+    
+    Me.cboMesInicial = TextoMesAno(dtPrimeiroDia)
+    Me.cboMesFinal = TextoMesAno(dtPrimeiroDia)
+    Me.cboMesRef = TextoMesAno(dtPrimeiroDia)
+    
+    Call AtualizarListas
+End Sub
+
+Private Sub btnMesSeguinte_Click()
+    Dim dtAtual As Date
+    Dim dtPrimeiroDia As Date
+    
+    dtAtual = DataInicialFiltro()
+    dtPrimeiroDia = DateSerial(Year(dtAtual), Month(dtAtual) + 1, 1)
+    
+    Me.cboMesInicial = TextoMesAno(dtPrimeiroDia)
+    Me.cboMesFinal = TextoMesAno(dtPrimeiroDia)
+    Me.cboMesRef = TextoMesAno(dtPrimeiroDia)
+    
+    Call AtualizarListas
+End Sub
+
+Private Sub btnFiltrar_Click()
+    If Not PeriodoValido(True) Then Exit Sub
+    Call AtualizarListas
+End Sub
+
+Private Sub btnAdicionar_Click()
+    Dim db As DAO.Database
+    Dim strOperacao As String
+    Dim strMatematica As String
+    Dim lngOficiais As Long
+    Dim lngPracas As Long
+    Dim dtMes As Date
+    Dim strSQL As String
+    
+    On Error GoTo Erro
+    
+    strOperacao = UCase$(Trim(ValorTextoControle("cboOperacaoRef")))
+    strMatematica = Trim(Nz(Me.cboMatematica, ""))
+    lngOficiais = ValorLongControleAlternativo("txtQtdeOficiais", "txtQtdeOficial", "txtQtdOficiais", "txtQtdOficial")
+    lngPracas = ValorLongControle("txtQtdePracas")
+    
+    If Trim(Nz(Me.cboMesRef, "")) = "" Then
+        MsgBox "Selecione o mes de referencia do lancamento.", vbExclamation, "Distribuicao de Vagas"
+        Me.cboMesRef.SetFocus
+        Exit Sub
+    End If
+    
+    dtMes = MesReferenciaFiltro()
+    
+    If strOperacao = "" Then
+        MsgBox "Selecione a operacao de referencia do lancamento.", vbExclamation, "Distribuicao de Vagas"
+        Call FocarControle("cboOperacaoRef")
+        Exit Sub
+    End If
+    
+    If strMatematica <> "Adicionar" And strMatematica <> "Subtrair" Then
+        MsgBox "Selecione Adicionar ou Subtrair.", vbExclamation, "Distribuição de Vagas"
+        Me.cboMatematica.SetFocus
+        Exit Sub
+    End If
+    
+    If lngOficiais = 0 And lngPracas = 0 Then
+        MsgBox "Informe quantidade de oficiais e/ou praças.", vbExclamation, "Distribuição de Vagas"
+        Exit Sub
+    End If
+    
+    If UsuarioLogadoRE() = "" Then
+        MsgBox "Não foi possível identificar o RE do usuário logado.", vbExclamation, "Distribuição de Vagas"
+        Exit Sub
+    End If
+    
+    Set db = CurrentDb
+    
+    strSQL = "INSERT INTO TblDistribuicao (" & _
+             "Mes_Referencia, Operacao, Operacao_Matematica, Qtde_Oficiais, Qtde_Pracas, Observacao, RE_Cadastro, Data_Cadastro" & _
+             ") VALUES (" & _
+             SQLData(dtMes) & ", " & _
+             SQLTexto(strOperacao) & ", " & _
+             SQLTexto(strMatematica) & ", " & _
+             lngOficiais & ", " & _
+             lngPracas & ", " & _
+             SQLTexto(ValorTextoControle("txtObservacao")) & ", " & _
+             SQLTexto(UsuarioLogadoRE()) & ", " & _
+             SQLDataHora(Now) & ")"
+    
+    db.Execute strSQL, dbFailOnError
+    
+    Call LimparControleAlternativo("txtQtdeOficiais", "txtQtdeOficial", "txtQtdOficiais", "txtQtdOficial")
+    Call LimparControle("txtQtdePracas")
+    Call LimparControle("txtObservacao")
+    
+    Call AtualizarListas
+    
+    MsgBox "Lançamento incluído.", vbInformation, "Distribuição de Vagas"
+    
+Sair:
+    On Error Resume Next
+    Set db = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.btnAdicionar_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao incluir lançamento: " & Err.Number & " - " & Err.Description, vbCritical, "Distribuição de Vagas"
+    Resume Sair
+End Sub
+
+Private Sub CarregarComboOperacao()
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strLista As String
+    
+    On Error GoTo Erro
+    
+    strLista = "ROTINEIRA"
+    Me.cboOperacao.RowSourceType = "Value List"
+    Me.cboOperacao.RowSource = strLista
+    Me.cboOperacao = "ROTINEIRA"
+    Call ConfigurarComboValueList("cboOperacaoRef", strLista, "ROTINEIRA")
+    
+    If Not TabelaExiste("TblOperacoes") Then
+        Debug.Print "Erro frmDistribuicao.CarregarComboOperacao: tabela TblOperacoes nao localizada."
+        GoTo Sair
+    End If
+    
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset("SELECT Operacao FROM TblOperacoes WHERE Operacao Is Not Null AND Operacao <> '' ORDER BY Operacao", dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        If UCase$(Trim(Nz(rs!Operacao, ""))) <> "ROTINEIRA" Then
+            strLista = strLista & ";" & UCase$(Trim(Nz(rs!Operacao, "")))
+        End If
+        rs.MoveNext
+    Loop
+    
+    Me.cboOperacao.RowSourceType = "Value List"
+    Me.cboOperacao.RowSource = strLista
+    Me.cboOperacao = "ROTINEIRA"
+    Call ConfigurarComboValueList("cboOperacaoRef", strLista, "ROTINEIRA")
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.CarregarComboOperacao: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub CarregarComboMatematica()
+    Me.cboMatematica.RowSourceType = "Value List"
+    Me.cboMatematica.RowSource = "Adicionar;Subtrair"
+    Me.cboMatematica = "Adicionar"
+End Sub
+
+Private Sub CarregarComboMeses()
+    Dim dtMes As Date
+    Dim i As Integer
+    Dim strLista As String
+    
+    On Error GoTo Erro
+    
+    dtMes = DateSerial(Year(Date), Month(Date), 1)
+    
+    For i = 0 To 60
+        If strLista <> "" Then strLista = strLista & ";"
+        strLista = strLista & TextoMesAno(DateAdd("m", -i, dtMes))
+    Next i
+    
+    Me.cboMesInicial.RowSourceType = "Value List"
+    Me.cboMesInicial.RowSource = strLista
+    Me.cboMesInicial = TextoMesAno(dtMes)
+    
+    Me.cboMesFinal.RowSourceType = "Value List"
+    Me.cboMesFinal.RowSource = strLista
+    Me.cboMesFinal = TextoMesAno(dtMes)
+    
+    Me.cboMesRef.RowSourceType = "Value List"
+    Me.cboMesRef.RowSource = strLista
+    Me.cboMesRef = TextoMesAno(dtMes)
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.CarregarComboMeses: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub AtualizarListas()
+    On Error GoTo Erro
+    
+    If Not PeriodoValido(True) Then Exit Sub
+    
+    Call CarregarLancamentos
+    Call CarregarResumo
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.AtualizarListas: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub LimparListas()
+    On Error Resume Next
+    
+    Me.lstLancamentos.RowSourceType = "Value List"
+    Me.lstLancamentos.ColumnCount = 7
+    Me.lstLancamentos.ColumnWidths = "1,4cm;4cm;1,4cm;1,4cm;1,8cm;3cm;4cm"
+    Me.lstLancamentos.RowSource = ""
+    
+    Me.lstResumo.RowSourceType = "Value List"
+    Me.lstResumo.ColumnCount = 7
+    Me.lstResumo.ColumnWidths = "5cm;1,3cm;1,3cm;1,3cm;1,3cm;1,3cm;1,3cm"
+    Me.lstResumo.RowSource = ""
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub CarregarLancamentos()
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strLinhas As String
+    Dim strSinal As String
+    
+    On Error GoTo Erro
+    
+    Me.lstLancamentos.RowSourceType = "Value List"
+    Me.lstLancamentos.ColumnCount = 7
+    Me.lstLancamentos.ColumnWidths = "1,4cm;4cm;1,4cm;1,4cm;1,8cm;3cm;8cm"
+    Me.lstLancamentos.RowSource = ""
+    Me.lstLancamentos.Requery
+    
+    If Not TabelaExiste("TblDistribuicao") Then
+        Debug.Print "Erro frmDistribuicao.CarregarLancamentos: tabela TblDistribuicao nao localizada."
+        GoTo Sair
+    End If
+    
+    Set db = CurrentDb
+    
+    strSQL = "SELECT Mes_Referencia, Operacao, Operacao_Matematica, Qtde_Oficiais, Qtde_Pracas, " & _
+             "RE_Cadastro, Data_Cadastro, Observacao " & _
+             "FROM TblDistribuicao " & _
+             "WHERE Mes_Referencia >= " & SQLData(DataInicialFiltro()) & " " & _
+             "AND Mes_Referencia < " & SQLData(DataFinalExclusivaFiltro()) & " " & _
+             "ORDER BY Data_Cadastro DESC, ID DESC"
+    
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        If Nz(rs!Operacao_Matematica, "") = "Subtrair" Then
+            strSinal = "-"
+        Else
+            strSinal = "+"
+        End If
+        
+        If strLinhas <> "" Then strLinhas = strLinhas & ";"
+        strLinhas = strLinhas & _
+                    ValorLista(Format(Nz(rs!Mes_Referencia, ""), "mm/yyyy")) & ";" & _
+                    ValorLista(Nz(rs!Operacao, "")) & ";" & _
+                    ValorLista(strSinal & " " & Nz(rs!Qtde_Oficiais, 0)) & ";" & _
+                    ValorLista(strSinal & " " & Nz(rs!Qtde_Pracas, 0)) & ";" & _
+                    ValorLista(Nz(rs!RE_Cadastro, "")) & ";" & _
+                    ValorLista(Format(Nz(rs!Data_Cadastro, ""), "dd/mm/yyyy hh:nn")) & ";" & _
+                    ValorLista(Nz(rs!Observacao, ""))
+        
+        rs.MoveNext
+    Loop
+    
+    Me.lstLancamentos.RowSource = strLinhas
+    Me.lstLancamentos.Requery
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.CarregarLancamentos: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub CarregarResumo()
+    Dim db As DAO.Database
+    Dim ops As Collection
+    Dim recebOf As Object
+    Dim recebPr As Object
+    Dim utilOf As Object
+    Dim utilPr As Object
+    Dim op As Variant
+    Dim strLinhas As String
+    Dim lngRecOf As Long
+    Dim lngRecPr As Long
+    Dim lngUtiOf As Long
+    Dim lngUtiPr As Long
+    Dim totRecOf As Long
+    Dim totRecPr As Long
+    Dim totUtiOf As Long
+    Dim totUtiPr As Long
+    
+    On Error GoTo Erro
+    
+    Me.lstResumo.RowSourceType = "Value List"
+    Me.lstResumo.ColumnCount = 7
+    Me.lstResumo.ColumnWidths = "5cm;1,3cm;1,3cm;1,3cm;1,3cm;1,3cm;1,3cm"
+    Me.lstResumo.RowSource = ""
+    
+    Set db = CurrentDb
+    Set ops = OperacoesResumo(db)
+    Set recebOf = CreateObject("Scripting.Dictionary")
+    Set recebPr = CreateObject("Scripting.Dictionary")
+    Set utilOf = CreateObject("Scripting.Dictionary")
+    Set utilPr = CreateObject("Scripting.Dictionary")
+    
+    Call InicializarDicionariosResumo(ops, recebOf, recebPr, utilOf, utilPr)
+    Call SomarRecebidas(db, recebOf, recebPr)
+    Call SomarUtilizadas(db, ops, utilOf, utilPr)
+    
+    For Each op In ops
+        lngRecOf = CLng(Nz(recebOf(CStr(op)), 0))
+        lngRecPr = CLng(Nz(recebPr(CStr(op)), 0))
+        lngUtiOf = CLng(Nz(utilOf(CStr(op)), 0))
+        lngUtiPr = CLng(Nz(utilPr(CStr(op)), 0))
+        
+        If lngRecOf <> 0 Or lngRecPr <> 0 Or lngUtiOf <> 0 Or lngUtiPr <> 0 Then
+            If strLinhas <> "" Then strLinhas = strLinhas & ";"
+            strLinhas = strLinhas & LinhaResumo(CStr(op), lngRecOf, lngRecPr, lngUtiOf, lngUtiPr)
+        End If
+        
+        totRecOf = totRecOf + lngRecOf
+        totRecPr = totRecPr + lngRecPr
+        totUtiOf = totUtiOf + lngUtiOf
+        totUtiPr = totUtiPr + lngUtiPr
+    Next op
+    
+    If strLinhas <> "" Then strLinhas = strLinhas & ";"
+    strLinhas = strLinhas & LinhaResumo("TOTAL", totRecOf, totRecPr, totUtiOf, totUtiPr)
+    
+    Me.lstResumo.RowSource = strLinhas
+    
+Sair:
+    On Error Resume Next
+    Set db = Nothing
+    Set ops = Nothing
+    Set recebOf = Nothing
+    Set recebPr = Nothing
+    Set utilOf = Nothing
+    Set utilPr = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.CarregarResumo: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Function LinhaResumo(ByVal strOperacao As String, ByVal lngRecOf As Long, ByVal lngRecPr As Long, _
+                             ByVal lngUtiOf As Long, ByVal lngUtiPr As Long) As String
+    LinhaResumo = ValorLista(strOperacao) & ";" & _
+                  lngRecOf & ";" & _
+                  lngRecPr & ";" & _
+                  lngUtiOf & ";" & _
+                  lngUtiPr & ";" & _
+                  (lngRecOf - lngUtiOf) & ";" & _
+                  (lngRecPr - lngUtiPr)
+End Function
+
+Private Sub InicializarDicionariosResumo(ByVal ops As Collection, ByVal recebOf As Object, ByVal recebPr As Object, _
+                                         ByVal utilOf As Object, ByVal utilPr As Object)
+    Dim op As Variant
+    
+    For Each op In ops
+        recebOf(CStr(op)) = 0
+        recebPr(CStr(op)) = 0
+        utilOf(CStr(op)) = 0
+        utilPr(CStr(op)) = 0
+    Next op
+End Sub
+
+Private Sub SomarRecebidas(ByVal db As DAO.Database, ByVal recebOf As Object, ByVal recebPr As Object)
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strOperacao As String
+    Dim lngSinal As Long
+    
+    On Error GoTo Erro
+    
+    If Not TabelaExiste("TblDistribuicao") Then
+        Debug.Print "Erro frmDistribuicao.SomarRecebidas: tabela TblDistribuicao nao localizada."
+        GoTo Sair
+    End If
+    
+    strSQL = "SELECT Operacao, Operacao_Matematica, Qtde_Oficiais, Qtde_Pracas " & _
+             "FROM TblDistribuicao " & _
+             "WHERE Mes_Referencia >= " & SQLData(DataInicialFiltro()) & " " & _
+             "AND Mes_Referencia < " & SQLData(DataFinalExclusivaFiltro())
+    
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        strOperacao = UCase$(Trim(Nz(rs!Operacao, "")))
+        If recebOf.Exists(strOperacao) Then
+            If Nz(rs!Operacao_Matematica, "") = "Subtrair" Then lngSinal = -1 Else lngSinal = 1
+            recebOf(strOperacao) = CLng(recebOf(strOperacao)) + (CLng(Nz(rs!Qtde_Oficiais, 0)) * lngSinal)
+            recebPr(strOperacao) = CLng(recebPr(strOperacao)) + (CLng(Nz(rs!Qtde_Pracas, 0)) * lngSinal)
+        End If
+        rs.MoveNext
+    Loop
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.SomarRecebidas: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Sub SomarUtilizadas(ByVal db As DAO.Database, ByVal ops As Collection, ByVal utilOf As Object, ByVal utilPr As Object)
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strOperacao As String
+    Dim strCondicaoOperacao As String
+    Dim op As Variant
+    
+    On Error GoTo Erro
+    
+    For Each op In ops
+        strOperacao = CStr(op)
+        strCondicaoOperacao = CondicaoOperacaoSQL(strOperacao, ops)
+        
+        strSQL = "SELECT " & _
+                 "Sum(IIf(Val(Nz(Status_Adm,'0')) >= 1 And Val(Nz(Status_Adm,'0')) <= 3, " & _
+                 "Nz(Atz_Superior,0) + Nz(Atz_Intermed,0) + Nz(Atz_Subalterno,0), " & _
+                 "IIf(Val(Nz(Status_Adm,'0')) > 3, Nz(Esc_Superior,0) + Nz(Esc_Intermed,0) + Nz(Esc_Subalterno,0), 0))) AS TotalOf, " & _
+                 "Sum(IIf(Val(Nz(Status_Adm,'0')) >= 1 And Val(Nz(Status_Adm,'0')) <= 3, " & _
+                 "Nz(Atz_Subten_Sgt,0) + Nz(Atz_Cb_Sd,0), " & _
+                 "IIf(Val(Nz(Status_Adm,'0')) > 3, Nz(Esc_Subten_Sgt,0) + Nz(Esc_Cb_Sd,0), 0))) AS TotalPr " & _
+                 "FROM TblEscGeral " & _
+                 "WHERE Data_Esc >= " & SQLData(DataInicialFiltro()) & " " & _
+                 "AND Data_Esc < " & SQLData(DataFinalExclusivaFiltro()) & " " & _
+                 "AND Val(Nz(Status_Adm,'0')) <> 2 " & _
+                 strCondicaoOperacao
+        
+        Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+        
+        If Not rs.EOF Then
+            utilOf(strOperacao) = CLng(Nz(rs!TotalOf, 0))
+            utilPr(strOperacao) = CLng(Nz(rs!TotalPr, 0))
+        End If
+        
+        rs.Close
+        Set rs = Nothing
+    Next op
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.SomarUtilizadas: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Function OperacoesResumo(ByVal db As DAO.Database) As Collection
+    Dim rs As DAO.Recordset
+    Dim col As New Collection
+    
+    On Error GoTo Erro
+    
+    col.Add "ROTINEIRA"
+    
+    If Not TabelaExiste("TblOperacoes") Then
+        Debug.Print "Erro frmDistribuicao.OperacoesResumo: tabela TblOperacoes nao localizada."
+        Set OperacoesResumo = col
+        GoTo Sair
+    End If
+    
+    Set rs = db.OpenRecordset("SELECT Operacao FROM TblOperacoes WHERE Operacao Is Not Null AND Operacao <> '' ORDER BY Operacao", dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        If UCase$(Trim(Nz(rs!Operacao, ""))) <> "ROTINEIRA" Then
+            col.Add UCase$(Trim(Nz(rs!Operacao, "")))
+        End If
+        rs.MoveNext
+    Loop
+    
+    Set OperacoesResumo = col
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.OperacoesResumo: " & Err.Number & " - " & Err.Description
+    Set OperacoesResumo = col
+    Resume Sair
+End Function
+
+Private Function CondicaoOperacaoSQL(ByVal strOperacao As String, ByVal ops As Collection) As String
+    Dim op As Variant
+    Dim strCond As String
+    Dim strOpAtual As String
+    
+    If strOperacao <> "ROTINEIRA" Then
+        CondicaoOperacaoSQL = "AND (UCase(Nz(Composicao_Nome,'')) = " & SQLTexto(strOperacao) & " " & _
+                              "OR UCase(Nz(Composicao_Nome,'')) Like " & SQLTexto(strOperacao & " - *") & ") "
+        Exit Function
+    End If
+    
+    For Each op In ops
+        strOpAtual = CStr(op)
+        If strOpAtual <> "ROTINEIRA" Then
+            strCond = strCond & "AND UCase(Nz(Composicao_Nome,'')) <> " & SQLTexto(strOpAtual) & " " & _
+                      "AND UCase(Nz(Composicao_Nome,'')) Not Like " & SQLTexto(strOpAtual & " - *") & " "
+        End If
+    Next op
+    
+    CondicaoOperacaoSQL = strCond
+End Function
+
+Private Function MesReferenciaFiltro() As Date
+    Dim dt As Date
+    dt = DataComboMesAno(Nz(Me.cboMesRef, ""))
+    MesReferenciaFiltro = DateSerial(Year(dt), Month(dt), 1)
+End Function
+
+Private Function DataInicialFiltro() As Date
+    DataInicialFiltro = DataComboMesAno(Nz(Me.cboMesInicial, ""))
+End Function
+
+Private Function DataFinalFiltro() As Date
+    Dim dt As Date
+    
+    dt = DataComboMesAno(Nz(Me.cboMesFinal, ""))
+    DataFinalFiltro = DateSerial(Year(dt), Month(dt) + 1, 0)
+End Function
+
+Private Function DataFinalExclusivaFiltro() As Date
+    Dim dt As Date
+    
+    dt = DataComboMesAno(Nz(Me.cboMesFinal, ""))
+    DataFinalExclusivaFiltro = DateSerial(Year(dt), Month(dt) + 1, 1)
+End Function
+
+Private Function PeriodoValido(Optional ByVal blnAvisar As Boolean = False) As Boolean
+    If Trim(Nz(Me.cboMesInicial, "")) = "" Or Trim(Nz(Me.cboMesFinal, "")) = "" Then
+        If blnAvisar Then MsgBox "Selecione o mes inicial e o mes final.", vbExclamation, "Distribuicao de Vagas"
+        PeriodoValido = False
+        Exit Function
+    End If
+    
+    If DataComboMesAno(Nz(Me.cboMesFinal, "")) < DataComboMesAno(Nz(Me.cboMesInicial, "")) Then
+        If blnAvisar Then MsgBox "O mes final nao pode ser menor que o mes inicial.", vbExclamation, "Distribuicao de Vagas"
+        PeriodoValido = False
+        Exit Function
+    End If
+    
+    PeriodoValido = True
+End Function
+
+Private Function TextoMesAno(ByVal dtMes As Date) As String
+    Dim nomes(1 To 12) As String
+    
+    nomes(1) = "jan"
+    nomes(2) = "fev"
+    nomes(3) = "mar"
+    nomes(4) = "abr"
+    nomes(5) = "mai"
+    nomes(6) = "jun"
+    nomes(7) = "jul"
+    nomes(8) = "ago"
+    nomes(9) = "set"
+    nomes(10) = "out"
+    nomes(11) = "nov"
+    nomes(12) = "dez"
+    
+    TextoMesAno = nomes(Month(dtMes)) & "/" & Year(dtMes)
+End Function
+
+Private Function DataComboMesAno(ByVal strValor As String) As Date
+    Dim partes() As String
+    Dim strMes As String
+    Dim intMes As Integer
+    Dim intAno As Integer
+    
+    On Error GoTo Erro
+    
+    strValor = LCase$(Trim(Nz(strValor, "")))
+    partes = Split(strValor, "/")
+    
+    If UBound(partes) <> 1 Then GoTo Erro
+    
+    strMes = partes(0)
+    intAno = CInt(partes(1))
+    
+    Select Case strMes
+        Case "jan": intMes = 1
+        Case "fev": intMes = 2
+        Case "mar": intMes = 3
+        Case "abr": intMes = 4
+        Case "mai": intMes = 5
+        Case "jun": intMes = 6
+        Case "jul": intMes = 7
+        Case "ago": intMes = 8
+        Case "set": intMes = 9
+        Case "out": intMes = 10
+        Case "nov": intMes = 11
+        Case "dez": intMes = 12
+        Case Else: GoTo Erro
+    End Select
+    
+    DataComboMesAno = DateSerial(intAno, intMes, 1)
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.DataComboMesAno: valor invalido [" & strValor & "]"
+    DataComboMesAno = DateSerial(Year(Date), Month(Date), 1)
+End Function
+
+Private Function SQLTexto(ByVal v As Variant) As String
+    SQLTexto = "'" & Replace(Nz(v, ""), "'", "''") & "'"
+End Function
+
+Private Function SQLData(ByVal v As Variant) As String
+    If IsDate(v) Then
+        SQLData = "#" & Format(CDate(v), "yyyy-mm-dd") & "#"
+    Else
+        SQLData = "Null"
+    End If
+End Function
+
+Private Function SQLDataHora(ByVal v As Variant) As String
+    If IsDate(v) Then
+        SQLDataHora = "#" & Format(CDate(v), "yyyy-mm-dd hh:nn:ss") & "#"
+    Else
+        SQLDataHora = "Null"
+    End If
+End Function
+
+Private Function ValorLista(ByVal v As Variant) As String
+    ValorLista = Replace(Nz(v, ""), ";", ",")
+End Function
+
+Private Function ValorLongControle(ByVal strNomeControle As String) As Long
+    Dim strNomeReal As String
+    
+    On Error GoTo Erro
+    
+    strNomeReal = NomeControleReal(strNomeControle)
+    
+    If strNomeReal = "" Then
+        Debug.Print "Erro frmDistribuicao.ValorLongControle - Controle nao encontrado: " & strNomeControle
+        ValorLongControle = 0
+        Exit Function
+    End If
+    
+    ValorLongControle = CLng(Val(Nz(Me.Controls(strNomeReal).Value, 0)))
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.ValorLongControle [" & strNomeControle & "]: " & Err.Number & " - " & Err.Description
+    ValorLongControle = 0
+End Function
+
+Private Function ValorLongControleAlternativo(ByVal strNome1 As String, ByVal strNome2 As String, _
+                                              ByVal strNome3 As String, ByVal strNome4 As String) As Long
+    If ControleExiste(strNome1) Then
+        ValorLongControleAlternativo = ValorLongControle(strNome1)
+        Exit Function
+    End If
+    
+    If ControleExiste(strNome2) Then
+        ValorLongControleAlternativo = ValorLongControle(strNome2)
+        Exit Function
+    End If
+    
+    If ControleExiste(strNome3) Then
+        ValorLongControleAlternativo = ValorLongControle(strNome3)
+        Exit Function
+    End If
+    
+    If ControleExiste(strNome4) Then
+        ValorLongControleAlternativo = ValorLongControle(strNome4)
+        Exit Function
+    End If
+    
+    Debug.Print "Erro frmDistribuicao.ValorLongControleAlternativo - nenhum controle encontrado: " & _
+                strNome1 & ", " & strNome2 & ", " & strNome3 & ", " & strNome4
+    ValorLongControleAlternativo = 0
+End Function
+
+Private Function ValorTextoControle(ByVal strNomeControle As String) As String
+    Dim strNomeReal As String
+    
+    On Error GoTo Erro
+    
+    strNomeReal = NomeControleReal(strNomeControle)
+    
+    If strNomeReal = "" Then
+        Debug.Print "Erro frmDistribuicao.ValorTextoControle - Controle nao encontrado: " & strNomeControle
+        ValorTextoControle = ""
+        Exit Function
+    End If
+    
+    ValorTextoControle = Nz(Me.Controls(strNomeReal).Value, "")
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.ValorTextoControle [" & strNomeControle & "]: " & Err.Number & " - " & Err.Description
+    ValorTextoControle = ""
+End Function
+
+Private Sub LimparControle(ByVal strNomeControle As String)
+    Dim strNomeReal As String
+    
+    On Error GoTo Erro
+    
+    strNomeReal = NomeControleReal(strNomeControle)
+    
+    If strNomeReal = "" Then
+        Debug.Print "Erro frmDistribuicao.LimparControle - Controle nao encontrado: " & strNomeControle
+        Exit Sub
+    End If
+    
+    Me.Controls(strNomeReal).Value = Null
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.LimparControle [" & strNomeControle & "]: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub FocarControle(ByVal strNomeControle As String)
+    Dim strNomeReal As String
+    
+    On Error GoTo Erro
+    
+    strNomeReal = NomeControleReal(strNomeControle)
+    
+    If strNomeReal <> "" Then
+        Me.Controls(strNomeReal).SetFocus
+    End If
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.FocarControle [" & strNomeControle & "]: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub ConfigurarComboValueList(ByVal strNomeControle As String, ByVal strLista As String, ByVal strValorPadrao As String)
+    Dim strNomeReal As String
+    
+    On Error GoTo Erro
+    
+    strNomeReal = NomeControleReal(strNomeControle)
+    
+    If strNomeReal = "" Then
+        Debug.Print "Erro frmDistribuicao.ConfigurarComboValueList - Controle nao encontrado: " & strNomeControle
+        Exit Sub
+    End If
+    
+    Me.Controls(strNomeReal).RowSourceType = "Value List"
+    Me.Controls(strNomeReal).RowSource = strLista
+    Me.Controls(strNomeReal).Value = strValorPadrao
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.ConfigurarComboValueList [" & strNomeControle & "]: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub LimparControleAlternativo(ByVal strNome1 As String, ByVal strNome2 As String, _
+                                      ByVal strNome3 As String, ByVal strNome4 As String)
+    If ControleExiste(strNome1) Then
+        Call LimparControle(strNome1)
+        Exit Sub
+    End If
+    
+    If ControleExiste(strNome2) Then
+        Call LimparControle(strNome2)
+        Exit Sub
+    End If
+    
+    If ControleExiste(strNome3) Then
+        Call LimparControle(strNome3)
+        Exit Sub
+    End If
+    
+    If ControleExiste(strNome4) Then
+        Call LimparControle(strNome4)
+        Exit Sub
+    End If
+    
+    Debug.Print "Erro frmDistribuicao.LimparControleAlternativo - nenhum controle encontrado: " & _
+                strNome1 & ", " & strNome2 & ", " & strNome3 & ", " & strNome4
+End Sub
+
+Private Function ControleExiste(ByVal strNomeControle As String) As Boolean
+    ControleExiste = (NomeControleReal(strNomeControle) <> "")
+End Function
+
+Private Function NomeControleReal(ByVal strNomeControle As String) As String
+    Dim ctl As Control
+    Dim strBusca As String
+    Dim strAtual As String
+    
+    On Error GoTo Erro
+    
+    strBusca = NormalizarNomeControle(strNomeControle)
+    
+    For Each ctl In Me.Controls
+        strAtual = NormalizarNomeControle(ctl.Name)
+        If StrComp(strAtual, strBusca, vbTextCompare) = 0 Then
+            NomeControleReal = ctl.Name
+            Exit Function
+        End If
+    Next ctl
+    
+    NomeControleReal = ""
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.NomeControleReal [" & strNomeControle & "]: " & Err.Number & " - " & Err.Description
+    NomeControleReal = ""
+End Function
+
+Private Function NormalizarNomeControle(ByVal strValor As String) As String
+    strValor = Replace(strValor, vbCr, "")
+    strValor = Replace(strValor, vbLf, "")
+    strValor = Replace(strValor, vbTab, "")
+    NormalizarNomeControle = Trim(strValor)
+End Function
+
+Private Sub ListarControlesFormulario(ByVal strOrigem As String)
+    Dim ctl As Control
+    
+    On Error GoTo Erro
+    
+    For Each ctl In Me.Controls
+    Next ctl
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.ListarControlesFormulario: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub VerificarTabelasDistribuicao()
+    On Error GoTo Erro
+    
+    Call VerificarTabelaVinculada("TblOperacoes")
+    Call VerificarTabelaVinculada("TblDistribuicao")
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.VerificarTabelasDistribuicao: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub VerificarTabelaVinculada(ByVal strNomeTabela As String)
+    Dim db As DAO.Database
+    Dim tdf As DAO.TableDef
+    Dim strConnect As String
+    Dim blnEncontrou As Boolean
+    
+    On Error GoTo Erro
+    
+    Set db = CurrentDb
+    
+    For Each tdf In db.TableDefs
+        If UCase$(Trim(Nz(tdf.Name, ""))) = UCase$(Trim(strNomeTabela)) Then
+            blnEncontrou = True
+            strConnect = Nz(tdf.Connect, "")
+            Exit For
+        End If
+    Next tdf
+    
+    If Not blnEncontrou Then
+        Debug.Print "Erro frmDistribuicao.VerificarTabelaVinculada - Tabela nao encontrada no front-end: " & strNomeTabela
+        MsgBox "A tabela '" & strNomeTabela & "' nao foi encontrada. Vincule esta tabela ao arquivo data\database.accdb.", vbExclamation, "Distribuicao de Vagas"
+        GoTo Sair
+    End If
+    
+    If Trim(strConnect) = "" Then
+        MsgBox "A tabela '" & strNomeTabela & "' esta local no front-end." & vbCrLf & _
+               "Delete a tabela local e vincule a tabela correta do arquivo data\database.accdb.", _
+               vbExclamation, "Distribuicao de Vagas"
+    End If
+    
+Sair:
+    On Error Resume Next
+    Set tdf = Nothing
+    Set db = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.VerificarTabelaVinculada [" & strNomeTabela & "]: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Sub
+
+Private Function TabelaExiste(ByVal strNomeTabela As String) As Boolean
+    Dim tdf As DAO.TableDef
+    
+    On Error GoTo Erro
+    
+    For Each tdf In CurrentDb.TableDefs
+        If StrComp(tdf.Name, strNomeTabela, vbTextCompare) = 0 Then
+            TabelaExiste = True
+            Exit Function
+        End If
+    Next tdf
+    
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmDistribuicao.TabelaExiste: " & Err.Number & " - " & Err.Description
+    TabelaExiste = False
+End Function

@@ -1251,6 +1251,7 @@ window.openConfirmModal = async function(escalaId, reClicado) {
     const confirmacoesEscala = confirmacoesCache[escalaId] || {};
     const dadosGerais = confirmacoesEscala.dadosGerais || {};
     const militaresConfirmacoes = confirmacoesEscala.militares || {};
+    const adminSemLinkSEIChecked = isAdmin && dadosGerais.sem_link_sei === true;
     
     const primeiraEscala = escalasComMesmoId[0];
     
@@ -1328,7 +1329,15 @@ window.openConfirmModal = async function(escalaId, reClicado) {
                 </label>
                 <input type="url" class="form-control" id="seiLink" 
                        value="${dadosGerais.sei_link || ''}" 
-                       placeholder="https://sei.sp.gov.br/..." required>
+                       placeholder="https://sei.sp.gov.br/..." ${adminSemLinkSEIChecked ? 'disabled' : 'required'}>
+                ${isAdmin ? `
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="semLinkSEI" ${adminSemLinkSEIChecked ? 'checked' : ''}>
+                        <label class="form-check-label" for="semLinkSEI">
+                            Nao ha link SEI para esta confirmacao
+                        </label>
+                    </div>
+                ` : ''}
                 <div class="form-text text-warning">
                     <i class="fas fa-exclamation-triangle me-1"></i>
                     O link deve começar com https://sei.sp.gov.br/ ou http://sei.sp.gov.br/
@@ -1361,6 +1370,16 @@ window.openConfirmModal = async function(escalaId, reClicado) {
     
     confirmContent.innerHTML = modalHTML;
     
+    const semLinkSEICheck = document.getElementById('semLinkSEI');
+    const seiLinkInput = document.getElementById('seiLink');
+    if (semLinkSEICheck && seiLinkInput) {
+        semLinkSEICheck.addEventListener('change', () => {
+            seiLinkInput.disabled = semLinkSEICheck.checked;
+            seiLinkInput.required = !semLinkSEICheck.checked;
+            if (semLinkSEICheck.checked) seiLinkInput.value = '';
+        });
+    }
+    
     const modalElement = document.getElementById('confirmModal');
     if (!modalElement) return;
     
@@ -1372,18 +1391,19 @@ async function saveConfirmation() {
     const escalaId = document.getElementById('modalEscalaId')?.value;
     const userRE = document.getElementById('modalUserRE')?.value;
     const seiLink = document.getElementById('seiLink')?.value.trim();
+    const semLinkSEI = userNivel === 1 && document.getElementById('semLinkSEI')?.checked === true;
     
     if (!escalaId || !userRE) {
         showMessage('Erro: Dados da escala não encontrados.', 'error');
         return;
     }
     
-    if (!seiLink) {
+    if (!semLinkSEI && !seiLink) {
         showMessage('O link do documento SEI é obrigatório!', 'warning');
         return;
     }
     
-    if (!isValidSEILink(seiLink)) {
+    if (!semLinkSEI && !isValidSEILink(seiLink)) {
         showMessage('O link do SEI deve começar com https://sei.sp.gov.br/ ou http://sei.sp.gov.br/', 'warning');
         return;
     }
@@ -1418,7 +1438,8 @@ async function saveConfirmation() {
         const timestamp = Date.now();
         
         await set(ref(database, `confirmacoes/${escalaId}/dados_gerais`), {
-            sei_link: seiLink,
+            sei_link: semLinkSEI ? '' : seiLink,
+            sem_link_sei: semLinkSEI,
             observacoes: document.getElementById('observacoes')?.value.trim() || '',
             ultima_atualizacao: timestamp,
             atualizado_por: userRE

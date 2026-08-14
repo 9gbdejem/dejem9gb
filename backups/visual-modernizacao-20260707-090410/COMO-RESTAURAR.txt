@@ -1,0 +1,18 @@
+Backup criado antes da modernizacao visual.
+
+Arquivos copiados:
+- css/style.css
+- dashboard.html
+- escalas.html
+- exclusoes.html
+- js/solicitacoes.js
+
+Para restaurar manualmente, copie os arquivos .bak desta pasta para seus locais originais:
+- style.css.bak -> css/style.css
+- dashboard.html.bak -> dashboard.html
+- escalas.html.bak -> escalas.html
+- exclusoes.html.bak -> exclusoes.html
+- solicitacoes.js.bak -> js/solicitacoes.js
+
+Observacao:
+O arquivo js/solicitacoes.js ja estava modificado antes da modernizacao visual. O backup preserva exatamente o estado encontrado antes das alteracoes visuais.

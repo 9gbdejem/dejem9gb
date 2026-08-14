@@ -1,0 +1,541 @@
+Option Compare Database
+Option Explicit
+
+Private Const QTDE_SOLICITACOES_PATCH_LOTE As Long = 200
+
+Public Function AtualizarEscalasAbertasResumoFirebase(Optional ByVal blnExibirMensagem As Boolean = False) As Boolean
+    Dim strResumo As String
+    Dim strMeta As String
+    Dim lngGrupos As Long
+    Dim lngEscalas As Long
+    Dim lngVagas As Long
+    Dim lngSolicitacoesAtualizadas As Long
+    
+    On Error GoTo Erro
+    
+    If Not MontarJsonEscalasAbertasResumo(strResumo, strMeta, lngGrupos, lngEscalas, lngVagas) Then
+        If blnExibirMensagem Then
+            MsgBox "Não foi possível montar o resumo de escalas abertas.", vbCritical, "Escalas abertas"
+        End If
+        AtualizarEscalasAbertasResumoFirebase = False
+        Exit Function
+    End If
+    
+    If Not EnviarDadosFirebase("Esc_AbertasResumo", strResumo) Then
+        If blnExibirMensagem Then
+            MsgBox "Erro ao atualizar o nó /Esc_AbertasResumo no Firebase.", vbCritical, "Escalas abertas"
+        End If
+        AtualizarEscalasAbertasResumoFirebase = False
+        Exit Function
+    End If
+    
+    If Not EnviarDadosFirebase("Esc_AbertasMeta", strMeta) Then
+        If blnExibirMensagem Then
+            MsgBox "Erro ao atualizar o nó /Esc_AbertasMeta no Firebase.", vbCritical, "Escalas abertas"
+        End If
+        AtualizarEscalasAbertasResumoFirebase = False
+        Exit Function
+    End If
+    
+    If Not AtualizarSolicitacoesAlteradasFirebase(lngSolicitacoesAtualizadas) Then
+        If blnExibirMensagem Then
+            MsgBox "O resumo de escalas abertas foi atualizado, mas houve erro ao atualizar o nó /solicitacoes.", _
+                   vbExclamation, "Escalas abertas"
+        End If
+        AtualizarEscalasAbertasResumoFirebase = False
+        Exit Function
+    End If
+    
+    AtualizarEscalasAbertasResumoFirebase = True
+    
+    If blnExibirMensagem Then
+        MsgBox "Resumo de escalas abertas atualizado!" & vbCrLf & _
+               "Grupos: " & lngGrupos & vbCrLf & _
+               "Escalas: " & lngEscalas & vbCrLf & _
+               "Vagas: " & lngVagas & vbCrLf & _
+               "Solicitações atualizadas: " & lngSolicitacoesAtualizadas, _
+               vbInformation, "Escalas abertas"
+    End If
+    
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro AtualizarEscalasAbertasResumoFirebase: " & Err.Number & " - " & Err.Description
+    AtualizarEscalasAbertasResumoFirebase = False
+End Function
+
+Public Sub AtualizarSolicitacoesFirebase2026AteAgosto()
+    Dim db As DAO.Database
+    Dim strSQL As String
+    Dim lngMarcadas As Long
+    
+    On Error GoTo Erro
+    
+    If MsgBox("Deseja atualizar no Firebase todas as solicitações de janeiro a agosto/2026 existentes na TblEscGeral?" & vbCrLf & vbCrLf & _
+              "Serão enviadas apenas as escalas com ID_Firebase preenchido.", _
+              vbQuestion + vbYesNo, "Atualizar solicitações 2026") = vbNo Then
+        Exit Sub
+    End If
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Marcando solicitações de janeiro a agosto/2026... aguarde."
+    
+    Set db = CurrentDb
+    
+    strSQL = "UPDATE TblEscGeral SET Alteracao = 1 " & _
+             "WHERE Data_Esc >= #2026-01-01# " & _
+             "AND Data_Esc < #2026-09-01# " & _
+             "AND Trim(Nz(ID_Firebase,'')) <> ''"
+    
+    db.Execute strSQL, dbFailOnError
+    lngMarcadas = db.RecordsAffected
+    
+    SysCmd acSysCmdSetStatus, "Enviando solicitações ao Firebase em lotes... aguarde."
+    
+    If AtualizarEscalasAbertasResumoFirebase(False) Then
+        SysCmd acSysCmdClearStatus
+        DoCmd.Hourglass False
+        
+        MsgBox "Atualização concluída." & vbCrLf & _
+               "Solicitação(ões) marcada(s): " & lngMarcadas & vbCrLf & _
+               "Período: janeiro a agosto/2026.", _
+               vbInformation, "Atualizar solicitações 2026"
+    Else
+        SysCmd acSysCmdClearStatus
+        DoCmd.Hourglass False
+        
+        MsgBox "As solicitações foram marcadas, mas ocorreu erro no envio ao Firebase." & vbCrLf & _
+               "Execute novamente este procedimento depois de verificar a conexão.", _
+               vbExclamation, "Atualizar solicitações 2026"
+    End If
+    
+Sair:
+    On Error Resume Next
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Set db = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro AtualizarSolicitacoesFirebase2026AteAgosto: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao atualizar solicitações 2026: " & Err.Number & " - " & Err.Description, vbCritical
+    Resume Sair
+End Sub
+
+Private Function MontarJsonEscalasAbertasResumo(ByRef strResumo As String, ByRef strMeta As String, _
+                                                ByRef lngGrupos As Long, ByRef lngEscalas As Long, _
+                                                ByRef lngVagas As Long) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim dict As Object
+    Dim item As Object
+    Dim strSQL As String
+    Dim strCod As String
+    Dim strPrazoChave As String
+    Dim strKey As String
+    Dim vKey As Variant
+    Dim lngTotalGrupo As Long
+    
+    On Error GoTo Erro
+    
+    Set dict = CreateObject("Scripting.Dictionary")
+    Set db = CurrentDb
+    
+    strSQL = "SELECT Data_Esc, OPM_Nome, Composicao_Nome, Composicao_Cod, Prazo_Inscricao, " & _
+             "Atz_Superior, Atz_Intermed, Atz_Subalterno, Atz_Subten_Sgt, Atz_Cb_Sd " & _
+             "FROM TblEscGeral " & _
+             "WHERE Trim(Nz(Status_Adm,'')) = '3' " & _
+             "AND Composicao_Cod Is Not Null AND Trim(Nz(Composicao_Cod,'')) <> '' " & _
+             "AND Prazo_Inscricao Is Not Null AND Trim(Nz(Prazo_Inscricao,'')) <> '' " & _
+             "AND ID_Escala Is Not Null AND Trim(Nz(ID_Escala,'')) <> '' AND Trim(Nz(ID_Escala,'')) <> '0' " & _
+             "ORDER BY Composicao_Cod, Prazo_Inscricao, Data_Esc"
+    
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        strCod = Trim(Nz(rs!Composicao_Cod, ""))
+        strPrazoChave = PrazoParaChave(Nz(rs!Prazo_Inscricao, ""))
+        
+        If strCod <> "" And strPrazoChave <> "" Then
+            strKey = strCod & "_" & strPrazoChave
+            
+            If Not dict.Exists(strKey) Then
+                Set item = CreateObject("Scripting.Dictionary")
+                item.Add "codigo", strCod
+                item.Add "opm", Trim(Nz(rs!OPM_Nome, ""))
+                item.Add "composicao", Trim(Nz(rs!Composicao_Nome, ""))
+                item.Add "prazo", FormatarPrazoResumo(Nz(rs!Prazo_Inscricao, ""))
+                item.Add "qtde_escalas", CLng(0)
+                item.Add "superior", CLng(0)
+                item.Add "intermed", CLng(0)
+                item.Add "subalterno", CLng(0)
+                item.Add "subten_sgt", CLng(0)
+                item.Add "cb_sd", CLng(0)
+                item.Add "datas", CreateObject("Scripting.Dictionary")
+                dict.Add strKey, item
+            End If
+            
+            Set item = dict(strKey)
+            item("qtde_escalas") = CLng(item("qtde_escalas")) + 1
+            item("superior") = CLng(item("superior")) + CLng(Nz(rs!Atz_Superior, 0))
+            item("intermed") = CLng(item("intermed")) + CLng(Nz(rs!Atz_Intermed, 0))
+            item("subalterno") = CLng(item("subalterno")) + CLng(Nz(rs!Atz_Subalterno, 0))
+            item("subten_sgt") = CLng(item("subten_sgt")) + CLng(Nz(rs!Atz_Subten_Sgt, 0))
+            item("cb_sd") = CLng(item("cb_sd")) + CLng(Nz(rs!Atz_Cb_Sd, 0))
+            
+            If IsDate(Nz(rs!Data_Esc, Null)) Then
+                If Not item("datas").Exists(Format(CDate(rs!Data_Esc), "yyyy-mm-dd")) Then
+                    item("datas").Add Format(CDate(rs!Data_Esc), "yyyy-mm-dd"), CDate(rs!Data_Esc)
+                End If
+            End If
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    strResumo = "{"
+    For Each vKey In dict.Keys
+        Set item = dict(vKey)
+        lngTotalGrupo = CLng(item("superior")) + CLng(item("intermed")) + CLng(item("subalterno")) + _
+                        CLng(item("subten_sgt")) + CLng(item("cb_sd"))
+        
+        If Len(strResumo) > 1 Then strResumo = strResumo & ","
+        strResumo = strResumo & """" & JsonEscapeResumo(CStr(vKey)) & """:{" & _
+                    """codigo"":""" & JsonEscapeResumo(CStr(item("codigo"))) & """," & _
+                    """opm"":""" & JsonEscapeResumo(CStr(item("opm"))) & """," & _
+                    """composicao"":""" & JsonEscapeResumo(CStr(item("composicao"))) & """," & _
+                    """prazo"":""" & JsonEscapeResumo(CStr(item("prazo"))) & """," & _
+                    """dias"":""" & JsonEscapeResumo(DiasResumo(item("datas"))) & """," & _
+                    """qtde_escalas"":" & CLng(item("qtde_escalas")) & "," & _
+                    """superior"":" & CLng(item("superior")) & "," & _
+                    """intermed"":" & CLng(item("intermed")) & "," & _
+                    """subalterno"":" & CLng(item("subalterno")) & "," & _
+                    """subten_sgt"":" & CLng(item("subten_sgt")) & "," & _
+                    """cb_sd"":" & CLng(item("cb_sd")) & "," & _
+                    """total_oficiais"":" & (CLng(item("superior")) + CLng(item("intermed")) + CLng(item("subalterno"))) & "," & _
+                    """total_pracas"":" & (CLng(item("subten_sgt")) + CLng(item("cb_sd"))) & "," & _
+                    """total_geral"":" & lngTotalGrupo & "}"
+        
+        lngGrupos = lngGrupos + 1
+        lngEscalas = lngEscalas + CLng(item("qtde_escalas"))
+        lngVagas = lngVagas + lngTotalGrupo
+    Next
+    strResumo = strResumo & "}"
+    
+    strMeta = "{" & _
+              """versao"":""" & Format(Now, "yyyymmddhhnnss") & """," & _
+              """atualizado_em"":""" & JsonEscapeResumo(Format(Now, "dd/mm/yyyy hh:nn:ss")) & """," & _
+              """total_grupos"":" & lngGrupos & "," & _
+              """total_escalas"":" & lngEscalas & "," & _
+              """total_vagas"":" & lngVagas & _
+              "}"
+    
+    MontarJsonEscalasAbertasResumo = True
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Set dict = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro MontarJsonEscalasAbertasResumo: " & Err.Number & " - " & Err.Description
+    MontarJsonEscalasAbertasResumo = False
+    Resume Sair
+End Function
+
+Private Function PrazoParaChave(ByVal vPrazo As Variant) As String
+    On Error GoTo Erro
+    
+    If IsDate(vPrazo) Then
+        PrazoParaChave = Format(CDate(vPrazo), "yyyymmddhhnn")
+    Else
+        PrazoParaChave = ""
+    End If
+    
+    Exit Function
+    
+Erro:
+    PrazoParaChave = ""
+End Function
+
+Private Function FormatarPrazoResumo(ByVal vPrazo As Variant) As String
+    If IsDate(vPrazo) Then
+        FormatarPrazoResumo = Format(CDate(vPrazo), "dd/mm/yyyy hh:nn")
+    Else
+        FormatarPrazoResumo = Trim(Nz(vPrazo, ""))
+    End If
+End Function
+
+Private Function DiasResumo(ByVal dictDatas As Object) As String
+    Dim arr As Object
+    Dim meses As Object
+    Dim diasMes As Object
+    Dim key As Variant
+    Dim dt As Date
+    Dim strMes As String
+    Dim strRet As String
+    
+    On Error GoTo Erro
+    
+    Set arr = CreateObject("System.Collections.ArrayList")
+    Set meses = CreateObject("Scripting.Dictionary")
+    
+    For Each key In dictDatas.Keys
+        arr.Add CStr(key)
+    Next
+    arr.Sort
+    
+    For Each key In arr
+        dt = CDate(dictDatas(CStr(key)))
+        strMes = Format(dt, "yyyymm")
+        
+        If Not meses.Exists(strMes) Then
+            meses.Add strMes, CreateObject("System.Collections.ArrayList")
+        End If
+        
+        meses(strMes).Add Format(dt, "dd")
+    Next
+    
+    For Each key In meses.Keys
+        Set diasMes = meses(key)
+        If Len(strRet) > 0 Then strRet = strRet & "; "
+        strRet = strRet & JuntarComE(diasMes) & "/" & Right(CStr(key), 2)
+    Next
+    
+    DiasResumo = strRet
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro DiasResumo: " & Err.Number & " - " & Err.Description
+    DiasResumo = ""
+End Function
+
+Private Function JuntarComE(ByVal arr As Object) As String
+    Dim i As Long
+    Dim strRet As String
+    
+    If arr Is Nothing Then Exit Function
+    If arr.Count = 0 Then Exit Function
+    
+    For i = 0 To arr.Count - 1
+        If i = 0 Then
+            strRet = arr.Item(i)
+        ElseIf i = arr.Count - 1 Then
+            strRet = strRet & " e " & arr.Item(i)
+        Else
+            strRet = strRet & ", " & arr.Item(i)
+        End If
+    Next
+    
+    JuntarComE = strRet
+End Function
+
+Private Function AtualizarSolicitacoesAlteradasFirebase(ByRef lngAtualizadas As Long) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim colIDFirebase As Collection
+    Dim strPatch As String
+    Dim strIDFirebase As String
+    Dim strSQL As String
+    Dim lngNoLote As Long
+    
+    On Error GoTo Erro
+    
+    lngAtualizadas = 0
+    Set colIDFirebase = New Collection
+    Set db = CurrentDb
+    
+    strSQL = "SELECT ID_Firebase, ID_Escala, Prazo_Inscricao, Status_Adm, " & _
+             "Atz_Superior, Atz_Intermed, Atz_Subalterno, Atz_Subten_Sgt, Atz_Cb_Sd, " & _
+             "Esc_Superior, Esc_Intermed, Esc_Subalterno, Esc_Subten_Sgt, Esc_Cb_Sd, " & _
+             "Pag_Confirm, RE_Pagamento " & _
+             "FROM TblEscGeral " & _
+             "WHERE Trim(Nz(ID_Firebase,'')) <> '' " & _
+             "AND Val(Nz(Alteracao,0)) = 1"
+    
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    strPatch = "{"
+    
+    Do While Not rs.EOF
+        strIDFirebase = Trim(Nz(rs!ID_Firebase, ""))
+        
+        If strIDFirebase <> "" Then
+            If Len(strPatch) > 1 Then strPatch = strPatch & ","
+            strPatch = strPatch & PatchSolicitacaoEscala(rs, strIDFirebase)
+            colIDFirebase.Add strIDFirebase
+            lngAtualizadas = lngAtualizadas + 1
+            lngNoLote = lngNoLote + 1
+            
+            If lngNoLote >= QTDE_SOLICITACOES_PATCH_LOTE Then
+                strPatch = strPatch & "}"
+                If Not EnviarPatchSolicitacoesAlteradas(db, strPatch, colIDFirebase) Then
+                    AtualizarSolicitacoesAlteradasFirebase = False
+                    GoTo Sair
+                End If
+                
+                Set colIDFirebase = New Collection
+                strPatch = "{"
+                lngNoLote = 0
+            End If
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    strPatch = strPatch & "}"
+    
+    If lngAtualizadas = 0 Then
+        AtualizarSolicitacoesAlteradasFirebase = True
+        GoTo Sair
+    End If
+    
+    If lngNoLote > 0 Then
+        If Not EnviarPatchSolicitacoesAlteradas(db, strPatch, colIDFirebase) Then
+            AtualizarSolicitacoesAlteradasFirebase = False
+            GoTo Sair
+        End If
+    End If
+    
+    AtualizarSolicitacoesAlteradasFirebase = True
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Set colIDFirebase = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro AtualizarSolicitacoesAlteradasFirebase: " & Err.Number & " - " & Err.Description
+    AtualizarSolicitacoesAlteradasFirebase = False
+    Resume Sair
+End Function
+
+Private Function EnviarPatchSolicitacoesAlteradas(ByRef db As DAO.Database, ByVal strPatch As String, _
+                                                  ByVal colIDFirebase As Collection) As Boolean
+    Dim vID As Variant
+    
+    On Error GoTo Erro
+    
+    If colIDFirebase Is Nothing Then
+        EnviarPatchSolicitacoesAlteradas = True
+        Exit Function
+    End If
+    
+    If colIDFirebase.Count = 0 Then
+        EnviarPatchSolicitacoesAlteradas = True
+        Exit Function
+    End If
+    
+    If Not PatchDadosFirebase(strPatch) Then
+        Debug.Print "Erro EnviarPatchSolicitacoesAlteradas PATCH: " & strPatch
+        EnviarPatchSolicitacoesAlteradas = False
+        Exit Function
+    End If
+    
+    For Each vID In colIDFirebase
+        db.Execute "UPDATE TblEscGeral SET Alteracao = Null WHERE ID_Firebase = " & SQLTextoResumo(CStr(vID)), dbFailOnError
+    Next
+    
+    EnviarPatchSolicitacoesAlteradas = True
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro EnviarPatchSolicitacoesAlteradas: " & Err.Number & " - " & Err.Description
+    EnviarPatchSolicitacoesAlteradas = False
+End Function
+
+Private Function PatchSolicitacaoEscala(ByRef rs As DAO.Recordset, ByVal strIDFirebase As String) As String
+    Dim strBase As String
+    
+    strBase = CaminhoSolicitacaoResumo(strIDFirebase)
+    
+    PatchSolicitacaoEscala = _
+        JsonPatchTexto(strBase & "ID_Escala", Nz(rs!ID_Escala, "")) & "," & _
+        JsonPatchTexto(strBase & "Prazo_Inscricao", FormatarPrazoResumo(Nz(rs!Prazo_Inscricao, ""))) & "," & _
+        JsonPatchNumero(strBase & "Status_Inicial", StatusInicialPorStatusAdm(rs!Status_Adm)) & "," & _
+        JsonPatchNumero(strBase & "Status_Adm", rs!Status_Adm) & "," & _
+        JsonPatchNumero(strBase & "Atz_Superior", Nz(rs!Atz_Superior, 0)) & "," & _
+        JsonPatchNumero(strBase & "Atz_Intermed", Nz(rs!Atz_Intermed, 0)) & "," & _
+        JsonPatchNumero(strBase & "Atz_Subalterno", Nz(rs!Atz_Subalterno, 0)) & "," & _
+        JsonPatchNumero(strBase & "Atz_Subten_Sgt", Nz(rs!Atz_Subten_Sgt, 0)) & "," & _
+        JsonPatchNumero(strBase & "Atz_Cb_Sd", Nz(rs!Atz_Cb_Sd, 0)) & "," & _
+        JsonPatchNumero(strBase & "Esc_Superior", Nz(rs!Esc_Superior, 0)) & "," & _
+        JsonPatchNumero(strBase & "Esc_Intermed", Nz(rs!Esc_Intermed, 0)) & "," & _
+        JsonPatchNumero(strBase & "Esc_Subalterno", Nz(rs!Esc_Subalterno, 0)) & "," & _
+        JsonPatchNumero(strBase & "Esc_Subten_Sgt", Nz(rs!Esc_Subten_Sgt, 0)) & "," & _
+        JsonPatchNumero(strBase & "Esc_Cb_Sd", Nz(rs!Esc_Cb_Sd, 0)) & "," & _
+        JsonPatchTexto(strBase & "Pag_Confirm", FormatarDataResumo(Nz(rs!Pag_Confirm, ""))) & "," & _
+        JsonPatchTexto(strBase & "RE_Pagamento", Nz(rs!RE_Pagamento, "")) & "," & _
+        JsonPatchTexto(strBase & "atualizado_em", Format(Now, "dd/mm/yyyy hh:nn:ss"))
+End Function
+
+Private Function StatusInicialPorStatusAdm(ByVal vStatusAdm As Variant) As Variant
+    Dim strStatus As String
+    
+    strStatus = Trim(CStr(Nz(vStatusAdm, "")))
+    
+    Select Case strStatus
+        Case ""
+            StatusInicialPorStatusAdm = Null
+        Case "2"
+            StatusInicialPorStatusAdm = 3
+        Case Else
+            StatusInicialPorStatusAdm = 1
+    End Select
+End Function
+
+Private Function CaminhoSolicitacaoResumo(ByVal strIDFirebase As String) As String
+    strIDFirebase = Trim(Nz(strIDFirebase, ""))
+    
+    Do While Left(strIDFirebase, 1) = "/"
+        strIDFirebase = Mid(strIDFirebase, 2)
+    Loop
+    
+    If LCase(Left(strIDFirebase, 13)) = "solicitacoes/" Then
+        CaminhoSolicitacaoResumo = strIDFirebase & "/"
+    Else
+        CaminhoSolicitacaoResumo = "solicitacoes/" & strIDFirebase & "/"
+    End If
+End Function
+
+Private Function JsonPatchTexto(ByVal strCaminho As String, ByVal vValor As Variant) As String
+    If IsNull(vValor) Or Trim(Nz(vValor, "")) = "" Then
+        JsonPatchTexto = """" & JsonEscapeResumo(strCaminho) & """:null"
+    Else
+        JsonPatchTexto = """" & JsonEscapeResumo(strCaminho) & """:""" & JsonEscapeResumo(CStr(vValor)) & """"
+    End If
+End Function
+
+Private Function JsonPatchNumero(ByVal strCaminho As String, ByVal vValor As Variant) As String
+    If IsNull(vValor) Or Trim(CStr(Nz(vValor, ""))) = "" Then
+        JsonPatchNumero = """" & JsonEscapeResumo(strCaminho) & """:null"
+    Else
+        JsonPatchNumero = """" & JsonEscapeResumo(strCaminho) & """:" & CLng(Val(Nz(vValor, 0)))
+    End If
+End Function
+
+Private Function FormatarDataResumo(ByVal vData As Variant) As String
+    If IsDate(vData) Then
+        FormatarDataResumo = Format(CDate(vData), "dd/mm/yyyy")
+    Else
+        FormatarDataResumo = Trim(Nz(vData, ""))
+    End If
+End Function
+
+Private Function SQLTextoResumo(ByVal v As Variant) As String
+    SQLTextoResumo = "'" & Replace(Nz(v, ""), "'", "''") & "'"
+End Function
+
+Private Function JsonEscapeResumo(ByVal v As String) As String
+    JsonEscapeResumo = Replace(v, "\", "\\")
+    JsonEscapeResumo = Replace(JsonEscapeResumo, Chr(34), "\" & Chr(34))
+    JsonEscapeResumo = Replace(JsonEscapeResumo, vbCrLf, "\n")
+    JsonEscapeResumo = Replace(JsonEscapeResumo, vbCr, "\n")
+    JsonEscapeResumo = Replace(JsonEscapeResumo, vbLf, "\n")
+End Function

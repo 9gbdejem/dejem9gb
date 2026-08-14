@@ -1,0 +1,181 @@
+{
+  "2026": {
+    "07": {
+      "704091201": {
+        "10499": {
+          "111530": {
+            "ID_Firebase": "2026/07/704091201/10499/111530",
+            "atualizado_em": "2026-07-06T19:40:17.864Z",
+            "composicao_cod": "10499",
+            "composicao_nome": "GUARNIÇÃO DE RESGATE",
+            "criado_em": "2026-07-06T19:40:17.864Z",
+            "data": "2026-07-11",
+            "horario_final": "23:30",
+            "horario_inicial": "15:30",
+            "necessidade": "viatura_extra",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "141530": {
+            "ID_Firebase": "2026/07/704091201/10499/141530",
+            "atualizado_em": "2026-07-06T19:40:18.479Z",
+            "composicao_cod": "10499",
+            "composicao_nome": "GUARNIÇÃO DE RESGATE",
+            "criado_em": "2026-07-06T19:40:18.479Z",
+            "data": "2026-07-14",
+            "horario_final": "23:30",
+            "horario_inicial": "15:30",
+            "necessidade": "viatura_extra",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "171530": {
+            "ID_Firebase": "2026/07/704091201/10499/171530",
+            "atualizado_em": "2026-07-06T19:40:19.103Z",
+            "composicao_cod": "10499",
+            "composicao_nome": "GUARNIÇÃO DE RESGATE",
+            "criado_em": "2026-07-06T19:40:19.103Z",
+            "data": "2026-07-17",
+            "horario_final": "23:30",
+            "horario_inicial": "15:30",
+            "necessidade": "viatura_extra",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "201530": {
+            "ID_Firebase": "2026/07/704091201/10499/201530",
+            "atualizado_em": "2026-07-06T19:40:19.752Z",
+            "composicao_cod": "10499",
+            "composicao_nome": "GUARNIÇÃO DE RESGATE",
+            "criado_em": "2026-07-06T19:40:19.752Z",
+            "data": "2026-07-20",
+            "horario_final": "23:30",
+            "horario_inicial": "15:30",
+            "necessidade": "viatura_extra",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "231530": {
+            "ID_Firebase": "2026/07/704091201/10499/231530",
+            "atualizado_em": "2026-07-06T19:40:20.393Z",
+            "composicao_cod": "10499",
+            "composicao_nome": "GUARNIÇÃO DE RESGATE",
+            "criado_em": "2026-07-06T19:40:20.393Z",
+            "data": "2026-07-23",
+            "horario_final": "23:30",
+            "horario_inicial": "15:30",
+            "necessidade": "viatura_extra",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "261530": {
+            "ID_Firebase": "2026/07/704091201/10499/261530",
+            "atualizado_em": "2026-07-06T19:40:21.041Z",
+            "composicao_cod": "10499",
+            "composicao_nome": "GUARNIÇÃO DE RESGATE",
+            "criado_em": "2026-07-06T19:40:21.041Z",
+            "data": "2026-07-26",
+            "horario_final": "23:30",
+            "horario_inicial": "15:30",
+            "necessidade": "viatura_extra",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "291530": {
+            "ID_Firebase": "2026/07/704091201/10499/291530",
+            "atualizado_em": "2026-07-06T19:40:21.687Z",
+            "composicao_cod": "10499",
+            "composicao_nome": "GUARNIÇÃO DE RESGATE",
+            "criado_em": "2026-07-06T19:40:21.687Z",
+            "data": "2026-07-29",
+            "horario_final": "23:30",
+            "horario_inicial": "15:30",
+            "necessidade": "viatura_extra",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          }
+        },
+        "12244": {
+          "100730": {
+            "ID_Firebase": "2026/07/704091201/12244/100730",
+            "atualizado_em": "2026-07-06T19:25:29.176Z",
+            "composicao_cod": "12244",
+            "composicao_nome": "GUARNIÇÃO DE INCÊNDIO",
+            "criado_em": "2026-07-06T19:25:29.176Z",
+            "data": "2026-07-10",
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "necessidade": "minimo_operacional",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "130730": {
+            "ID_Firebase": "2026/07/704091201/12244/130730",
+            "atualizado_em": "2026-07-06T19:25:29.799Z",
+            "composicao_cod": "12244",
+            "composicao_nome": "GUARNIÇÃO DE INCÊNDIO",
+            "criado_em": "2026-07-06T19:25:29.799Z",
+            "data": "2026-07-13",
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "necessidade": "minimo_operacional",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "160730": {
+            "ID_Firebase": "2026/07/704091201/12244/160730",
+            "atualizado_em": "2026-07-06T19:25:30.420Z",
+            "composicao_cod": "12244",
+            "composicao_nome": "GUARNIÇÃO DE INCÊNDIO",
+            "criado_em": "2026-07-06T19:25:30.420Z",
+            "data": "2026-07-16",
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "necessidade": "minimo_operacional",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "190730": {
+            "ID_Firebase": "2026/07/704091201/12244/190730",
+            "atualizado_em": "2026-07-06T19:25:31.042Z",
+            "composicao_cod": "12244",
+            "composicao_nome": "GUARNIÇÃO DE INCÊNDIO",
+            "criado_em": "2026-07-06T19:25:31.042Z",
+            "data": "2026-07-19",
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "necessidade": "minimo_operacional",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "220730": {
+            "ID_Firebase": "2026/07/704091201/12244/220730",
+            "atualizado_em": "2026-07-06T19:25:31.659Z",
+            "composicao_cod": "12244",
+            "composicao_nome": "GUARNIÇÃO DE INCÊNDIO",
+            "criado_em": "2026-07-06T19:25:31.659Z",
+            "data": "2026-07-22",
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "necessidade": "minimo_operacional",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          },
+          "250730": {
+            "ID_Firebase": "2026/07/704091201/12244/250730",
+            "atualizado_em": "2026-07-06T19:25:32.282Z",
+            "composicao_cod": "12244",
+            "composicao_nome": "GUARNIÇÃO DE INCÊNDIO",
+            "criado_em": "2026-07-06T19:25:32.282Z",
+            "data": "2026-07-25",
+            "horario_final": "15:30",
+            "horario_inicial": "07:30",
+            "necessidade": "minimo_operacional",
+            "opm_codigo": "704091201",
+            "opm_nome": "RIB PRETO - IRAJÁ"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,367 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Form_Load()
+    On Error GoTo Erro_Load
+    
+    Me.ScrollBars = 2
+    
+    ' Prepara os dados auxiliares
+    Call AtualizarVagasAutorizadas
+    Call PreencherPrioridades
+    Call VincularCampos
+    
+    ' Usa a consulta qryEscalaGeral como RecordSource
+    Me.RecordSource = "SELECT * FROM qryEscalaGeral ORDER BY " & _
+                      "Data_Esc ASC, Val(Nz(Prioridade, 999999)) ASC, Horario_Inicial ASC"
+    
+    ' Desabilita edição direta nos campos
+    Call BloquearCampos(True)
+    
+    ' Primeiro carregamento - com tratamento de erro
+    On Error Resume Next
+    Call AplicarFiltro("", "")
+    On Error GoTo Erro_Load
+    
+    Exit Sub
+    
+Erro_Load:
+    Debug.Print "Erro Form_Load sfrmLinhaEscala: " & Err.Number & " - " & Err.Description
+    Resume Next
+End Sub
+
+Private Sub Form_Current()
+    ' Atualiza o ID da escala selecionada no formulário pai
+    On Error Resume Next
+    
+    If Not IsNull(Me.ID_Escala) Then
+        If Not Me.Parent Is Nothing Then
+            If TipoNomeExiste(Me.Parent, "txtEscalaSelecionada") Then
+                Me.Parent.Controls("txtEscalaSelecionada") = Me.ID_Escala
+            End If
+        ElseIf CurrentProject.AllForms("frmEscalas").IsLoaded Then
+            If TipoNomeExiste(Forms!frmEscalas, "txtEscalaSelecionada") Then
+                Forms!frmEscalas.Controls("txtEscalaSelecionada") = Me.ID_Escala
+            End If
+        End If
+    End If
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub BloquearCampos(blnBloquear As Boolean)
+    Dim ctl As Control
+    For Each ctl In Me.Controls
+        If TypeOf ctl Is TextBox Or TypeOf ctl Is ComboBox Then
+            ctl.Locked = blnBloquear
+        End If
+    Next ctl
+End Sub
+
+Private Function FormPaiExiste() As Boolean
+    On Error Resume Next
+    ' Tenta acessar o formulário pai
+    If Not Me.Parent Is Nothing Then
+        FormPaiExiste = True
+    Else
+        ' Se não tem pai, verifica se existe como formulário aberto
+        FormPaiExiste = Not (Forms!frmEscalas Is Nothing)
+    End If
+    On Error GoTo 0
+End Function
+
+Public Sub AplicarFiltro(strFiltro As String, strOrderBy As String)
+    On Error GoTo Erro
+    
+    Dim strSQLFinal As String
+    Dim strOrder As String
+    
+    ' Verifica se o formulário está carregado
+    If Me.CurrentView = 0 Then
+        ' Formulário em modo design - não faz nada
+        Exit Sub
+    End If
+    
+    ' Define a ordenação
+    If strOrderBy <> "" Then
+        strOrder = strOrderBy
+    Else
+        strOrder = "Data_Esc ASC, Val(Nz(Prioridade, 999999)) ASC, Horario_Inicial ASC"
+    End If
+    
+    ' Usa a consulta qryEscalaGeral como base
+    strSQLFinal = "SELECT * FROM qryEscalaGeral"
+    
+    If strFiltro <> "" Then
+        strSQLFinal = strSQLFinal & " WHERE " & strFiltro
+    End If
+    
+    strSQLFinal = strSQLFinal & " ORDER BY " & strOrder
+    
+    Me.OrderByOn = False
+    Me.OrderBy = ""
+    
+    ' Aplica o RecordSource
+    Me.RecordSource = strSQLFinal
+    
+    ' Refresh para atualizar a exibição
+    Me.Requery
+    Me.OrderByOn = False
+    
+    ' Atualiza status
+    Dim lngTotal As Long
+    If Not Me.RecordsetClone Is Nothing Then
+        lngTotal = Me.RecordsetClone.RecordCount
+    Else
+        lngTotal = 0
+    End If
+    
+    ' Atualiza o label - tentando todas as possibilidades
+    On Error Resume Next
+    
+    ' 1. Tenta via Parent (se estiver dentro de frmApp)
+    If Not Me.Parent Is Nothing Then
+        If TipoNomeExiste(Me.Parent, "lblStatus") Then
+            Me.Parent.lblStatus.Caption = "Encontradas " & lngTotal & " escala(s)"
+        End If
+    End If
+    
+    ' 2. Tenta via Forms (se estiver aberto diretamente)
+    If Not Forms!frmEscalas Is Nothing Then
+        If TipoNomeExiste(Forms!frmEscalas, "lblStatus") Then
+            Forms!frmEscalas.lblStatus.Caption = "Encontradas " & lngTotal & " escala(s)"
+        End If
+    End If
+    
+    On Error GoTo 0
+    
+    Exit Sub
+    
+Erro:
+    ' Silencia o erro e apenas registra no debug
+    Debug.Print "Erro AplicarFiltro: " & Err.Number & " - " & Err.Description
+    ' Não exibe mensagem para o usuário para não interromper o fluxo
+End Sub
+
+' Função auxiliar para verificar se um controle existe no formulário
+Private Function TipoNomeExiste(frm As Form, strNomeControle As String) As Boolean
+    On Error Resume Next
+    Dim ctl As Control
+    Set ctl = frm.Controls(strNomeControle)
+    TipoNomeExiste = (Err.Number = 0)
+    On Error GoTo 0
+End Function
+
+' ========================================
+' BOTÕES DE AÇÃO
+' ========================================
+
+Private Sub btnEditar_Click()
+    Dim strID As String
+    strID = Nz(Me.ID_Escala, "")
+    
+    If strID = "" Then
+        MsgBox "Nenhuma escala selecionada.", vbExclamation
+        Exit Sub
+    End If
+    
+    On Error Resume Next
+    DoCmd.OpenForm "frmEditarEscala", , , "ID_Escala = '" & strID & "'"
+    If Err.Number = 2102 Then
+        MsgBox "Formulário 'frmEditarEscala' não encontrado.", vbCritical
+    End If
+    On Error GoTo 0
+End Sub
+
+Private Sub btnBombeiros_Click()
+    Dim strID As String
+    strID = Nz(Me.ID_Escala, "")
+    
+    If strID = "" Then
+        MsgBox "Nenhuma escala selecionada.", vbExclamation
+        Exit Sub
+    End If
+    
+    DoCmd.OpenForm "frmEscalados", , , , , acDialog, strID
+End Sub
+
+Private Sub btnObserv_Click()
+    Dim strID As String
+    Dim frmPai As Form
+    Dim lngTotal As Long
+    
+    strID = Nz(Me.ID_Cadastro, "")
+    
+    If strID = "" Then
+        MsgBox "Nenhum cadastro selecionado.", vbExclamation
+        Exit Sub
+    End If
+    
+    DoCmd.OpenForm "frmEscalasObserv", , , , , acDialog, strID
+    
+    Me.Requery
+    lngTotal = Me.RecordsetClone.RecordCount
+    
+    On Error Resume Next
+    
+    If Not Me.Parent Is Nothing Then
+        If TipoNomeExiste(Me.Parent, "lblStatus") Then
+            Me.Parent.lblStatus.Caption = "Encontradas " & lngTotal & " escala(s)"
+        End If
+    End If
+    
+    If Not Forms!frmEscalas Is Nothing Then
+        If TipoNomeExiste(Forms!frmEscalas, "lblStatus") Then
+            Forms!frmEscalas.lblStatus.Caption = "Encontradas " & lngTotal & " escala(s)"
+        End If
+    End If
+    
+    On Error GoTo 0
+End Sub
+
+' ========================================
+' FUNÇÕES AUXILIARES
+' ========================================
+
+Private Sub PreencherPrioridades()
+    Dim db As DAO.Database
+    Dim strSQL As String
+    
+    On Error GoTo Sair
+    
+    Set db = CurrentDb
+    
+    ' Atualiza Prioridade em massa usando a correspondencia TblEscGeral.Composicao_Cod -> TblComposicao.CODIGO.
+    strSQL = "UPDATE TblEscGeral " & _
+             "INNER JOIN TblComposicao ON TblEscGeral.Composicao_Cod = TblComposicao.CODIGO " & _
+             "SET TblEscGeral.Prioridade = TblComposicao.ID " & _
+             "WHERE Nz(TblEscGeral.Prioridade, -1) <> Nz(TblComposicao.ID, -1)"
+    
+    db.Execute strSQL, dbFailOnError
+    
+    ' Mantem o comportamento anterior: composicoes sem correspondencia ficam no final da ordenacao.
+    strSQL = "UPDATE TblEscGeral " & _
+             "LEFT JOIN TblComposicao ON TblEscGeral.Composicao_Cod = TblComposicao.CODIGO " & _
+             "SET TblEscGeral.Prioridade = 999999 " & _
+             "WHERE TblComposicao.CODIGO Is Null " & _
+             "AND Nz(TblEscGeral.Prioridade, -1) <> 999999"
+    
+    db.Execute strSQL, dbFailOnError
+    
+Sair:
+    Set db = Nothing
+End Sub
+
+Private Sub AtualizarVagasAutorizadas()
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Sair
+    
+    Set db = CurrentDb
+    
+    strSQL = "SELECT ID_Escala, " & _
+             "Atz_Superior, Atz_Intermed, Atz_Subalterno, Atz_Subten_Sgt, Atz_Cb_Sd, " & _
+             "Slc_Superior, Slc_Intermed, Slc_Subalterno, Slc_Subten_Sgt, Slc_Cb_Sd " & _
+             "FROM TblEscGeral " & _
+             "WHERE (Atz_Superior IS NULL OR Atz_Intermed IS NULL OR Atz_Subalterno IS NULL OR " & _
+             "Atz_Subten_Sgt IS NULL OR Atz_Cb_Sd IS NULL)"
+    
+    Set rs = db.OpenRecordset(strSQL, dbOpenDynaset)
+    
+    If rs.EOF Then GoTo Sair
+    
+    Do While Not rs.EOF
+        rs.Edit
+        
+        If IsNull(rs!Atz_Superior) Then
+            If IsNull(rs!Slc_Superior) Then rs!Atz_Superior = 0 Else rs!Atz_Superior = rs!Slc_Superior
+        End If
+        If IsNull(rs!Atz_Intermed) Then
+            If IsNull(rs!Slc_Intermed) Then rs!Atz_Intermed = 0 Else rs!Atz_Intermed = rs!Slc_Intermed
+        End If
+        If IsNull(rs!Atz_Subalterno) Then
+            If IsNull(rs!Slc_Subalterno) Then rs!Atz_Subalterno = 0 Else rs!Atz_Subalterno = rs!Slc_Subalterno
+        End If
+        If IsNull(rs!Atz_Subten_Sgt) Then
+            If IsNull(rs!Slc_Subten_Sgt) Then rs!Atz_Subten_Sgt = 0 Else rs!Atz_Subten_Sgt = rs!Slc_Subten_Sgt
+        End If
+        If IsNull(rs!Atz_Cb_Sd) Then
+            If IsNull(rs!Slc_Cb_Sd) Then rs!Atz_Cb_Sd = 0 Else rs!Atz_Cb_Sd = rs!Slc_Cb_Sd
+        End If
+        
+        rs.Update
+        rs.MoveNext
+    Loop
+    
+Sair:
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+End Sub
+
+Private Sub VincularCampos()
+    Dim ctl As Control
+    Dim strNomeCampo As String
+    
+    For Each ctl In Me.Controls
+        If TypeOf ctl Is TextBox Or TypeOf ctl Is ComboBox Then
+            strNomeCampo = ctl.Name
+            
+            ' Verifica se o campo existe na consulta qryEscalaGeral
+            If CampoExisteNaConsulta(strNomeCampo) Then
+                ctl.ControlSource = strNomeCampo
+            Else
+                ' Mapeamento dos campos especiais
+                Select Case strNomeCampo
+                    Case "txtObsAdm"
+                        ctl.ControlSource = "ExibeObsAdm"
+                    Case "txtObsSlc"
+                        ctl.ControlSource = "ExibeObsSlc"
+                    Case "txtEscCbSd"
+                        ctl.ControlSource = "txtEscCbSd"
+                    Case "txtEscSubtenSgt"
+                        ctl.ControlSource = "txtEscSubtenSgt"
+                    Case "txtEscSubalterno"
+                        ctl.ControlSource = "txtEscSubalterno"
+                    Case "txtEscIntermed"
+                        ctl.ControlSource = "txtEscIntermed"
+                    Case "txtEscSuperior"
+                        ctl.ControlSource = "txtEscSuperior"
+                    Case "txtStatusAdmSimb"
+                        ctl.ControlSource = "txtStatusAdmSimb"
+                    Case "CorStatusAdm"
+                        ctl.ControlSource = "CorStatusAdm"
+                    Case "txtNecessidade"
+                        ctl.ControlSource = "Necessidade"
+                    Case "txtNecessidadeSimb"
+                        ctl.ControlSource = "txtNecessidadeSimb"
+                    Case "CorNecessidadeSimb"
+                        ctl.ControlSource = "CorNecessidadeSimb"
+                    Case Else
+                        ctl.ControlSource = ""
+                        Debug.Print "Campo ignorado: " & strNomeCampo
+                End Select
+            End If
+        End If
+    Next ctl
+End Sub
+
+Private Function CampoExisteNaConsulta(strNomeCampo As String) As Boolean
+    Dim fld As DAO.Field
+    
+    On Error Resume Next
+    Set fld = CurrentDb.QueryDefs("qryEscalaGeral").Fields(strNomeCampo)
+    CampoExisteNaConsulta = (Err.Number = 0)
+    On Error GoTo 0
+End Function
+
+' Função para verificar se um método existe no formulário
+Private Function TipoMetodoExiste(frm As Form, strMetodo As String) As Boolean
+    On Error Resume Next
+    Dim obj As Object
+    Set obj = CallByName(frm, strMetodo, VbMethod)
+    TipoMetodoExiste = (Err.Number = 0)
+    On Error GoTo 0
+End Function

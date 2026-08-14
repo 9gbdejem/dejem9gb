@@ -1,0 +1,15 @@
+Tabela: TblOperacoes
+
+Campos:
+- ID: Numeração Automática, Chave Primária
+- Operacao: Texto Curto
+
+Índices recomendados:
+- Operacao: Sim, Sem duplicação
+
+Observações:
+- Preencher a coluna Operacao em letras maiúsculas.
+- Não precisa cadastrar ROTINEIRA nesta tabela, pois o formulário frmDistribuicao já inclui ROTINEIRA automaticamente no cboOperacao.
+- Exemplos:
+  - OP SP SEM FOGO
+  - MUN SÃO CARLOS

@@ -2,93 +2,115 @@ import { checkAuth } from './auth-check.js';
 import { database } from './firebase-config.js';
 import { ref, get } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
 
-let escalasCache = [];
+let resumoCache = [];
+let metaAtual = null;
 let userNivel = 3;
 
-const formatarData = (dataIso = '') => {
-    const [ano, mes, dia] = dataIso.split('-');
-    return (ano && mes && dia) ? `${dia}/${mes}/${ano}` : '-';
-};
+const CACHE_VERSION_KEY = 'escAbertasResumoVersao';
+const CACHE_DATA_KEY = 'escAbertasResumoDados';
 
-const formatarPrazo = (prazo = '') => {
+function formatarPrazo(prazo = '') {
     if (!prazo) return '-';
-    const d = new Date(prazo);
-    if (Number.isNaN(d.getTime())) return prazo;
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mi = String(d.getMinutes()).padStart(2, '0');
-    return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
-};
-
-export function calcularHorarioFinal(inicio) {
-    if (!inicio || !inicio.includes(':')) return '--:--';
-    const [h, m] = inicio.split(':').map(Number);
-    const dt = new Date();
-    dt.setHours(h, m, 0, 0);
-    dt.setHours(dt.getHours() + 8);
-    return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+    return prazo;
 }
 
 function lerFiltros() {
     return {
-        data: document.getElementById('filtroData')?.value || '',
-        local: document.getElementById('filtroLocal')?.value || '',
-        composicao: document.getElementById('filtroComposicao')?.value || '',
         codigo: document.getElementById('filtroCodigo')?.value || '',
-        postoSubSgt: document.getElementById('filtroSubSgt')?.checked ?? true,
-        postoCbSd: document.getElementById('filtroCbSd')?.checked ?? true
+        local: document.getElementById('filtroLocal')?.value || '',
+        composicao: document.getElementById('filtroComposicao')?.value || ''
     };
 }
 
 function aplicarFiltrosLocal() {
     const f = lerFiltros();
-    return escalasCache.filter((e) => {
-        if (f.data && e.Data !== f.data) return false;
-        if (f.local && e.OPM_Nome !== f.local) return false;
-        if (f.composicao && e.Composicao_Nome !== f.composicao) return false;
-        if (f.codigo && String(e.Composicao_Cod) !== String(f.codigo)) return false;
-
-        const okSubSgt = f.postoSubSgt && Number(e.Solic_Subten_Sgt || 0) > 0;
-        const okCbSd = f.postoCbSd && Number(e.Solic_Cb_Sd || 0) > 0;
-        if (!okSubSgt && !okCbSd) return false;
+    return resumoCache.filter((e) => {
+        if (f.codigo && String(e.codigo) !== String(f.codigo)) return false;
+        if (f.local && e.opm !== f.local) return false;
+        if (f.composicao && e.composicao !== f.composicao) return false;
         return true;
     });
-}
-
-function renderTabela() {
-    const tbody = document.getElementById('tbodyDashboard');
-    if (!tbody) return;
-
-    const dados = aplicarFiltrosLocal();
-    if (!dados.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-4">Nenhuma escala aberta encontrada.</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = dados.map((e) => {
-        const horarioFinal = calcularHorarioFinal(e.Horario_Inicial);
-        return `
-            <tr>
-                <td>${formatarData(e.Data)}</td>
-                <td class="text-center">${e.Solic_Subten_Sgt ?? 0}</td>
-                <td class="text-center">${e.Solic_Cb_Sd ?? 0}</td>
-                ${userNivel === 1 ? `<td class="text-center">${e.Solic_Superior ?? 0}</td><td class="text-center">${e.Solic_Intermed ?? 0}</td><td class="text-center">${e.Solic_Subalterno ?? 0}</td>` : ''}
-                <td>${e.OPM_Nome || '-'}</td>
-                <td>${e.Composicao_Nome || '-'}</td>
-                <td>${e.Horario_Inicial || '--:--'} às ${horarioFinal}</td>
-                <td class="text-center">${e.Composicao_Cod ?? '-'}</td>
-                <td>${formatarPrazo(e.Prazo_Inscricao)}</td>
-            </tr>
-        `;
-    }).join('');
 }
 
 function preencherSelect(id, values) {
     const el = document.getElementById(id);
     if (!el) return;
-    el.innerHTML = '<option value="">Todos</option>' + [...new Set(values)].filter(Boolean).sort().map(v => `<option value="${v}">${v}</option>`).join('');
+    el.innerHTML = '<option value="">Todos</option>' + [...new Set(values)]
+        .filter(Boolean)
+        .sort((a, b) => String(a).localeCompare(String(b), 'pt-BR', { numeric: true }))
+        .map(v => `<option value="${v}">${v}</option>`)
+        .join('');
+}
+
+function atualizarFiltros() {
+    preencherSelect('filtroCodigo', resumoCache.map(e => String(e.codigo || '')));
+    preencherSelect('filtroLocal', resumoCache.map(e => e.opm));
+    preencherSelect('filtroComposicao', resumoCache.map(e => e.composicao));
+}
+
+function renderTabela() {
+    const tbody = document.getElementById('tbodyDashboard');
+    const info = document.getElementById('dashboardInfo');
+    if (!tbody) return;
+
+    const dados = aplicarFiltrosLocal();
+
+    if (!resumoCache.length) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">Clique no botão acima para carregar as escalas abertas.</td></tr>';
+        if (info) info.textContent = metaAtual ? `Última atualização: ${metaAtual.atualizado_em || '-'}` : '';
+        return;
+    }
+
+    if (!dados.length) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">Nenhum grupo encontrado com os filtros selecionados.</td></tr>';
+        if (info) info.textContent = `Mostrando 0 de ${resumoCache.length} grupo(s).`;
+        return;
+    }
+
+    tbody.innerHTML = dados.map((e) => `
+        <tr>
+            <td class="text-center fw-semibold">${e.codigo || '-'}</td>
+            <td>${e.opm || '-'}</td>
+            <td>${e.composicao || '-'}</td>
+            <td>${formatarPrazo(e.prazo)}</td>
+            <td>${e.dias || '-'}</td>
+            <td class="text-center">${e.superior ?? 0}</td>
+            <td class="text-center">${e.intermed ?? 0}</td>
+            <td class="text-center">${e.subalterno ?? 0}</td>
+            <td class="text-center">${e.subten_sgt ?? 0}</td>
+            <td class="text-center">${e.cb_sd ?? 0}</td>
+            <td class="text-center fw-semibold">${e.total_geral ?? 0}</td>
+        </tr>
+    `).join('');
+
+    if (info) {
+        info.textContent = `Mostrando ${dados.length} de ${resumoCache.length} grupo(s). ` +
+            `Total de escalas abertas: ${metaAtual?.total_escalas ?? '-'}.`;
+    }
+}
+
+function setBotaoEstado(texto, classe, disabled = false) {
+    const btn = document.getElementById('btnCarregarAbertas');
+    if (!btn) return;
+    btn.textContent = texto;
+    btn.className = `btn btn-lg w-100 ${classe}`;
+    btn.disabled = disabled;
+}
+
+function carregarCacheLocal() {
+    try {
+        const raw = localStorage.getItem(CACHE_DATA_KEY);
+        if (!raw) return [];
+        const dados = JSON.parse(raw);
+        return Array.isArray(dados) ? dados : [];
+    } catch {
+        return [];
+    }
+}
+
+function salvarCacheLocal(versao, dados) {
+    localStorage.setItem(CACHE_VERSION_KEY, String(versao || ''));
+    localStorage.setItem(CACHE_DATA_KEY, JSON.stringify(dados || []));
 }
 
 function renderDashboardBase() {
@@ -96,25 +118,43 @@ function renderDashboardBase() {
     if (!container) return;
 
     container.innerHTML = `
+        <div class="mb-3">
+            <button id="btnCarregarAbertas" type="button" class="btn btn-lg btn-secondary w-100">
+                Verificando escalas abertas...
+            </button>
+            <div id="dashboardInfo" class="small text-muted text-center mt-2"></div>
+        </div>
+
         <div class="row g-2 mb-3">
-            <div class="col-md-2"><label class="form-label">Data</label><select id="filtroData" class="form-select form-select-sm"></select></div>
-            <div class="col-md-2"><label class="form-label">Local</label><select id="filtroLocal" class="form-select form-select-sm"></select></div>
-            <div class="col-md-3"><label class="form-label">Composição</label><select id="filtroComposicao" class="form-select form-select-sm"></select></div>
-            <div class="col-md-2"><label class="form-label">Código</label><select id="filtroCodigo" class="form-select form-select-sm"></select></div>
-            <div class="col-md-3">
-                <label class="form-label d-block">Posto</label>
-                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="filtroSubSgt" checked><label class="form-check-label" for="filtroSubSgt">Subten/Sgt</label></div>
-                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="filtroCbSd" checked><label class="form-check-label" for="filtroCbSd">Cb/Sd</label></div>
+            <div class="col-md-2">
+                <label class="form-label">Código</label>
+                <select id="filtroCodigo" class="form-select form-select-sm"></select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">OPM</label>
+                <select id="filtroLocal" class="form-select form-select-sm"></select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Composição</label>
+                <select id="filtroComposicao" class="form-select form-select-sm"></select>
             </div>
         </div>
 
         <div class="table-responsive">
-            <table class="table table-sm table-striped">
+            <table class="table table-sm table-striped align-middle">
                 <thead>
                     <tr>
-                        <th>DATA</th><th>SUBTEN/SGT</th><th>CB/SD</th>
-                        ${userNivel === 1 ? '<th>SUPERIOR</th><th>INTERMED</th><th>SUBALTERNO</th>' : ''}
-                        <th>LOCAL</th><th>COMPOSIÇÃO</th><th>HORÁRIO</th><th>CÓDIGO</th><th>PRAZO INSCRIÇÃO</th>
+                        <th class="text-center">Código</th>
+                        <th>OPM</th>
+                        <th>Composição</th>
+                        <th>Prazo</th>
+                        <th>Dias</th>
+                        <th class="text-center">Sup</th>
+                        <th class="text-center">Int</th>
+                        <th class="text-center">Ten</th>
+                        <th class="text-center">Sgt</th>
+                        <th class="text-center">CbSd</th>
+                        <th class="text-center">Total</th>
                     </tr>
                 </thead>
                 <tbody id="tbodyDashboard"></tbody>
@@ -125,53 +165,92 @@ function renderDashboardBase() {
         <div class="text-center text-muted small">
             <div><strong>Sistema de Gestão de Escalas</strong> - Versão 1.0.0</div>
             <div>Desenvolvido por Cabo PM Alexandre Alves Ferreira</div>
-            <div>© 2026 Polícia Militar do Estado de São Paulo. Todos os direitos reservados.</div>
+            <div>© 2026 Corpo de Bombeiros do Estado de São Paulo. Todos os direitos reservados.</div>
         </div>
     `;
 }
 
-async function carregarEscalasAbertas() {
-    const snap = await get(ref(database, 'Esc_Abertas'));
-    const lista = [];
-    if (!snap.exists()) return lista;
+async function carregarMetaEscalasAbertas() {
+    const snap = await get(ref(database, 'Esc_AbertasMeta'));
+    return snap.exists() ? snap.val() : null;
+}
 
-    Object.entries(snap.val()).forEach(([ano, meses]) => {
-        Object.entries(meses || {}).forEach(([mes, dias]) => {
-            Object.entries(dias || {}).forEach(([dia, opms]) => {
-                Object.entries(opms || {}).forEach(([opm, comps]) => {
-                    Object.entries(comps || {}).forEach(([comp, solicitacoes]) => {
-                        Object.entries(solicitacoes || {}).forEach(([idSolicitacao, dados]) => {
-                            if ((dados?.Status_Adm || '').toUpperCase() !== 'ABERTA') return;
-                            lista.push({ ...dados, id_solicitacao: idSolicitacao, ano, mes, dia, opm, comp });
-                        });
-                    });
-                });
-            });
-        });
+async function carregarResumoEscalasAbertas() {
+    const snap = await get(ref(database, 'Esc_AbertasResumo'));
+    if (!snap.exists()) return [];
+
+    return Object.values(snap.val() || {}).sort((a, b) => {
+        const cod = String(a.codigo || '').localeCompare(String(b.codigo || ''), 'pt-BR', { numeric: true });
+        if (cod !== 0) return cod;
+        return String(a.prazo || '').localeCompare(String(b.prazo || ''), 'pt-BR');
     });
+}
 
-    lista.sort((a, b) => new Date(a.Prazo_Inscricao) - new Date(b.Prazo_Inscricao));
-    return lista;
+async function baixarResumoPorClique() {
+    try {
+        setBotaoEstado('Baixando escalas abertas... aguarde.', 'btn-primary', true);
+        resumoCache = await carregarResumoEscalasAbertas();
+        salvarCacheLocal(metaAtual?.versao, resumoCache);
+        atualizarFiltros();
+        renderTabela();
+
+        if (resumoCache.length) {
+            setBotaoEstado('Tabela de escalas abertas já atualizada', 'btn-success', false);
+        } else {
+            setBotaoEstado('Não há escalas abertas', 'btn-secondary', true);
+        }
+    } catch (error) {
+        setBotaoEstado('Erro ao baixar escalas abertas. Clique para tentar novamente.', 'btn-danger', false);
+        console.error('Erro ao baixar Esc_AbertasResumo:', error);
+    }
+}
+
+async function prepararBotaoResumo() {
+    metaAtual = await carregarMetaEscalasAbertas();
+    const btn = document.getElementById('btnCarregarAbertas');
+    if (!btn) return;
+
+    btn.addEventListener('click', baixarResumoPorClique);
+
+    if (!metaAtual || Number(metaAtual.total_grupos || 0) === 0) {
+        resumoCache = [];
+        atualizarFiltros();
+        renderTabela();
+        setBotaoEstado('Não há escalas abertas', 'btn-secondary', true);
+        return;
+    }
+
+    const versaoCache = localStorage.getItem(CACHE_VERSION_KEY);
+
+    if (versaoCache && String(metaAtual.versao || '') === versaoCache) {
+        resumoCache = carregarCacheLocal();
+        atualizarFiltros();
+        renderTabela();
+        if (resumoCache.length) {
+            setBotaoEstado('Tabela de escalas abertas já atualizada', 'btn-success', false);
+        } else {
+            setBotaoEstado('Clique aqui para atualizar a tabela abaixo, pois há novas escalas', 'btn-warning', false);
+        }
+    } else {
+        resumoCache = [];
+        atualizarFiltros();
+        renderTabela();
+        setBotaoEstado('Clique aqui para atualizar a tabela abaixo, pois há novas escalas', 'btn-warning', false);
+    }
 }
 
 export async function initDashboard() {
     try {
         const { userData } = await checkAuth(3);
-        userNivel = userData.nivel;
+        userNivel = userData.nivel || 3;
 
         renderDashboardBase();
-        escalasCache = await carregarEscalasAbertas();
 
-        preencherSelect('filtroData', escalasCache.map(e => e.Data));
-        preencherSelect('filtroLocal', escalasCache.map(e => e.OPM_Nome));
-        preencherSelect('filtroComposicao', escalasCache.map(e => e.Composicao_Nome));
-        preencherSelect('filtroCodigo', escalasCache.map(e => String(e.Composicao_Cod || '')));
-
-        ['filtroData', 'filtroLocal', 'filtroComposicao', 'filtroCodigo', 'filtroSubSgt', 'filtroCbSd'].forEach((id) => {
+        ['filtroCodigo', 'filtroLocal', 'filtroComposicao'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', renderTabela);
         });
 
-        renderTabela();
+        await prepararBotaoResumo();
     } catch (error) {
         const container = document.getElementById('dashboard-content');
         if (container) container.innerHTML = `<div class="alert alert-danger">Erro ao carregar dashboard: ${error.message}</div>`;

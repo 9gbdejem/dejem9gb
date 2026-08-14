@@ -1,0 +1,45 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Form_Load()
+    Dim strID_Escala As String
+    Dim strSQL As String
+    
+    ' Recebe o ID_Escala passado pelo formulário principal
+    strID_Escala = Trim(Nz(Me.OpenArgs, ""))
+    
+    If strID_Escala = "" Then
+        MsgBox "Nenhuma escala selecionada.", vbExclamation
+        DoCmd.Close acForm, Me.Name
+        Exit Sub
+    End If
+    
+    ' Configura o subformulário com a nova ordenação
+    strSQL = "SELECT " & _
+             "TblMilEsc.Militar_RE, " & _
+             "TblMilEsc.Militar_Nome, " & _
+             "TblMilEsc.Militar_Posto_Grad, " & _
+             "TblMilEsc.Militar_OPM, " & _
+             "TblMilEsc.[Status], " & _
+             "Null AS [Ordem] " & _
+             "FROM TblMilEsc " & _
+             "LEFT JOIN TblPostoGrad ON TblMilEsc.Militar_Posto_Grad = TblPostoGrad.PostoGrad " & _
+             "WHERE TblMilEsc.ID_Escala = '" & strID_Escala & "' " & _
+             "ORDER BY " & _
+             "IIf(Left(TblMilEsc.Militar_RE,1) IN ('8','9'), 0, 1) ASC, " & _
+             "TblPostoGrad.ID ASC, " & _
+             "TblMilEsc.Militar_RE ASC"
+    
+'    Debug.Print "SQL: " & strSQL
+    
+    ' Aplica o SQL ao subformulário
+    Me.sfrmEscalados.Form.RecordSource = strSQL
+    
+    ' Exibe o total de bombeiros
+    Dim lngTotal As Long
+    lngTotal = Me.sfrmEscalados.Form.RecordsetClone.RecordCount
+End Sub
+
+Private Sub btnFechar_Click()
+    DoCmd.Close acForm, Me.Name
+End Sub

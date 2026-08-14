@@ -1,0 +1,192 @@
+Option Compare Database
+Option Explicit
+
+Private mstrIDEscala As String
+
+Private Sub Form_Load()
+    mstrIDEscala = Trim(Nz(Me.OpenArgs, ""))
+    
+    If mstrIDEscala = "" Then
+        MsgBox "Nenhuma escala foi informada.", vbExclamation, "Remover militar"
+        DoCmd.Close acForm, Me.Name
+        Exit Sub
+    End If
+    
+    ConfigurarLista
+    If Not CarregarEscalados() Then Exit Sub
+    
+    If Trim(Nz(Me.txtDataSol, "")) = "" Then Me.txtDataSol = Format(Date, "dd/mm/yyyy")
+End Sub
+
+Private Sub ConfigurarLista()
+    On Error Resume Next
+    Me.lstEscalados.RowSourceType = "Value List"
+    Me.lstEscalados.ColumnCount = 6
+    Me.lstEscalados.BoundColumn = 6
+    Me.lstEscalados.ColumnWidths = "3.5cm;2cm;10cm;3cm;0cm;0cm"
+    Me.lstEscalados.MultiSelect = 0
+    On Error GoTo 0
+End Sub
+
+Private Function CarregarEscalados() As Boolean
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strLista As String
+    Dim lngTotal As Long
+    
+    On Error GoTo Erro
+    
+    strSQL = "SELECT TblMilEsc.Militar_RE, TblMilEsc.Militar_Nome, " & _
+             "TblMilEsc.Militar_Posto_Grad, TblMilEsc.Militar_OPM, TblMilEsc.conferencia " & _
+             "FROM TblMilEsc " & _
+             "LEFT JOIN TblPostoGrad ON TblMilEsc.Militar_Posto_Grad = TblPostoGrad.PostoGrad " & _
+             "WHERE TblMilEsc.ID_Escala = " & SQLTexto(mstrIDEscala) & " " & _
+             "ORDER BY IIf(Left(TblMilEsc.Militar_RE,1) IN ('8','9'), 0, 1) ASC, " & _
+             "TblPostoGrad.ID ASC, TblMilEsc.Militar_RE ASC"
+    
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        strLista = strLista & ValorLista(Nz(rs!Militar_Posto_Grad, "")) & ";" & _
+                   ValorLista(Nz(rs!Militar_RE, "")) & ";" & _
+                   ValorLista(Nz(rs!Militar_Nome, "")) & ";" & _
+                   ValorLista(Nz(rs!Militar_OPM, "")) & ";" & _
+                   ValorLista(Nz(rs!conferencia, "")) & ";" & _
+                   ValorLista(mstrIDEscala) & ";"
+        lngTotal = lngTotal + 1
+        rs.MoveNext
+    Loop
+    
+    Me.lstEscalados.RowSource = strLista
+    
+    If lngTotal = 0 Then
+        MsgBox "Nenhum militar escalado foi encontrado para esta escala.", vbInformation, "Remover militar"
+        DoCmd.Close acForm, Me.Name
+        CarregarEscalados = False
+        GoTo Sair
+    End If
+    
+    CarregarEscalados = True
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmRemoveSelMil.CarregarEscalados: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar militares: " & Err.Number & " - " & Err.Description, vbCritical
+    CarregarEscalados = False
+    Resume Sair
+End Function
+
+Private Sub btnRemover_Click()
+    Dim strRE As String
+    Dim strConferencia As String
+    Dim strDataSol As String
+    Dim strDocumento As String
+    Dim strMotivo As String
+    Dim strMilitarResumo As String
+    Dim blnRemovido As Boolean
+    
+    On Error GoTo Erro
+    
+    If Me.lstEscalados.ListIndex < 0 Then
+        MsgBox "Selecione um militar.", vbExclamation, "Remover militar"
+        Exit Sub
+    End If
+    
+    strDataSol = Trim(Nz(Me.txtDataSol, ""))
+    strDocumento = Trim(Nz(Me.txtDocumento, ""))
+    strMotivo = Trim(Nz(Me.txtMotivo, ""))
+    
+    If Not IsDateBrasileiro(strDataSol) Then
+        MsgBox "Informe a data da solicitação no formato dd/mm/aaaa.", vbExclamation, "Remover militar"
+        Me.txtDataSol.SetFocus
+        Exit Sub
+    End If
+    
+    If strDocumento = "" Or strMotivo = "" Then
+        MsgBox "Preencha documento e motivo.", vbExclamation, "Remover militar"
+        Exit Sub
+    End If
+    
+    strRE = Trim(Nz(Me.lstEscalados.Column(1), ""))
+    strConferencia = Trim(Nz(Me.lstEscalados.Column(4), ""))
+    strMilitarResumo = Trim(Nz(Me.lstEscalados.Column(0), "") & " " & _
+                            Nz(Me.lstEscalados.Column(1), "") & " " & _
+                            Nz(Me.lstEscalados.Column(2), ""))
+    
+    blnRemovido = RemoverMilitarEscalaIntranet(mstrIDEscala, strRE, strConferencia, _
+                                               strDataSol, strDocumento, strMotivo, strMilitarResumo)
+    
+    If blnRemovido Then
+        MsgBox "Exclusão registrada com sucesso.", vbInformation, "Remover militar"
+        DoCmd.Close acForm, Me.Name
+    End If
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmRemoveSelMil.btnRemover_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao remover militar: " & Err.Number & " - " & Err.Description, vbCritical
+End Sub
+
+Private Sub txtDataSol_KeyPress(KeyAscii As Integer)
+    If KeyAscii < 48 Or KeyAscii > 57 Then KeyAscii = 0
+End Sub
+
+Private Sub txtDataSol_AfterUpdate()
+    Dim strValor As String
+    
+    strValor = Replace(Trim(Nz(Me.txtDataSol, "")), "/", "")
+    
+    If Len(strValor) = 8 And IsNumeric(strValor) Then
+        Me.txtDataSol = Left(strValor, 2) & "/" & Mid(strValor, 3, 2) & "/" & Right(strValor, 4)
+    End If
+End Sub
+
+Private Function IsDateBrasileiro(ByVal strData As String) As Boolean
+    Dim partes() As String
+    Dim dia As Integer
+    Dim mes As Integer
+    Dim ano As Integer
+    
+    If strData = "" Then Exit Function
+    If Not strData Like "##/##/####" Then Exit Function
+    
+    partes = Split(strData, "/")
+    If UBound(partes) <> 2 Then Exit Function
+    
+    dia = CInt(partes(0))
+    mes = CInt(partes(1))
+    ano = CInt(partes(2))
+    
+    If mes >= 1 And mes <= 12 And dia >= 1 And dia <= DiaNoMes(mes, ano) Then
+        IsDateBrasileiro = True
+    End If
+End Function
+
+Private Function DiaNoMes(ByVal mes As Integer, ByVal ano As Integer) As Integer
+    Select Case mes
+        Case 1, 3, 5, 7, 8, 10, 12
+            DiaNoMes = 31
+        Case 4, 6, 9, 11
+            DiaNoMes = 30
+        Case 2
+            If (ano Mod 4 = 0 And ano Mod 100 <> 0) Or (ano Mod 400 = 0) Then
+                DiaNoMes = 29
+            Else
+                DiaNoMes = 28
+            End If
+    End Select
+End Function
+
+Private Function ValorLista(ByVal v As Variant) As String
+    ValorLista = Replace(Nz(v, ""), ";", " ")
+End Function
+
+Private Function SQLTexto(ByVal valor As Variant) As String
+    SQLTexto = "'" & Replace(Nz(valor, ""), "'", "''") & "'"
+End Function

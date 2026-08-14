@@ -1,0 +1,1062 @@
+Option Compare Database
+Option Explicit
+
+Private Const MODO_QTDE As String = "QTDE"
+Private Const MODO_CANCEL As String = "CANCEL"
+Private Const MODO_INTR As String = "INTRANET"
+Private Const URL_CAD_ESCALA As String = "http://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/CadEsc.aspx?"
+
+Private mstrModo As String
+
+Private Sub Form_Load()
+    On Error Resume Next
+    
+    ConfigurarLista
+    LimparLista
+    LimparCamposQtde
+    MostrarCamposQtde False
+    MostrarBotoesAcao False, False, False
+    PintarBotoesModo ""
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub btnAlterarQtde_Click()
+    If mstrModo = MODO_QTDE Then Exit Sub
+    
+    mstrModo = MODO_QTDE
+    LimparCamposQtde
+    PintarBotoesModo mstrModo
+    MostrarCamposQtde True
+    MostrarBotoesAcao True, False, False
+    CarregarLista "1"
+End Sub
+
+Private Sub btnAlterarCancel_Click()
+    If mstrModo = MODO_CANCEL Then Exit Sub
+    
+    mstrModo = MODO_CANCEL
+    LimparCamposQtde
+    PintarBotoesModo mstrModo
+    MostrarCamposQtde False
+    MostrarBotoesAcao False, True, False
+    CarregarLista "1,2,3,4"
+End Sub
+
+Private Sub btnAlterarIntranet_Click()
+    If mstrModo = MODO_INTR Then Exit Sub
+    
+    mstrModo = MODO_INTR
+    LimparCamposQtde
+    PintarBotoesModo mstrModo
+    MostrarCamposQtde True
+    MostrarBotoesAcao False, False, True
+    CarregarLista "3,4"
+End Sub
+
+Private Sub btnConfirmarQtde_Click()
+    Dim colIDs As Collection
+    Dim resposta As VbMsgBoxResult
+    Dim lngAtualizadas As Long
+    
+    On Error GoTo Erro
+    
+    Set colIDs = IDsSelecionados()
+    If colIDs.Count = 0 Then
+        MsgBox "Selecione pelo menos uma escala.", vbExclamation, "Alterar quantidade"
+        Exit Sub
+    End If
+    
+    If Not QuantidadesValidas() Then Exit Sub
+    
+    resposta = MsgBox("Confirma alterar a quantidade de " & colIDs.Count & " escala(s)?", _
+                      vbQuestion + vbYesNo, "Confirmar alteracao")
+    If resposta = vbNo Then Exit Sub
+    
+    resposta = MsgBox("Esta acao altera somente o banco local. Deseja continuar?", _
+                      vbQuestion + vbYesNo, "Confirmacao final")
+    If resposta = vbNo Then Exit Sub
+    
+    lngAtualizadas = AtualizarQuantidadesLocais(colIDs, False)
+    MsgBox "Alteracao concluida. Escala(s) atualizada(s): " & lngAtualizadas, _
+           vbInformation, "Alterar quantidade"
+    
+    CarregarLista "1"
+    AtualizarFrmEscalas
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmAlterar.btnConfirmarQtde_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao alterar quantidades: " & Err.Number & " - " & Err.Description, vbCritical
+End Sub
+
+Private Sub btnConfirmarCancel_Click()
+    Dim colIDs As Collection
+    Dim strStatus As String
+    Dim resposta As VbMsgBoxResult
+    Dim lngAtualizadas As Long
+    
+    On Error GoTo Erro
+    
+    Set colIDs = IDsSelecionados()
+    If colIDs.Count = 0 Then
+        MsgBox "Selecione pelo menos uma escala.", vbExclamation, "Alterar status"
+        Exit Sub
+    End If
+    
+    strStatus = StatusUnicoSelecionado()
+    If strStatus = "" Then
+        MsgBox "Selecione somente escalas com o mesmo Status_Adm.", vbExclamation, "Alterar status"
+        Exit Sub
+    End If
+    
+    Select Case strStatus
+        Case "1"
+            resposta = MsgBox("Confirma cancelar " & colIDs.Count & " escala(s)?", _
+                              vbQuestion + vbYesNo, "Cancelar escalas")
+            If resposta = vbNo Then Exit Sub
+            
+            lngAtualizadas = AtualizarStatusLocal(colIDs, "2")
+            
+            ' Firebase desativado para testes:
+            ' Call AtualizarStatusAdmFirebase(colIDs, "2")
+            
+            MsgBox "Escala(s) cancelada(s): " & lngAtualizadas, vbInformation, "Cancelar escalas"
+            
+        Case "2"
+            resposta = MsgBox("Confirma liberar " & colIDs.Count & " escala(s) cancelada(s)?", _
+                              vbQuestion + vbYesNo, "Liberar canceladas")
+            If resposta = vbNo Then Exit Sub
+            
+            If Not SelecionadasCanceladasMesmoTipoIDEscala(colIDs) Then Exit Sub
+            
+            If Not RegistrarMotivoReaberturaCanceladas(colIDs) Then Exit Sub
+            
+            If SelecionadasPossuemIDEscala(colIDs) Then
+                lngAtualizadas = AtualizarStatusLocalLimparIDEscala(colIDs, "1")
+            Else
+                lngAtualizadas = AtualizarStatusLocal(colIDs, "1")
+            End If
+            
+            ' Firebase desativado para testes:
+            ' Call RemoverStatusAdmFirebase(colIDs)
+            
+            MsgBox "Escala(s) liberada(s): " & lngAtualizadas, vbInformation, "Liberar canceladas"
+            
+        Case "3"
+            resposta = MsgBox("As escalas Cadastradas exigem exclusão na intranet." & vbCrLf & _
+                              "Deseja realizar a exclusão na intranet?", _
+                              vbQuestion + vbYesNo, "Cancelar intranet")
+            If resposta = vbNo Then Exit Sub
+            
+            resposta = MsgBox("Essa alteração na intranet não terá como ser desfeita." & vbCrLf & _
+                              "Deseja realmente continuar?", _
+                              vbQuestion + vbYesNo, "Confirmacao final")
+            If resposta = vbNo Then Exit Sub
+            
+            Call ExcluirEscalasIntranetSelecionadas(colIDs, strStatus, lngAtualizadas)
+            
+            ' Firebase desativado para testes:
+            ' Call AtualizarStatusAdmFirebase(colIDs, "2")
+            
+            MsgBox "Exclusao concluida." & vbCrLf & _
+                   "Escala(s) cancelada(s): " & lngAtualizadas, vbInformation, "Cancelar intranet"
+            
+        Case "4"
+            resposta = MsgBox("As escalas Montadas exigem exclusão na intranet e ajuste futuro da TblMilEsc." & vbCrLf & _
+                              "Deseja realizar a exclusão na intranet (se houver escalados, serão removidos)?", _
+                              vbQuestion + vbYesNo, "Cancelar intranet")
+            If resposta = vbNo Then Exit Sub
+            
+            resposta = MsgBox("Essa alteração na intranet não terá como ser desfeita." & vbCrLf & _
+                              "Deseja realmente continuar?", _
+                              vbQuestion + vbYesNo, "Confirmacao final")
+            If resposta = vbNo Then Exit Sub
+            
+            Call ExcluirEscalasIntranetSelecionadas(colIDs, strStatus, lngAtualizadas)
+            
+            ' PENDENTE: ajustar TblMilEsc apos exclusao de escala montada.
+            MsgBox "PENDENTE: ajustar TblMilEsc para as escalas que estavam montadas." & vbCrLf & _
+                   "A exclusao na intranet foi executada e o Status_Adm local foi alterado para 2.", _
+                   vbExclamation, "Ajuste pendente"
+            
+            ' Firebase desativado para testes:
+            ' Call AtualizarStatusAdmFirebase(colIDs, "2")
+            
+            MsgBox "Exclusao concluida." & vbCrLf & _
+                   "Escala(s) cancelada(s): " & lngAtualizadas, vbInformation, "Cancelar intranet"
+            
+        Case Else
+            MsgBox "Status_Adm nao tratado: " & strStatus, vbExclamation, "Alterar status"
+            Exit Sub
+    End Select
+    
+    CarregarLista "1,2,3,4"
+    AtualizarFrmEscalas
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmAlterar.btnConfirmarCancel_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao alterar status: " & Err.Number & " - " & Err.Description, vbCritical
+End Sub
+
+Private Sub btnConfirmarIntranet_Click()
+    Dim colIDs As Collection
+    Dim strStatus As String
+    
+    On Error GoTo Erro
+    
+    Set colIDs = IDsSelecionados()
+    If colIDs.Count = 0 Then
+        MsgBox "Selecione pelo menos uma escala.", vbExclamation, "Alterar intranet"
+        Exit Sub
+    End If
+    
+    strStatus = StatusUnicoSelecionado()
+    If strStatus = "" Then
+        MsgBox "Selecione somente escalas com o mesmo Status_Adm.", vbExclamation, "Alterar intranet"
+        Exit Sub
+    End If
+    
+    If strStatus <> "3" And strStatus <> "4" Then
+        MsgBox "Este modo aceita somente Status_Adm 3 ou 4.", vbExclamation, "Alterar intranet"
+        Exit Sub
+    End If
+    
+    If Not QuantidadesValidas() Then Exit Sub
+    If Not QuantidadesRespeitamEscalados(colIDs) Then Exit Sub
+    If Not TodasChavesComIDCadastro(colIDs) Then
+        MsgBox "Para alterar na intranet, todas as escalas selecionadas precisam ter ID_Cadastro preenchido.", _
+               vbExclamation, "Alterar intranet"
+        Exit Sub
+    End If
+    
+    SalvarTempVarsAlteracao colIDs, strStatus
+    DoCmd.OpenForm "frmAltIntranet", , , , , acDialog
+    
+    CarregarLista "3,4"
+    AtualizarFrmEscalas
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmAlterar.btnConfirmarIntranet_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao iniciar alteracao na intranet: " & Err.Number & " - " & Err.Description, vbCritical
+End Sub
+
+Private Sub ConfigurarLista()
+    On Error Resume Next
+    
+    Me.lstEscalas.RowSourceType = "Value List"
+    Me.lstEscalas.ColumnCount = 15
+    Me.lstEscalas.BoundColumn = 14
+    Me.lstEscalas.ColumnWidths = "2.5cm;4cm;4.5cm;1.3cm;1.3cm;1.3cm;0.8cm;0.8cm;0.8cm;0.8cm;0.8cm;1.1cm;1.5cm;0cm;0cm"
+    Me.lstEscalas.MultiSelect = 2
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub LimparLista()
+    On Error Resume Next
+    Me.lstEscalas.RowSource = ""
+    Me.lblTotal.Caption = "0 escala(s)"
+    On Error GoTo 0
+End Sub
+
+Private Sub CarregarLista(ByVal strStatusPermitidos As String)
+    Dim frm As Form
+    Dim rs As DAO.Recordset
+    Dim strLista As String
+    Dim lngTotal As Long
+    
+    On Error GoTo Erro
+    
+    Set frm = ObterSubformLinhaEscalas()
+    If frm Is Nothing Then
+        MsgBox "Nao foi possivel localizar o sfrmLinhaEscala.", vbExclamation, "Alterar escalas"
+        Exit Sub
+    End If
+    
+    Set rs = frm.RecordsetClone
+    If rs.BOF And rs.EOF Then GoTo Sair
+    If rs.EOF Then rs.MoveFirst
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If StatusPermitido(Nz(rs!Status_Adm, ""), strStatusPermitidos) Then
+            strLista = strLista & LinhaValueList(rs)
+            lngTotal = lngTotal + 1
+        End If
+        rs.MoveNext
+    Loop
+    
+Sair:
+    On Error Resume Next
+    Me.lstEscalas.RowSource = strLista
+    Me.lblTotal.Caption = lngTotal & " escala(s)"
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmAlterar.CarregarLista: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar lista: " & Err.Number & " - " & Err.Description, vbCritical
+    Resume Sair
+End Sub
+
+Private Function LinhaValueList(ByRef rs As DAO.Recordset) As String
+    LinhaValueList = ValorLista(Format(Nz(rs!Data_Esc, ""), "dd/mm/yyyy")) & ";" & _
+                     ValorLista(Nz(rs!OPM_Nome, "")) & ";" & _
+                     ValorLista(Nz(rs!Composicao_Nome, "")) & ";" & _
+                     ValorLista(Nz(rs!Composicao_Cod, "")) & ";" & _
+                     ValorLista(Format(Nz(rs!Horario_Inicial, ""), "hh:nn")) & ";" & _
+                     ValorLista(Format(Nz(rs!Horario_Final, ""), "hh:nn")) & ";" & _
+                     Nz(rs!Atz_Superior, 0) & ";" & _
+                     Nz(rs!Atz_Intermed, 0) & ";" & _
+                     Nz(rs!Atz_Subalterno, 0) & ";" & _
+                     Nz(rs!Atz_Subten_Sgt, 0) & ";" & _
+                     Nz(rs!Atz_Cb_Sd, 0) & ";" & _
+                     ValorLista(SimboloStatusAdm(Nz(rs!Status_Adm, ""))) & ";" & _
+                     ValorLista(Nz(rs!ID_Escala, "")) & ";" & _
+                     ValorLista(Nz(rs!ID_Cadastro, "")) & ";" & _
+                     ValorLista(Nz(rs!Status_Adm, "")) & ";"
+End Function
+
+Private Function SimboloStatusAdm(ByVal vStatus As Variant) As String
+    Select Case CStr(Nz(vStatus, ""))
+        Case "1"
+            SimboloStatusAdm = ChrW(&H26A0)
+        Case "2"
+            SimboloStatusAdm = ChrW(&H274C)
+        Case "3"
+            SimboloStatusAdm = ChrW(&HD83C) & ChrW(&HDF10)
+        Case "4"
+            SimboloStatusAdm = ChrW(&H2714)
+        Case "5"
+            SimboloStatusAdm = ChrW(&HD83D) & ChrW(&HDCB2)
+        Case "6"
+            SimboloStatusAdm = ChrW(&H2753)
+        Case Else
+            SimboloStatusAdm = ""
+    End Select
+End Function
+
+Private Function ValorLista(ByVal v As Variant) As String
+    ValorLista = Replace(Nz(v, ""), ";", " ")
+End Function
+
+Private Function IDsSelecionados() As Collection
+    Dim col As New Collection
+    Dim varItem As Variant
+    Dim strChave As String
+    
+    For Each varItem In Me.lstEscalas.ItemsSelected
+        strChave = ChaveSelecionada(varItem)
+        If strChave <> "" Then col.Add strChave
+    Next
+    
+    Set IDsSelecionados = col
+End Function
+
+Private Function ChaveSelecionada(ByVal lngItem As Long) As String
+    Dim strIDCadastro As String
+    Dim strChave As String
+    
+    strIDCadastro = Trim(Nz(Me.lstEscalas.Column(13, lngItem), ""))
+    If strIDCadastro <> "" Then
+        ChaveSelecionada = "ID=" & strIDCadastro
+        Exit Function
+    End If
+    
+    strChave = Trim(Nz(Me.lstEscalas.Column(0, lngItem), "")) & "|" & _
+               Trim(Nz(Me.lstEscalas.Column(1, lngItem), "")) & "|" & _
+               Trim(Nz(Me.lstEscalas.Column(2, lngItem), "")) & "|" & _
+               Trim(Nz(Me.lstEscalas.Column(3, lngItem), "")) & "|" & _
+               Trim(Nz(Me.lstEscalas.Column(4, lngItem), "")) & "|" & _
+               Trim(Nz(Me.lstEscalas.Column(5, lngItem), "")) & "|" & _
+               Trim(Nz(Me.lstEscalas.Column(12, lngItem), "")) & "|" & _
+               Trim(Nz(Me.lstEscalas.Column(14, lngItem), ""))
+    
+    If Replace(strChave, "|", "") <> "" Then ChaveSelecionada = "KEY=" & strChave
+End Function
+
+Private Function StatusUnicoSelecionado() As String
+    Dim varItem As Variant
+    Dim strStatus As String
+    Dim strAtual As String
+    
+    For Each varItem In Me.lstEscalas.ItemsSelected
+        strAtual = Trim(Nz(Me.lstEscalas.Column(14, varItem), ""))
+        If strStatus = "" Then
+            strStatus = strAtual
+        ElseIf strStatus <> strAtual Then
+            StatusUnicoSelecionado = ""
+            Exit Function
+        End If
+    Next
+    
+    StatusUnicoSelecionado = strStatus
+End Function
+
+Private Function QuantidadesValidas() As Boolean
+    QuantidadesValidas = False
+    
+    If Not CampoQuantidadeValido(Me.txtAtzSuperior, "Superior") Then Exit Function
+    If Not CampoQuantidadeValido(Me.txtAtzIntermed, "Intermed") Then Exit Function
+    If Not CampoQuantidadeValido(Me.txtAtzSubalterno, "Subalterno") Then Exit Function
+    If Not CampoQuantidadeValido(Me.txtAtzSubtenSgt, "Subten/Sgt") Then Exit Function
+    If Not CampoQuantidadeValido(Me.txtAtzCbSd, "Cb/Sd") Then Exit Function
+    
+    QuantidadesValidas = True
+End Function
+
+Private Function CampoQuantidadeValido(ByVal ctl As Control, ByVal strNome As String) As Boolean
+    Dim strValor As String
+    
+    strValor = Trim(Nz(ctl.Value, ""))
+    If strValor = "" Then
+        CampoQuantidadeValido = True
+        Exit Function
+    End If
+    
+    If Not IsNumeric(strValor) Then
+        MsgBox "Quantidade invalida em " & strNome & ".", vbExclamation, "Quantidade"
+        ctl.SetFocus
+        Exit Function
+    End If
+    
+    If CLng(strValor) < 0 Then
+        MsgBox "Quantidade nao pode ser negativa em " & strNome & ".", vbExclamation, "Quantidade"
+        ctl.SetFocus
+        Exit Function
+    End If
+    
+    CampoQuantidadeValido = True
+End Function
+
+Private Function AtualizarQuantidadesLocais(ByVal colIDs As Collection, ByVal blnStatus3 As Boolean) As Long
+    Dim db As DAO.Database
+    Dim i As Long
+    Dim strSQL As String
+    Dim strSet As String
+    Dim strID As String
+    
+    Set db = CurrentDb
+    
+    strSet = SetQuantidadesSQL()
+    If blnStatus3 Then strSet = strSet & IIf(strSet <> "", ", ", "") & "Status_Adm = '3'"
+    strSet = strSet & IIf(strSet <> "", ", ", "") & "Alteracao = 1"
+    
+    For i = 1 To colIDs.Count
+        strID = CStr(colIDs(i))
+        If strSet <> "" Then
+            strSQL = "UPDATE TblEscGeral SET " & strSet & " WHERE " & WhereChaveSelecionada(strID)
+            db.Execute strSQL, dbFailOnError
+            AtualizarQuantidadesLocais = AtualizarQuantidadesLocais + db.RecordsAffected
+        End If
+    Next
+End Function
+
+Private Function SetQuantidadesSQL() As String
+    Dim strSet As String
+    
+    AddSetQuantidade strSet, "Atz_Superior", Me.txtAtzSuperior
+    AddSetQuantidade strSet, "Atz_Intermed", Me.txtAtzIntermed
+    AddSetQuantidade strSet, "Atz_Subalterno", Me.txtAtzSubalterno
+    AddSetQuantidade strSet, "Atz_Subten_Sgt", Me.txtAtzSubtenSgt
+    AddSetQuantidade strSet, "Atz_Cb_Sd", Me.txtAtzCbSd
+    
+    SetQuantidadesSQL = strSet
+End Function
+
+Private Sub AddSetQuantidade(ByRef strSet As String, ByVal strCampo As String, ByVal ctl As Control)
+    If strSet <> "" Then strSet = strSet & ", "
+    strSet = strSet & strCampo & " = " & ValorQuantidadeInformada(ctl)
+End Sub
+
+Private Function AtualizarStatusLocal(ByVal colIDs As Collection, ByVal strNovoStatus As String) As Long
+    Dim db As DAO.Database
+    Dim i As Long
+    Dim strSQL As String
+    
+    Set db = CurrentDb
+    
+    For i = 1 To colIDs.Count
+        strSQL = "UPDATE TblEscGeral SET Status_Adm = " & SQLTexto(strNovoStatus) & _
+                 ", Alteracao = 1 WHERE " & WhereChaveSelecionada(CStr(colIDs(i)))
+        db.Execute strSQL, dbFailOnError
+        AtualizarStatusLocal = AtualizarStatusLocal + db.RecordsAffected
+    Next
+End Function
+
+Private Function AtualizarStatusLocalLimparIDEscala(ByVal colIDs As Collection, ByVal strNovoStatus As String) As Long
+    Dim db As DAO.Database
+    Dim i As Long
+    Dim strSQL As String
+    
+    Set db = CurrentDb
+    
+    For i = 1 To colIDs.Count
+        strSQL = "UPDATE TblEscGeral SET " & _
+                 "Status_Adm = " & SQLTexto(strNovoStatus) & ", " & _
+                 "ID_Escala = Null, " & _
+                 "Alteracao = 1 " & _
+                 "WHERE " & WhereChaveSelecionada(CStr(colIDs(i)))
+        db.Execute strSQL, dbFailOnError
+        AtualizarStatusLocalLimparIDEscala = AtualizarStatusLocalLimparIDEscala + db.RecordsAffected
+    Next
+End Function
+
+Private Function SelecionadasPossuemIDEscala(ByVal colIDs As Collection) As Boolean
+    Dim i As Long
+    
+    For i = 1 To colIDs.Count
+        If IDEscalaDaChave(CStr(colIDs(i))) <> "" Then
+            SelecionadasPossuemIDEscala = True
+            Exit Function
+        End If
+    Next
+End Function
+
+Private Function SelecionadasCanceladasMesmoTipoIDEscala(ByVal colIDs As Collection) As Boolean
+    Dim i As Long
+    Dim lngComIDEscala As Long
+    Dim lngSemIDEscala As Long
+    
+    For i = 1 To colIDs.Count
+        If IDEscalaDaChave(CStr(colIDs(i))) <> "" Then
+            lngComIDEscala = lngComIDEscala + 1
+        Else
+            lngSemIDEscala = lngSemIDEscala + 1
+        End If
+    Next
+    
+    If lngComIDEscala > 0 And lngSemIDEscala > 0 Then
+        MsgBox "Para liberar Canceladas, selecione somente escalas do mesmo tipo:" & vbCrLf & vbCrLf & _
+               "- todas com ID_Escala preenchido; ou" & vbCrLf & _
+               "- todas com ID_Escala vazio." & vbCrLf & vbCrLf & _
+               "Não misture os dois tipos na mesma ação.", _
+               vbExclamation, "Liberar canceladas"
+        Exit Function
+    End If
+    
+    SelecionadasCanceladasMesmoTipoIDEscala = True
+End Function
+
+Private Function RegistrarMotivoReaberturaCanceladas(ByVal colIDs As Collection) As Boolean
+    Dim i As Long
+    Dim strIDEscala As String
+    Dim strWhereEscala As String
+    
+    RegistrarMotivoReaberturaCanceladas = False
+    
+    For i = 1 To colIDs.Count
+        strIDEscala = IDEscalaDaChave(CStr(colIDs(i)))
+        
+        If strIDEscala <> "" Then
+            strWhereEscala = WhereChaveSelecionada(CStr(colIDs(i)))
+            
+            DefinirTempVarLocal "AltCancOBSConfirmado", "0"
+            DefinirTempVarLocal "AltCancOBSWhere", strWhereEscala
+            DefinirTempVarLocal "AltCancOBSIDEscala", strIDEscala
+            
+            If Not AbrirFrmAltCancOBS(strIDEscala, strWhereEscala) Then Exit Function
+            
+            If Nz(TempVars("AltCancOBSConfirmado").Value, "0") <> "1" Then
+                MsgBox "Reabertura cancelada pelo usuario.", vbInformation, "Liberar canceladas"
+                Exit Function
+            End If
+        End If
+    Next
+    
+    RegistrarMotivoReaberturaCanceladas = True
+End Function
+
+Private Function AbrirFrmAltCancOBS(ByVal strIDEscala As String, ByVal strWhereEscala As String) As Boolean
+    On Error GoTo Erro
+    
+    DoCmd.OpenForm "frmAltCancOBS", , , , , acDialog, strIDEscala & vbTab & strWhereEscala
+    AbrirFrmAltCancOBS = True
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmAlterar.AbrirFrmAltCancOBS: " & Err.Number & " - " & Err.Description
+    Debug.Print "frmAlterar.AbrirFrmAltCancOBS - TempVars AltCancOBSIDEscala=" & Nz(TempVars("AltCancOBSIDEscala").Value, "") & _
+                " | AltCancOBSWhere=" & Nz(TempVars("AltCancOBSWhere").Value, "")
+    
+    If Err.Number = 2501 Then
+        MsgBox "O formulario de motivo de reabertura nao abriu." & vbCrLf & _
+               "Veja a Janela Imediata para os detalhes do ID_Escala e do filtro enviado.", _
+               vbExclamation, "Liberar canceladas"
+    Else
+        MsgBox "Erro ao abrir frmAltCancOBS: " & Err.Number & " - " & Err.Description, _
+               vbCritical, "Liberar canceladas"
+    End If
+End Function
+
+Private Sub DefinirTempVarLocal(ByVal strNome As String, ByVal strValor As String)
+    On Error Resume Next
+    TempVars.Remove strNome
+    On Error GoTo 0
+    TempVars.Add strNome, strValor
+End Sub
+
+Private Sub ExcluirEscalasIntranetSelecionadas(ByVal colIDs As Collection, ByVal strStatus As String, _
+                                               ByRef lngAtualizadas As Long)
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim driver As ChromeDriver
+    Dim por As New by
+    Dim i As Long
+    Dim strChave As String
+    Dim strSQL As String
+    Dim strLink As String
+    Dim strURLCad As String
+    Dim strIDEscala As String
+    Dim lngErr As Long
+    Dim strErr As String
+    
+    On Error GoTo Erro
+    
+    If Not TodasChavesComIDCadastro(colIDs) Then
+        Err.Raise vbObjectError + 810, "ExcluirEscalasIntranetSelecionadas", _
+                  "Para excluir na intranet, todas as escalas selecionadas precisam ter ID_Cadastro preenchido."
+    End If
+    
+    strLink = LinkUsuarioLogado()
+    If strLink = "" Then
+        Err.Raise vbObjectError + 811, "ExcluirEscalasIntranetSelecionadas", _
+                  "Link do usuario logado nao encontrado."
+    End If
+    
+    strURLCad = URL_CAD_ESCALA & strLink
+    
+    Set db = CurrentDb
+    Set driver = New ChromeDriver
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Excluindo escala(s) na Intranet... aguarde."
+    
+    With driver
+        .Start
+        .Window.Maximize
+        .Get strURLCad
+        Pausar 2
+    End With
+    
+    For i = 1 To colIDs.Count
+        strChave = CStr(colIDs(i))
+        strSQL = "SELECT ID_Cadastro, ID_Escala, Status_Adm FROM TblEscGeral WHERE " & WhereChaveSelecionada(strChave)
+        Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+        
+        If rs.EOF Then
+            Err.Raise vbObjectError + 812, "ExcluirEscalasIntranetSelecionadas", _
+                      "Escala selecionada nao encontrada na TblEscGeral."
+        End If
+        
+        strIDEscala = Trim(Nz(rs!ID_Escala, ""))
+        If strIDEscala = "" Or strIDEscala = "0" Then
+            Err.Raise vbObjectError + 813, "ExcluirEscalasIntranetSelecionadas", _
+                      "Escala sem ID_Escala. Nao e possivel localizar na intranet."
+        End If
+        
+        rs.Close
+        Set rs = Nothing
+        
+        If ExcluirEscalaIntranet(driver, por, strIDEscala, strStatus) Then
+            strSQL = "UPDATE TblEscGeral SET Status_Adm = '2', Alteracao = 1 WHERE " & WhereChaveSelecionada(strChave)
+            db.Execute strSQL, dbFailOnError
+            lngAtualizadas = lngAtualizadas + db.RecordsAffected
+        End If
+    Next
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    If Not driver Is Nothing Then driver.Quit
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Set rs = Nothing
+    Set db = Nothing
+    Set driver = Nothing
+    Exit Sub
+    
+Erro:
+    lngErr = Err.Number
+    strErr = Err.Description
+    Debug.Print "Erro frmAlterar.ExcluirEscalasIntranetSelecionadas: " & Err.Number & " - " & Err.Description
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    If Not driver Is Nothing Then driver.Quit
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Set rs = Nothing
+    Set db = Nothing
+    Set driver = Nothing
+    On Error GoTo 0
+    Err.Raise lngErr, "ExcluirEscalasIntranetSelecionadas", strErr
+End Sub
+
+Private Function ExcluirEscalaIntranet(ByRef driver As ChromeDriver, ByRef por As by, _
+                                       ByVal strIDEscala As String, ByVal strStatus As String) As Boolean
+    Dim resposta As VbMsgBoxResult
+    
+    On Error GoTo Erro
+    
+    PesquisarEscalaParaExclusao driver, por, strIDEscala
+    
+    resposta = MsgBox("Confirma excluir a escala " & strIDEscala & " da intranet?", _
+                      vbQuestion + vbYesNo, "Confirmar exclusao")
+    If resposta = vbNo Then Exit Function
+    
+    Stop
+    driver.FindElement(por.xpath("//*[@id='vDLT_0001']")).Click
+    driver.SwitchToAlert.Accept
+    Pausar 1
+    AguardarAjaxCancel driver, por, 30
+    
+    ExcluirEscalaIntranet = True
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmAlterar.ExcluirEscalaIntranet: " & Err.Number & " - " & Err.Description
+    Err.Raise Err.Number, "ExcluirEscalaIntranet", Err.Description
+End Function
+
+Private Sub PesquisarEscalaParaExclusao(ByRef driver As ChromeDriver, ByRef por As by, _
+                                        ByVal strIDEscala As String)
+    LimparEnviarPorNameCancel driver, por, "vESCOPRIDFFIL", strIDEscala
+    driver.FindElement(por.Name("IMAGE4")).Click
+    Pausar 0.5
+    AguardarAjaxCancel driver, por, 30
+End Sub
+
+Private Sub LimparEnviarPorNameCancel(ByRef driver As ChromeDriver, ByRef por As by, _
+                                      ByVal strName As String, ByVal vValor As Variant)
+    With driver.FindElement(por.Name(strName))
+        .Click
+        .Clear
+        .SendKeys CStr(Nz(vValor, ""))
+    End With
+End Sub
+
+Private Sub AguardarAjaxCancel(ByRef driver As ChromeDriver, ByRef por As by, ByVal lngTempoMax As Long)
+    Dim i As Long
+    
+    On Error Resume Next
+    
+    For i = 1 To lngTempoMax
+        Err.Clear
+        If driver.FindElement(por.id("gx_ajax_notification")).IsDisplayed = False Then Exit Sub
+        Pausar 1
+    Next
+    
+    If Err.Number <> 0 Then Err.Clear
+End Sub
+
+Private Sub Pausar(ByVal segundos As Double)
+    Dim inicio As Double
+    Dim decorrido As Double
+    
+    inicio = Timer
+    
+    Do
+        If Timer >= inicio Then
+            decorrido = Timer - inicio
+        Else
+            decorrido = (86400 - inicio) + Timer
+        End If
+        DoEvents
+    Loop While decorrido < segundos
+End Sub
+
+Private Function QuantidadesRespeitamEscalados(ByVal colIDs As Collection) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim i As Long
+    Dim strSQL As String
+    Dim strID As String
+    
+    Set db = CurrentDb
+    QuantidadesRespeitamEscalados = False
+    
+    For i = 1 To colIDs.Count
+        strID = CStr(colIDs(i))
+        strSQL = "SELECT ID_Cadastro, " & _
+                 "Atz_Superior, Atz_Intermed, Atz_Subalterno, Atz_Subten_Sgt, Atz_Cb_Sd, " & _
+                 "Esc_Superior, Esc_Intermed, Esc_Subalterno, Esc_Subten_Sgt, Esc_Cb_Sd " & _
+                 "FROM TblEscGeral WHERE " & WhereChaveSelecionada(strID)
+        Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+        
+        If Not rs.EOF Then
+            If ValorFinalQtde(Me.txtAtzSuperior, rs!Atz_Superior) < Nz(rs!Esc_Superior, 0) Or _
+               ValorFinalQtde(Me.txtAtzIntermed, rs!Atz_Intermed) < Nz(rs!Esc_Intermed, 0) Or _
+               ValorFinalQtde(Me.txtAtzSubalterno, rs!Atz_Subalterno) < Nz(rs!Esc_Subalterno, 0) Or _
+               ValorFinalQtde(Me.txtAtzSubtenSgt, rs!Atz_Subten_Sgt) < Nz(rs!Esc_Subten_Sgt, 0) Or _
+               ValorFinalQtde(Me.txtAtzCbSd, rs!Atz_Cb_Sd) < Nz(rs!Esc_Cb_Sd, 0) Then
+                MsgBox "A escala " & strID & " possui quantidade escalada maior que a nova quantidade autorizada.", _
+                       vbExclamation, "Quantidade invalida"
+                rs.Close
+                Exit Function
+            End If
+        End If
+        
+        rs.Close
+        Set rs = Nothing
+    Next
+    
+    QuantidadesRespeitamEscalados = True
+End Function
+
+Private Function ValorFinalQtde(ByVal ctl As Control, ByVal vAtual As Variant) As Long
+    ValorFinalQtde = ValorQuantidadeInformada(ctl)
+End Function
+
+Private Function ValorQuantidadeInformada(ByVal ctl As Control) As Long
+    If Trim(Nz(ctl.Value, "")) = "" Then
+        ValorQuantidadeInformada = 0
+    Else
+        ValorQuantidadeInformada = CLng(ctl.Value)
+    End If
+End Function
+
+Private Sub SalvarTempVarsAlteracao(ByVal colIDs As Collection, ByVal strStatus As String)
+    Dim i As Long
+    Dim strIDs As String
+    
+    For i = 1 To colIDs.Count
+        If strIDs <> "" Then strIDs = strIDs & ","
+        strIDs = strIDs & IDCadastroDaChave(CStr(colIDs(i)))
+    Next
+    
+    SetTempVar "AltIDs", strIDs
+    SetTempVar "AltStatusAdm", strStatus
+    SetTempVar "AltAtzSuperior", CStr(ValorQuantidadeInformada(Me.txtAtzSuperior))
+    SetTempVar "AltAtzIntermed", CStr(ValorQuantidadeInformada(Me.txtAtzIntermed))
+    SetTempVar "AltAtzSubalterno", CStr(ValorQuantidadeInformada(Me.txtAtzSubalterno))
+    SetTempVar "AltAtzSubtenSgt", CStr(ValorQuantidadeInformada(Me.txtAtzSubtenSgt))
+    SetTempVar "AltAtzCbSd", CStr(ValorQuantidadeInformada(Me.txtAtzCbSd))
+End Sub
+
+Private Sub SetTempVar(ByVal strNome As String, ByVal strValor As String)
+    On Error Resume Next
+    TempVars.Remove strNome
+    On Error GoTo 0
+    TempVars.Add strNome, strValor
+End Sub
+
+Private Function StatusPermitido(ByVal vStatus As Variant, ByVal strPermitidos As String) As Boolean
+    Dim arr() As String
+    Dim i As Long
+    Dim strStatus As String
+    
+    strStatus = Trim(Nz(vStatus, ""))
+    arr = Split(strPermitidos, ",")
+    
+    For i = LBound(arr) To UBound(arr)
+        If Trim(arr(i)) = strStatus Then
+            StatusPermitido = True
+            Exit Function
+        End If
+    Next
+End Function
+
+Private Sub MostrarCamposQtde(ByVal blnMostrar As Boolean)
+    On Error Resume Next
+    Me.lblInfo.Visible = blnMostrar
+    Me.lblSup.Visible = blnMostrar
+    Me.lblCap.Visible = blnMostrar
+    Me.lblTen.Visible = blnMostrar
+    Me.lblSgt.Visible = blnMostrar
+    Me.lblCbSd.Visible = blnMostrar
+    Me.txtAtzSuperior.Visible = blnMostrar
+    Me.txtAtzIntermed.Visible = blnMostrar
+    Me.txtAtzSubalterno.Visible = blnMostrar
+    Me.txtAtzSubtenSgt.Visible = blnMostrar
+    Me.txtAtzCbSd.Visible = blnMostrar
+    On Error GoTo 0
+End Sub
+
+Private Sub MostrarBotoesAcao(ByVal blnQtde As Boolean, ByVal blnCancel As Boolean, ByVal blnIntr As Boolean)
+    On Error Resume Next
+    Me.btnConfirmarQtde.Visible = blnQtde
+    Me.btnConfirmarCancel.Visible = blnCancel
+    Me.btnConfirmarIntranet.Visible = blnIntr
+    On Error GoTo 0
+End Sub
+
+Private Sub PintarBotoesModo(ByVal strModo As String)
+    Me.btnAlterarQtde.Enabled = (strModo <> MODO_QTDE)
+    Me.btnAlterarQtde.BackColor = IIf(strModo = MODO_QTDE, RGB(118, 164, 246), RGB(34, 60, 108))
+    Me.btnAlterarQtde.ForeColor = IIf(strModo = MODO_QTDE, RGB(255, 255, 255), RGB(255, 255, 255))
+    
+    Me.btnAlterarCancel.Enabled = (strModo <> MODO_CANCEL)
+    Me.btnAlterarCancel.BackColor = IIf(strModo = MODO_CANCEL, RGB(118, 164, 246), RGB(34, 60, 108))
+    Me.btnAlterarCancel.ForeColor = IIf(strModo = MODO_CANCEL, RGB(255, 255, 255), RGB(255, 255, 255))
+    
+    Me.btnAlterarIntranet.Enabled = (strModo <> MODO_INTR)
+    Me.btnAlterarIntranet.BackColor = IIf(strModo = MODO_INTR, RGB(118, 164, 246), RGB(34, 60, 108))
+    Me.btnAlterarIntranet.ForeColor = IIf(strModo = MODO_INTR, RGB(255, 255, 255), RGB(255, 255, 255))
+End Sub
+
+Private Sub LimparCamposQtde()
+    On Error Resume Next
+    Me.txtAtzSuperior = Null
+    Me.txtAtzIntermed = Null
+    Me.txtAtzSubalterno = Null
+    Me.txtAtzSubtenSgt = Null
+    Me.txtAtzCbSd = Null
+    On Error GoTo 0
+End Sub
+
+Private Function ObterSubformLinhaEscalas() As Form
+    Dim frmEscalas As Form
+    
+    On Error Resume Next
+    
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Set frmEscalas = Forms!frmApp!frmNavegar.Form
+        If Not frmEscalas Is Nothing Then
+            If frmEscalas.Name <> "frmEscalas" Then Set frmEscalas = Nothing
+        End If
+    End If
+    
+    If frmEscalas Is Nothing Then
+        If CurrentProject.AllForms("frmEscalas").IsLoaded Then Set frmEscalas = Forms!frmEscalas
+    End If
+    
+    If frmEscalas Is Nothing Then Exit Function
+    
+    Set ObterSubformLinhaEscalas = frmEscalas.Controls("sfrmLinhaEscala").Form
+    If ObterSubformLinhaEscalas Is Nothing Then
+        Set ObterSubformLinhaEscalas = frmEscalas.Controls("sfrmLinhaEscalas").Form
+    End If
+    
+    On Error GoTo 0
+End Function
+
+Private Sub AtualizarFrmEscalas()
+    On Error Resume Next
+    If CurrentProject.AllForms("frmEscalas").IsLoaded Then
+        Forms!frmEscalas.Requery
+        Forms!frmEscalas.Refresh
+        Forms!frmEscalas.btnFiltrar_Click
+    End If
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Forms!frmApp!frmNavegar.Form.btnFiltrar_Click
+    End If
+    On Error GoTo 0
+End Sub
+
+Private Function TodasChavesComIDCadastro(ByVal colIDs As Collection) As Boolean
+    Dim i As Long
+    
+    TodasChavesComIDCadastro = True
+    For i = 1 To colIDs.Count
+        If IDCadastroDaChave(CStr(colIDs(i))) = "" Then
+            TodasChavesComIDCadastro = False
+            Exit Function
+        End If
+    Next
+End Function
+
+Private Function IDCadastroDaChave(ByVal strChave As String) As String
+    If Left(strChave, 3) = "ID=" Then
+        IDCadastroDaChave = Mid(strChave, 4)
+    Else
+        IDCadastroDaChave = ""
+    End If
+End Function
+
+Private Function IDEscalaDaChave(ByVal strChave As String) As String
+    Dim arr() As String
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Sair
+    
+    If Left(strChave, 4) = "KEY=" Then
+        arr = Split(Mid(strChave, 5), "|")
+        If UBound(arr) >= 6 Then IDEscalaDaChave = Trim(Nz(arr(6), ""))
+        Exit Function
+    End If
+    
+    If Left(strChave, 3) = "ID=" Then
+        strSQL = "SELECT ID_Escala FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(Mid(strChave, 4))
+        Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+        If Not rs.EOF Then IDEscalaDaChave = Trim(Nz(rs!ID_Escala, ""))
+    End If
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+End Function
+
+Private Function WhereChaveSelecionada(ByVal strChave As String) As String
+    Dim arr() As String
+    Dim strWhere As String
+    
+    If Left(strChave, 3) = "ID=" Then
+        WhereChaveSelecionada = "ID_Cadastro = " & SQLTexto(Mid(strChave, 4))
+        Exit Function
+    End If
+    
+    If Left(strChave, 4) <> "KEY=" Then
+        WhereChaveSelecionada = "1=0"
+        Exit Function
+    End If
+    
+    arr = Split(Mid(strChave, 5), "|")
+    If UBound(arr) < 7 Then
+        WhereChaveSelecionada = "1=0"
+        Exit Function
+    End If
+    
+    strWhere = "Data_Esc = " & SQLDataBr(arr(0)) & _
+               " AND OPM_Nome = " & SQLTexto(arr(1)) & _
+               " AND Composicao_Nome = " & SQLTexto(arr(2)) & _
+               " AND Composicao_Cod = " & SQLTexto(arr(3)) & _
+               " AND Horario_Inicial = " & SQLHoraBr(arr(4)) & _
+               " AND Status_Adm = " & SQLTexto(arr(7))
+    
+    If Trim(arr(5)) <> "" Then
+        strWhere = strWhere & " AND Horario_Final = " & SQLHoraBr(arr(5))
+    End If
+    
+    If Trim(arr(6)) <> "" Then
+        strWhere = strWhere & " AND ID_Escala = " & SQLTexto(arr(6))
+    End If
+    
+    WhereChaveSelecionada = strWhere
+End Function
+
+Private Function SQLDataBr(ByVal strData As String) As String
+    Dim partes() As String
+    
+    partes = Split(strData, "/")
+    If UBound(partes) = 2 Then
+        SQLDataBr = "#" & partes(2) & "-" & partes(1) & "-" & partes(0) & "#"
+    Else
+        SQLDataBr = "Null"
+    End If
+End Function
+
+Private Function SQLHoraBr(ByVal strHora As String) As String
+    Dim partes() As String
+    
+    strHora = Trim(strHora)
+    partes = Split(strHora, ":")
+    
+    If UBound(partes) >= 1 Then
+        SQLHoraBr = "#" & Right("00" & partes(0), 2) & ":" & Right("00" & partes(1), 2) & ":00#"
+    Else
+        SQLHoraBr = "Null"
+    End If
+End Function
+
+Private Function SQLTexto(ByVal v As Variant) As String
+    SQLTexto = "'" & Replace(Nz(v, ""), "'", "''") & "'"
+End Function

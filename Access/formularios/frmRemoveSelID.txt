@@ -1,0 +1,127 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Form_Load()
+    ConfigurarLista
+    CarregarLista
+End Sub
+
+Private Sub ConfigurarLista()
+    On Error Resume Next
+    Me.lstEscalas.RowSourceType = "Value List"
+    Me.lstEscalas.ColumnCount = 14
+    Me.lstEscalas.BoundColumn = 13
+    Me.lstEscalas.ColumnWidths = "2.5cm;4cm;4.5cm;1.3cm;1.3cm;1.3cm;0.8cm;0.8cm;0.8cm;0.8cm;0.8cm;1.1cm;1.5cm;0cm"
+    Me.lstEscalas.MultiSelect = 0
+    On Error GoTo 0
+End Sub
+
+Private Sub CarregarLista()
+    Dim frmSub As Form
+    Dim rs As DAO.Recordset
+    Dim strLista As String
+    Dim lngTotal As Long
+    
+    On Error GoTo Erro
+    
+    Set frmSub = ObterSubformLinhaEscala()
+    If frmSub Is Nothing Then
+        MsgBox "Nao foi possivel localizar o sfrmLinhaEscala.", vbExclamation, "Remover militar"
+        Exit Sub
+    End If
+    
+    Set rs = frmSub.RecordsetClone
+    If rs.BOF And rs.EOF Then GoTo Sair
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If StatusPermitido(Nz(rs!Status_Adm, "")) Then
+            strLista = strLista & LinhaValueList(rs)
+            lngTotal = lngTotal + 1
+        End If
+        rs.MoveNext
+    Loop
+    
+Sair:
+    On Error Resume Next
+    Me.lstEscalas.RowSource = strLista
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    
+    If lngTotal = 0 Then
+        MsgBox "Nenhuma escala exibida com Status_Adm 4 ou 6 foi encontrada.", _
+               vbInformation, "Remover militar"
+        DoCmd.Close acForm, Me.Name
+    End If
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmRemoveSelID.CarregarLista: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar escalas: " & Err.Number & " - " & Err.Description, vbCritical
+    Resume Sair
+End Sub
+
+Private Function LinhaValueList(ByRef rs As DAO.Recordset) As String
+    LinhaValueList = ValorLista(Format(Nz(rs!Data_Esc, ""), "dd/mm/yyyy")) & ";" & _
+                     ValorLista(Nz(rs!OPM_Nome, "")) & ";" & _
+                     ValorLista(Nz(rs!Composicao_Nome, "")) & ";" & _
+                     ValorLista(Nz(rs!Composicao_Cod, "")) & ";" & _
+                     ValorLista(Format(Nz(rs!Horario_Inicial, ""), "hh:nn")) & ";" & _
+                     ValorLista(Format(Nz(rs!Horario_Final, ""), "hh:nn")) & ";" & _
+                     Nz(rs!Esc_Superior, 0) & ";" & _
+                     Nz(rs!Esc_Intermed, 0) & ";" & _
+                     Nz(rs!Esc_Subalterno, 0) & ";" & _
+                     Nz(rs!Esc_Subten_Sgt, 0) & ";" & _
+                     Nz(rs!Esc_Cb_Sd, 0) & ";" & _
+                     ValorLista(Nz(rs!Status_Adm, "")) & ";" & _
+                     ValorLista(Nz(rs!ID_Escala, "")) & ";" & _
+                     ValorLista(Nz(rs!ID_Cadastro, "")) & ";"
+End Function
+
+Private Sub lstEscalas_DblClick(Cancel As Integer)
+    Dim strIDEscala As String
+    
+    strIDEscala = Trim(Nz(Me.lstEscalas.Column(12), ""))
+    
+    If strIDEscala = "" Then
+        MsgBox "Escala sem ID_Escala.", vbExclamation, "Remover militar"
+        Exit Sub
+    End If
+    
+    DoCmd.OpenForm "frmRemoveSelMil", , , , , acDialog, strIDEscala
+    DoCmd.Close acForm, Me.Name
+End Sub
+
+Private Function StatusPermitido(ByVal vStatus As Variant) As Boolean
+    StatusPermitido = (Trim(Nz(vStatus, "")) = "4" Or Trim(Nz(vStatus, "")) = "6")
+End Function
+
+Private Function ValorLista(ByVal v As Variant) As String
+    ValorLista = Replace(Nz(v, ""), ";", " ")
+End Function
+
+Private Function ObterSubformLinhaEscala() As Form
+    Dim frmEscalas As Form
+    
+    On Error Resume Next
+    
+    If CurrentProject.AllForms("frmApp").IsLoaded Then
+        Set frmEscalas = Forms!frmApp!frmNavegar.Form
+        If Not frmEscalas Is Nothing Then
+            If frmEscalas.Name <> "frmEscalas" Then Set frmEscalas = Nothing
+        End If
+    End If
+    
+    If frmEscalas Is Nothing Then
+        If CurrentProject.AllForms("frmEscalas").IsLoaded Then Set frmEscalas = Forms!frmEscalas
+    End If
+    
+    If frmEscalas Is Nothing Then Exit Function
+    
+    Set ObterSubformLinhaEscala = frmEscalas.Controls("sfrmLinhaEscala").Form
+    If ObterSubformLinhaEscala Is Nothing Then
+        Set ObterSubformLinhaEscala = frmEscalas.Controls("sfrmLinhaEscalas").Form
+    End If
+    
+    On Error GoTo 0
+End Function

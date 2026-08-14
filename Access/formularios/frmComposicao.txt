@@ -1,0 +1,1318 @@
+Option Compare Database
+Option Explicit
+
+' Variáveis globais para controle
+Private mblnEditMode As Boolean
+Private mblnIncludeMode As Boolean
+Private mlngEditID As Long
+Private mstrModoSalvar As String
+Private mblnAlteracoesNaoSalvas As Boolean
+
+'-----------------------------------------------------------
+' Eventos do Formulário
+'-----------------------------------------------------------
+
+Private Sub Form_Load()
+    On Error GoTo Erro_Form_Load
+    
+    Call InicializarFormulario
+    Call CarregarLista
+    
+    Exit Sub
+    
+Erro_Form_Load:
+    MsgBox "Erro ao carregar formulário: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub Form_Current()
+    If Not EstaEmOperacao() Then
+        If Not IsNull(Me.lstComposicao) Then
+            Call HabilitarBotoesMovimento
+        End If
+    End If
+End Sub
+
+Private Sub Form_Unload(Cancel As Integer)
+    If EstaEmOperacao() Then
+        If MsgBox("Existe uma operação de edição/inclusão em andamento." & vbCrLf & _
+                  "Se fechar agora, as alterações não salvas serão perdidas." & vbCrLf & vbCrLf & _
+                  "Deseja fechar mesmo assim?", _
+                  vbYesNo + vbExclamation, "Alterações não salvas") = vbNo Then
+            Cancel = True
+            Exit Sub
+        End If
+    End If
+    
+    mblnEditMode = False
+    mblnIncludeMode = False
+    mlngEditID = 0
+    mstrModoSalvar = ""
+    mblnAlteracoesNaoSalvas = False
+End Sub
+
+Private Sub Form_KeyDown(KeyCode As Integer, Shift As Integer)
+    If KeyCode = vbKeyEscape Then
+        If EstaEmOperacao() Then
+            Call btnLimpar_Click
+            KeyCode = 0
+        End If
+    End If
+End Sub
+
+'-----------------------------------------------------------
+' Inicialização e Configuração
+'-----------------------------------------------------------
+
+Private Sub InicializarFormulario()
+    On Error GoTo Erro_Inicializar
+    
+    mblnEditMode = False
+    mblnIncludeMode = False
+    mlngEditID = 0
+    mstrModoSalvar = ""
+    mblnAlteracoesNaoSalvas = False
+    
+    ' Configurar Combobox LOCAL
+    With Me.cboLOCAL
+        .RowSourceType = "Table/Query"
+        .RowSource = "SELECT [LOCAL] FROM [TblOPM_Nome] ORDER BY [OPM]"
+        .ColumnCount = 1
+        .BoundColumn = 1
+        .LimitToList = True
+    End With
+    
+    ' Configurar Combobox COMPOSIÇÃO
+    With Me.cboCOMPOSICAO
+        .RowSourceType = "Table/Query"
+        .RowSource = "SELECT [Composicao_Nome] FROM [TblComposicao_Nome] ORDER BY [Composicao_Nome]"
+        .ColumnCount = 1
+        .BoundColumn = 1
+        .LimitToList = True
+    End With
+    
+    ' Configurar Lista
+    With Me.lstComposicao
+        .RowSourceType = "Table/Query"
+        .Enabled = True
+    End With
+    
+    Call LimparCampos
+    Call ConfigurarCamposModoConsulta
+    Call AplicarEstadoInicial
+    
+    Exit Sub
+    
+Erro_Inicializar:
+    MsgBox "Erro ao inicializar: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Function EstaEmOperacao() As Boolean
+    EstaEmOperacao = (Len(Trim$(mstrModoSalvar & "")) > 0)
+End Function
+
+Private Sub AplicarEstadoInicial()
+    On Error Resume Next
+    
+    Me.lstComposicao.Enabled = True
+    
+    Me.btnEditar.Visible = True
+    Me.btnIncluir.Visible = True
+    Me.btnSalvar.Visible = False
+    Me.btnLimpar.Visible = False
+    
+    On Error GoTo 0
+    
+    Call HabilitarBotoesMovimento
+End Sub
+
+Private Sub AplicarEstadoOperacao()
+    On Error Resume Next
+    
+    Me.btnMovAcima.Enabled = False
+    Me.btnMovAbaixo.Enabled = False
+    
+    Me.btnEditar.Visible = False
+    Me.btnIncluir.Visible = False
+    Me.btnSalvar.Visible = True
+    Me.btnLimpar.Visible = True
+    
+    ' Congela a lista enquanto estiver editando/incluindo
+    Me.lstComposicao.Enabled = False
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub EncerrarOperacao(Optional ByVal blnRecarregarLista As Boolean = True, Optional ByVal lngSelecionarID As Long = 0)
+    On Error GoTo Erro_EncerrarOperacao
+    
+    Me.lstComposicao.Enabled = True
+    Me.lstComposicao.SetFocus
+    DoEvents
+    
+    mblnEditMode = False
+    mblnIncludeMode = False
+    mlngEditID = 0
+    mstrModoSalvar = ""
+    mblnAlteracoesNaoSalvas = False
+    
+    Call ConfigurarCamposModoConsulta
+    Call LimparCampos
+    
+    If blnRecarregarLista Then
+        Call CarregarLista
+    End If
+    
+    Call AplicarEstadoInicial
+    
+    If lngSelecionarID > 0 Then
+        Call SelecionarRegistroPorID(lngSelecionarID)
+    End If
+    
+    Call HabilitarBotoesMovimento
+    
+    Exit Sub
+    
+Erro_EncerrarOperacao:
+    On Error Resume Next
+    
+    mblnEditMode = False
+    mblnIncludeMode = False
+    mlngEditID = 0
+    mstrModoSalvar = ""
+    mblnAlteracoesNaoSalvas = False
+    
+    Me.lstComposicao.Enabled = True
+    Me.btnEditar.Visible = True
+    Me.btnIncluir.Visible = True
+    Me.btnSalvar.Visible = False
+    Me.btnLimpar.Visible = False
+End Sub
+
+Private Sub ConfigurarCamposModoConsulta()
+    ' Fora de edição/inclusão, os campos ficam bloqueados
+    Me.txtOPM.Locked = True
+    Me.cboCOMPOSICAO.Locked = True
+    
+    Me.cboLOCAL.Locked = True
+    Me.txtTIPO.Locked = True
+    Me.txtDESCRICAO.Locked = True
+    Me.txtEPI.Locked = True
+    Me.txtOBS.Locked = True
+    Me.txtAISP.Locked = True
+    Me.txtCODIGO.Locked = True
+    Me.txtCONVENIO.Locked = True
+    Me.txtOPM_RESP.Locked = True
+End Sub
+
+Private Sub ConfigurarCamposModoInclusao()
+    ' Campos que NÃO podem ser editados em modo inclusão
+    Me.txtOPM.Locked = True
+    Me.txtTIPO.Locked = True
+    Me.txtDESCRICAO.Locked = True
+    
+    ' Campos que podem ser editados em modo inclusão
+    Me.txtEPI.Locked = False
+    Me.txtOBS.Locked = False
+    Me.txtAISP.Locked = False
+    Me.txtCODIGO.Locked = False
+    Me.txtCONVENIO.Locked = False
+    Me.txtOPM_RESP.Locked = False
+    
+    ' Combobox habilitados em inclusão
+    Me.cboLOCAL.Locked = False
+    Me.cboCOMPOSICAO.Locked = False
+End Sub
+
+Private Sub ConfigurarCamposModoEdicao()
+    ' Campos que podem ser editados em modo edição
+    Me.txtEPI.Locked = False
+    Me.txtOBS.Locked = False
+    Me.txtAISP.Locked = False
+    Me.txtCODIGO.Locked = False
+    Me.txtCONVENIO.Locked = False
+    Me.txtOPM_RESP.Locked = False
+    
+    ' Campos que NÃO podem ser editados em modo edição
+    Me.txtOPM.Locked = True
+    Me.cboCOMPOSICAO.Locked = True
+    Me.cboLOCAL.Locked = True
+    Me.txtTIPO.Locked = True
+    Me.txtDESCRICAO.Locked = True
+End Sub
+
+Private Sub CarregarLista()
+    On Error GoTo Erro_CarregarLista
+    
+    Dim strSQL As String
+    
+    strSQL = "SELECT [ID], [OPM], [CODIGO], [LOCAL], [COMPOSIÇÃO], [DESCRIÇÃO], [TIPO], [EPI], [OBS], [AISP], [Convênio], [OPM RESP] " & _
+             "FROM [TblComposicao] ORDER BY [ID]"
+    
+    Me.lstComposicao.RowSource = ""
+    Me.lstComposicao.RowSource = strSQL
+    Me.lstComposicao.Requery
+    
+    Exit Sub
+    
+Erro_CarregarLista:
+    MsgBox "Erro ao carregar lista: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub SelecionarRegistroPorID(ByVal lngID As Long)
+    On Error Resume Next
+    
+    Dim i As Long
+    
+    For i = 0 To Me.lstComposicao.ListCount - 1
+        Me.lstComposicao.Selected(i) = False
+    Next i
+    
+    For i = 0 To Me.lstComposicao.ListCount - 1
+        If CLng(Me.lstComposicao.Column(0, i)) = lngID Then
+            Me.lstComposicao.Selected(i) = True
+            Exit For
+        End If
+    Next i
+    
+    On Error GoTo 0
+End Sub
+
+'-----------------------------------------------------------
+' Eventos dos Combobox
+'-----------------------------------------------------------
+
+Private Sub cboLOCAL_AfterUpdate()
+    On Error GoTo Erro_cboLOCAL
+    
+    If Not IsNull(Me.cboLOCAL) Then
+        Dim strLOCAL As String
+        strLOCAL = Me.cboLOCAL.Value
+        
+        Dim rs As DAO.Recordset
+        Set rs = CurrentDb.OpenRecordset("SELECT [OPM], [GB], [SGB], [PB], [EB] FROM [TblOPM_Nome] WHERE [LOCAL] = " & SQLTexto(strLOCAL))
+        
+        If Not rs.EOF Then
+            Me.txtOPM = rs![OPM] & ""
+            Me.cboLOCAL.Tag = rs![GB] & " " & rs![SGB] & " " & rs![PB] & " " & rs![EB]
+        Else
+            Me.txtOPM = ""
+            Me.cboLOCAL.Tag = ""
+        End If
+        
+        rs.Close
+        Set rs = Nothing
+        
+        Call AtualizarDescricao
+    End If
+    
+    Exit Sub
+    
+Erro_cboLOCAL:
+    MsgBox "Erro ao buscar dados da OPM: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub cboCOMPOSICAO_AfterUpdate()
+    On Error GoTo Erro_cboCOMPOSICAO
+    
+    If Not IsNull(Me.cboCOMPOSICAO) Then
+        Dim strComposicao As String
+        strComposicao = Me.cboCOMPOSICAO.Value
+        
+        Dim rs As DAO.Recordset
+        Set rs = CurrentDb.OpenRecordset("SELECT [TIPO] FROM [TblComposicao_Nome] WHERE [Composicao_Nome] = '" & Replace(strComposicao, "'", "''") & "'")
+        
+        If Not rs.EOF Then
+            Me.txtTIPO = rs![TIPO] & ""
+        Else
+            Me.txtTIPO = ""
+        End If
+        
+        rs.Close
+        Set rs = Nothing
+        
+        Call AtualizarDescricao
+    End If
+    
+    Exit Sub
+    
+Erro_cboCOMPOSICAO:
+    MsgBox "Erro ao buscar dados da Composição: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub AtualizarDescricao()
+    If Not IsNull(Me.cboLOCAL) And Not IsNull(Me.cboCOMPOSICAO) Then
+        Me.txtDESCRICAO = Me.cboLOCAL.Tag & " " & Me.cboCOMPOSICAO.Value
+    End If
+End Sub
+
+'-----------------------------------------------------------
+' Eventos da Lista
+'-----------------------------------------------------------
+
+Private Sub lstComposicao_Click()
+    If EstaEmOperacao() Then
+        Exit Sub
+    End If
+    
+    Call HabilitarBotoesMovimento
+End Sub
+
+Private Sub lstComposicao_DblClick(Cancel As Integer)
+    ' O duplo clique foi desativado porque a edição agora será feita pelo btnEditar
+    Cancel = True
+End Sub
+
+Private Sub AtivarModoEdicao()
+    On Error GoTo Erro_AtivarEdicao
+    
+    If EstaEmOperacao() Then
+        MsgBox "Já existe uma operação em andamento. Salve ou cancele antes de continuar.", vbExclamation, "Operação em andamento"
+        Exit Sub
+    End If
+    
+    If Me.lstComposicao.ListCount = 0 Then
+        MsgBox "A lista está vazia.", vbExclamation, "Edição"
+        Exit Sub
+    End If
+    
+    If Me.lstComposicao.ItemsSelected.Count <> 1 Then
+        MsgBox "Selecione somente um item da lista para editar.", vbExclamation, "Edição"
+        Exit Sub
+    End If
+    
+    Dim varItem As Variant
+    Dim lngLinhaSelecionada As Long
+    
+    For Each varItem In Me.lstComposicao.ItemsSelected
+        lngLinhaSelecionada = CLng(varItem)
+        Exit For
+    Next varItem
+    
+    Dim varID As Variant
+    varID = Me.lstComposicao.Column(0, lngLinhaSelecionada)
+    
+    If IsNull(varID) Then
+        MsgBox "Não foi possível identificar o registro selecionado.", vbExclamation, "Erro"
+        Exit Sub
+    End If
+    
+    mlngEditID = CLng(varID)
+    
+    Dim strSQL As String
+    Dim rs As DAO.Recordset
+    
+    strSQL = "SELECT * FROM [TblComposicao] WHERE [ID] = " & mlngEditID
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenDynaset)
+    
+    If Not rs.EOF Then
+        Me.txtOPM = rs![opm] & ""
+        Me.cboLOCAL = rs![LOCAL] & ""
+        Me.cboCOMPOSICAO = rs![COMPOSIÇÃO] & ""
+        Me.txtTIPO = rs![TIPO] & ""
+        Me.txtDESCRICAO = rs![DESCRIÇÃO] & ""
+        Me.txtEPI = rs![EPI] & ""
+        Me.txtOBS = rs![OBS] & ""
+        Me.txtAISP = rs![AISP] & ""
+        Me.txtCODIGO = rs![CODIGO] & ""
+        Me.txtCONVENIO = rs![Convênio] & ""
+        Me.txtOPM_RESP = rs![OPM RESP] & ""
+        
+        If Not IsNull(Me.txtOPM) Then
+            Dim rsOPM As DAO.Recordset
+            Set rsOPM = CurrentDb.OpenRecordset("SELECT [GB], [SGB], [PB], [EB] FROM [TblOPM_Nome] WHERE [OPM] = " & Me.txtOPM.Value)
+            
+            If Not rsOPM.EOF Then
+                Me.cboLOCAL.Tag = rsOPM![GB] & " " & rsOPM![SGB] & " " & rsOPM![PB] & " " & rsOPM![EB]
+            Else
+                Me.cboLOCAL.Tag = ""
+            End If
+            
+            rsOPM.Close
+            Set rsOPM = Nothing
+        End If
+    Else
+        rs.Close
+        Set rs = Nothing
+        MsgBox "Registro não encontrado.", vbCritical, "Erro"
+        Exit Sub
+    End If
+    
+    rs.Close
+    Set rs = Nothing
+    
+    mblnEditMode = True
+    mblnIncludeMode = False
+    mstrModoSalvar = "EDITAR"
+    mblnAlteracoesNaoSalvas = True
+    
+    Call ConfigurarCamposModoEdicao
+    
+    Me.txtEPI.SetFocus
+    DoEvents
+    
+    Call AplicarEstadoOperacao
+    
+    Exit Sub
+    
+Erro_AtivarEdicao:
+    MsgBox "Erro ao ativar modo edição: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub HabilitarBotoesMovimento()
+    On Error GoTo TrataErro
+    
+    If EstaEmOperacao() Then
+        Me.btnMovAcima.Enabled = False
+        Me.btnMovAbaixo.Enabled = False
+        Exit Sub
+    End If
+    
+    If Me.lstComposicao.ItemsSelected.Count = 0 Then
+        Me.btnMovAcima.Enabled = False
+        Me.btnMovAbaixo.Enabled = False
+        Exit Sub
+    End If
+    
+    Dim colIndices As Collection
+    Set colIndices = New Collection
+    
+    Dim varItem As Variant
+    For Each varItem In Me.lstComposicao.ItemsSelected
+        colIndices.Add varItem
+    Next varItem
+    
+    Dim i As Long, j As Long
+    Dim lngTemp As Long
+    
+    Dim arrIndices() As Long
+    ReDim arrIndices(1 To colIndices.Count)
+    
+    For i = 1 To colIndices.Count
+        arrIndices(i) = CLng(colIndices(i))
+    Next i
+    
+    For i = 1 To colIndices.Count - 1
+        For j = i + 1 To colIndices.Count
+            If arrIndices(i) > arrIndices(j) Then
+                lngTemp = arrIndices(i)
+                arrIndices(i) = arrIndices(j)
+                arrIndices(j) = lngTemp
+            End If
+        Next j
+    Next i
+    
+    Dim bConsecutivo As Boolean
+    bConsecutivo = True
+    
+    If colIndices.Count > 1 Then
+        For i = 1 To colIndices.Count - 1
+            If arrIndices(i + 1) - arrIndices(i) <> 1 Then
+                bConsecutivo = False
+                Exit For
+            End If
+        Next i
+    End If
+    
+    If Not bConsecutivo Then
+        Me.btnMovAcima.Enabled = False
+        Me.btnMovAbaixo.Enabled = False
+        Exit Sub
+    End If
+    
+    Dim lngPrimeiro As Long
+    Dim lngUltimo As Long
+    
+    lngPrimeiro = arrIndices(1)
+    lngUltimo = arrIndices(colIndices.Count)
+    
+    Me.btnMovAcima.Enabled = (lngPrimeiro > 0)
+    Me.btnMovAbaixo.Enabled = (lngUltimo < Me.lstComposicao.ListCount - 1)
+    
+    Exit Sub
+    
+TrataErro:
+    Me.btnMovAcima.Enabled = False
+    Me.btnMovAbaixo.Enabled = False
+End Sub
+
+'-----------------------------------------------------------
+' Botões de Movimento
+'-----------------------------------------------------------
+
+Private Sub btnMovAcima_Click()
+    If EstaEmOperacao() Then Exit Sub
+    Call MoverLinha(-1)
+End Sub
+
+Private Sub btnMovAbaixo_Click()
+    If EstaEmOperacao() Then Exit Sub
+    Call MoverLinha(1)
+End Sub
+
+Private Sub MoverLinha(lngDirection As Long)
+    If EstaEmOperacao() Then Exit Sub
+    If Me.lstComposicao.ItemsSelected.Count = 0 Then Exit Sub
+    
+    Dim colIndices As Collection
+    Set colIndices = New Collection
+    
+    Dim varItem As Variant
+    For Each varItem In Me.lstComposicao.ItemsSelected
+        colIndices.Add varItem
+    Next varItem
+    
+    Dim arrIndices() As Long
+    ReDim arrIndices(1 To colIndices.Count)
+    
+    Dim i As Long, j As Long
+    Dim lngTemp As Long
+    
+    For i = 1 To colIndices.Count
+        arrIndices(i) = CLng(colIndices(i))
+    Next i
+    
+    For i = 1 To colIndices.Count - 1
+        For j = i + 1 To colIndices.Count
+            If arrIndices(i) > arrIndices(j) Then
+                lngTemp = arrIndices(i)
+                arrIndices(i) = arrIndices(j)
+                arrIndices(j) = lngTemp
+            End If
+        Next j
+    Next i
+    
+    If colIndices.Count > 1 Then
+        For i = 1 To colIndices.Count - 1
+            If arrIndices(i + 1) - arrIndices(i) <> 1 Then
+                MsgBox "Selecione apenas linhas consecutivas para mover.", vbExclamation, "Seleção Inválida"
+                Exit Sub
+            End If
+        Next i
+    End If
+    
+    Dim lngPrimeiro As Long
+    Dim lngUltimo As Long
+    
+    lngPrimeiro = arrIndices(1)
+    lngUltimo = arrIndices(colIndices.Count)
+    
+    If lngDirection = -1 And lngPrimeiro = 0 Then Exit Sub
+    If lngDirection = 1 And lngUltimo = Me.lstComposicao.ListCount - 1 Then Exit Sub
+    
+    Dim lngDestinoIndex As Long
+    Dim lngDestinoID As Long
+    
+    If lngDirection = -1 Then
+        lngDestinoIndex = lngPrimeiro - 1
+    Else
+        lngDestinoIndex = lngUltimo + 1
+    End If
+    
+    lngDestinoID = Me.lstComposicao.Column(0, lngDestinoIndex)
+    
+    Dim colIDs As Collection
+    Set colIDs = New Collection
+    
+    For i = 1 To colIndices.Count
+        colIDs.Add Me.lstComposicao.Column(0, arrIndices(i))
+    Next i
+    
+    If lngDirection = -1 Then
+        Call MoverBlocoParaCima(colIDs, lngDestinoID)
+    Else
+        Call MoverBlocoParaBaixo(colIDs, lngDestinoID)
+    End If
+    
+    Call CarregarLista
+    Me.lstComposicao.Requery
+    DoEvents
+    
+    Dim lngNovoPrimeiro As Long
+    
+    If lngDirection = -1 Then
+        lngNovoPrimeiro = lngPrimeiro - 1
+    Else
+        lngNovoPrimeiro = lngPrimeiro + 1
+    End If
+    
+    Me.lstComposicao = Null
+    
+    For i = 0 To colIndices.Count - 1
+        Me.lstComposicao.Selected(lngNovoPrimeiro + i) = True
+    Next i
+    
+    Call HabilitarBotoesMovimento
+End Sub
+
+Private Sub MoverBlocoParaCima(colIDs As Collection, lngDestinoID As Long)
+    Dim rs As DAO.Recordset
+    Dim fld As DAO.Field
+    Dim colDadosDestino As Collection
+    Dim colDadosBloco As Collection
+    Dim i As Long
+    
+    Set rs = CurrentDb.OpenRecordset("TblComposicao", dbOpenDynaset)
+    
+    rs.FindFirst "[ID] = " & lngDestinoID
+    If rs.NoMatch Then GoTo Finalizar
+    
+    Set colDadosDestino = New Collection
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            colDadosDestino.Add fld.Value, fld.Name
+        End If
+    Next fld
+    
+    Set colDadosBloco = New Collection
+    
+    For i = 1 To colIDs.Count
+        rs.FindFirst "[ID] = " & colIDs(i)
+        If rs.NoMatch Then GoTo Finalizar
+        
+        Dim colTemp As Collection
+        Set colTemp = New Collection
+        
+        For Each fld In rs.Fields
+            If fld.Name <> "ID" Then
+                colTemp.Add fld.Value, fld.Name
+            End If
+        Next fld
+        
+        colDadosBloco.Add colTemp
+    Next i
+    
+    rs.FindFirst "[ID] = " & lngDestinoID
+    If rs.NoMatch Then GoTo Finalizar
+    
+    rs.Edit
+    
+    Dim colPrimeiro As Collection
+    Set colPrimeiro = colDadosBloco(1)
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            fld.Value = colPrimeiro(fld.Name)
+        End If
+    Next fld
+    
+    rs.Update
+    
+    For i = 1 To colIDs.Count - 1
+        rs.FindFirst "[ID] = " & colIDs(i)
+        If rs.NoMatch Then GoTo Finalizar
+        
+        rs.Edit
+        
+        Dim colProximo As Collection
+        Set colProximo = colDadosBloco(i + 1)
+        
+        For Each fld In rs.Fields
+            If fld.Name <> "ID" Then
+                fld.Value = colProximo(fld.Name)
+            End If
+        Next fld
+        
+        rs.Update
+    Next i
+    
+    rs.FindFirst "[ID] = " & colIDs(colIDs.Count)
+    If rs.NoMatch Then GoTo Finalizar
+    
+    rs.Edit
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            fld.Value = colDadosDestino(fld.Name)
+        End If
+    Next fld
+    
+    rs.Update
+    
+Finalizar:
+    On Error Resume Next
+    rs.Close
+    Set rs = Nothing
+End Sub
+
+Private Sub MoverBlocoParaBaixo(colIDs As Collection, lngDestinoID As Long)
+    Dim rs As DAO.Recordset
+    Dim fld As DAO.Field
+    Dim colDadosDestino As Collection
+    Dim colDadosBloco As Collection
+    Dim i As Long
+    
+    Set rs = CurrentDb.OpenRecordset("TblComposicao", dbOpenDynaset)
+    
+    rs.FindFirst "[ID] = " & lngDestinoID
+    If rs.NoMatch Then GoTo Finalizar
+    
+    Set colDadosDestino = New Collection
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            colDadosDestino.Add fld.Value, fld.Name
+        End If
+    Next fld
+    
+    Set colDadosBloco = New Collection
+    
+    For i = 1 To colIDs.Count
+        rs.FindFirst "[ID] = " & colIDs(i)
+        If rs.NoMatch Then GoTo Finalizar
+        
+        Dim colTemp As Collection
+        Set colTemp = New Collection
+        
+        For Each fld In rs.Fields
+            If fld.Name <> "ID" Then
+                colTemp.Add fld.Value, fld.Name
+            End If
+        Next fld
+        
+        colDadosBloco.Add colTemp
+    Next i
+    
+    rs.FindFirst "[ID] = " & lngDestinoID
+    If rs.NoMatch Then GoTo Finalizar
+    
+    rs.Edit
+    
+    Dim colUltimo As Collection
+    Set colUltimo = colDadosBloco(colDadosBloco.Count)
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            fld.Value = colUltimo(fld.Name)
+        End If
+    Next fld
+    
+    rs.Update
+    
+    For i = colIDs.Count To 2 Step -1
+        rs.FindFirst "[ID] = " & colIDs(i)
+        If rs.NoMatch Then GoTo Finalizar
+        
+        rs.Edit
+        
+        Dim colAnterior As Collection
+        Set colAnterior = colDadosBloco(i - 1)
+        
+        For Each fld In rs.Fields
+            If fld.Name <> "ID" Then
+                fld.Value = colAnterior(fld.Name)
+            End If
+        Next fld
+        
+        rs.Update
+    Next i
+    
+    rs.FindFirst "[ID] = " & colIDs(1)
+    If rs.NoMatch Then GoTo Finalizar
+    
+    rs.Edit
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            fld.Value = colDadosDestino(fld.Name)
+        End If
+    Next fld
+    
+    rs.Update
+    
+Finalizar:
+    On Error Resume Next
+    rs.Close
+    Set rs = Nothing
+End Sub
+
+Private Sub TrocarRegistros(lngID1 As Long, lngID2 As Long)
+    Dim rs As DAO.Recordset
+    Dim fld As DAO.Field
+    
+    Set rs = CurrentDb.OpenRecordset("TblComposicao", dbOpenDynaset)
+    
+    rs.FindFirst "[ID] = " & lngID1
+    If rs.NoMatch Then GoTo Finalizar
+    
+    Dim colDados As Collection
+    Set colDados = New Collection
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            colDados.Add fld.Value, fld.Name
+        End If
+    Next fld
+    
+    rs.FindFirst "[ID] = " & lngID2
+    If rs.NoMatch Then GoTo Finalizar
+    
+    Dim colDados2 As Collection
+    Set colDados2 = New Collection
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            colDados2.Add fld.Value, fld.Name
+        End If
+    Next fld
+    
+    rs.FindFirst "[ID] = " & lngID1
+    If rs.NoMatch Then GoTo Finalizar
+    
+    rs.Edit
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            fld.Value = colDados2(fld.Name)
+        End If
+    Next fld
+    
+    rs.Update
+    
+    rs.FindFirst "[ID] = " & lngID2
+    If rs.NoMatch Then GoTo Finalizar
+    
+    rs.Edit
+    
+    For Each fld In rs.Fields
+        If fld.Name <> "ID" Then
+            fld.Value = colDados(fld.Name)
+        End If
+    Next fld
+    
+    rs.Update
+    
+Finalizar:
+    On Error Resume Next
+    rs.Close
+    Set rs = Nothing
+End Sub
+
+'-----------------------------------------------------------
+' Botões Principais
+'-----------------------------------------------------------
+
+Private Sub btnIncluir_Click()
+    On Error GoTo Erro_btnIncluir
+    
+    If EstaEmOperacao() Then
+        MsgBox "Já existe uma operação em andamento. Salve ou cancele antes de continuar.", vbExclamation, "Operação em andamento"
+        Exit Sub
+    End If
+    
+    Call LimparCampos
+    Me.txtEPI = "EPI de incêndio estrutural completo e enchente."
+    Me.txtOBS = "O efetivo desta escala irá compor, como MOTORISTA, uma VIATURA DE INCÊNDIO/SALVAMENTO/RESGATE. O Militar DEVERÁ observar no sistema a confirmação da escala selecionada. Possuir habilitação correspondente."
+    
+    Call ConfigurarCamposModoInclusao
+    
+    mblnEditMode = False
+    mblnIncludeMode = True
+    mlngEditID = 0
+    mstrModoSalvar = "INCLUIR"
+    mblnAlteracoesNaoSalvas = True
+    
+    Me.cboLOCAL.SetFocus
+    DoEvents
+    
+    Call AplicarEstadoOperacao
+    
+    Exit Sub
+    
+Erro_btnIncluir:
+    MsgBox "Erro ao iniciar inclusão: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub btnEditar_Click()
+    On Error GoTo Erro_btnEditar
+    
+    Call AtivarModoEdicao
+    
+    Exit Sub
+    
+Erro_btnEditar:
+    MsgBox "Erro ao iniciar edição: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub btnSalvar_Click()
+    On Error GoTo Erro_btnSalvar
+    
+    If Not EstaEmOperacao() Then
+        MsgBox "Nenhuma operação de edição ou inclusão foi iniciada.", vbExclamation, "Salvar"
+        Exit Sub
+    End If
+    
+    Select Case UCase$(mstrModoSalvar)
+        Case "EDITAR"
+            Call SalvarEdicao
+        
+        Case "INCLUIR"
+            Call SalvarInclusao
+        
+        Case Else
+            MsgBox "Não foi possível identificar se a operação é edição ou inclusão.", vbCritical, "Salvar"
+    End Select
+    
+    Exit Sub
+    
+Erro_btnSalvar:
+    MsgBox "Erro ao salvar: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub btnAtualizarOnline_Click()
+    On Error GoTo Erro_btnAtualizarOnline
+    
+    DoCmd.Hourglass True
+    Me.btnAtualizarOnline.Enabled = False
+    Me.Repaint
+    
+    Call AtualizarComposicoesFirebase(True)
+    
+Sair:
+    DoCmd.Hourglass False
+    Me.btnAtualizarOnline.Enabled = True
+    Exit Sub
+    
+Erro_btnAtualizarOnline:
+    Debug.Print "Erro frmComposicao.btnAtualizarOnline_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao atualizar Firebase: " & Err.Description, vbCritical, "Atualizar Online"
+    Resume Sair
+End Sub
+
+Private Sub SalvarInclusao()
+    On Error GoTo Erro_SalvarInclusao
+    
+    If Not ValidarCamposInclusao() Then Exit Sub
+    
+    Dim lngNewID As Long
+    lngNewID = IncluirRegistro()
+    
+    If lngNewID > 0 Then
+        Call EncerrarOperacao(True, lngNewID)
+        Call SincronizarComposicoesFirebaseAposSalvar
+        MsgBox "Registro incluído com sucesso!", vbInformation, "Sucesso"
+    Else
+        MsgBox "Erro ao incluir o registro.", vbCritical, "Erro"
+    End If
+    
+    Exit Sub
+    
+Erro_SalvarInclusao:
+    MsgBox "Erro ao salvar inclusão: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub SalvarEdicao()
+    On Error GoTo Erro_SalvarEdicao
+    
+    If mlngEditID = 0 Then
+        MsgBox "Nenhum registro selecionado para edição.", vbExclamation, "Erro"
+        Exit Sub
+    End If
+    
+    If Not ValidarCamposEdicao() Then Exit Sub
+    
+    Dim lngIDSalvo As Long
+    lngIDSalvo = mlngEditID
+    
+    If AtualizarRegistroEdicao(lngIDSalvo) Then
+        Call EncerrarOperacao(True, lngIDSalvo)
+        Call SincronizarComposicoesFirebaseAposSalvar
+        MsgBox "Registro atualizado com sucesso!", vbInformation, "Sucesso"
+    Else
+        MsgBox "Erro ao atualizar o registro.", vbCritical, "Erro"
+    End If
+    
+    Exit Sub
+    
+Erro_SalvarEdicao:
+    MsgBox "Erro ao salvar edição: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub SincronizarComposicoesFirebaseAposSalvar()
+    On Error GoTo Erro
+    
+    If Not AtualizarComposicoesFirebase(False) Then
+        MsgBox "O registro foi salvo no Access, mas não foi possível atualizar o Firebase." & vbCrLf & _
+               "Use o botão Atualizar Online para tentar novamente.", vbExclamation, "Atualizar Online"
+    End If
+    
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmComposicao.SincronizarComposicoesFirebaseAposSalvar: " & Err.Number & " - " & Err.Description
+    MsgBox "O registro foi salvo no Access, mas ocorreu erro ao atualizar o Firebase: " & Err.Description, vbExclamation, "Atualizar Online"
+End Sub
+
+Private Function ValidarCamposInclusao() As Boolean
+    ValidarCamposInclusao = False
+    
+    If IsNull(Me.cboLOCAL) Then
+        MsgBox "Selecione um local.", vbExclamation, "Campo obrigatório"
+        Me.cboLOCAL.SetFocus
+        Exit Function
+    End If
+    
+    If IsNull(Me.txtOPM) Or Trim$(Me.txtOPM & "") = "" Then
+        MsgBox "Não foi possível identificar o código OPM do local selecionado.", vbExclamation, "Campo obrigatório"
+        Me.cboLOCAL.SetFocus
+        Exit Function
+    End If
+    
+    If IsNull(Me.cboCOMPOSICAO) Then
+        MsgBox "Selecione uma composição.", vbExclamation, "Campo obrigatório"
+        Me.cboCOMPOSICAO.SetFocus
+        Exit Function
+    End If
+    
+    If ComposicaoJaCadastrada(Me.txtOPM.Value, Me.cboCOMPOSICAO.Value) Then
+        MsgBox "Já existe um cadastro para esta combinação de OPM e composição." & vbCrLf & vbCrLf & _
+               "OPM: " & Me.txtOPM.Value & vbCrLf & _
+               "Local: " & Me.cboLOCAL.Value & vbCrLf & _
+               "Composição: " & Me.cboCOMPOSICAO.Value, _
+               vbExclamation, "Cadastro duplicado"
+        Me.cboLOCAL.SetFocus
+        Exit Function
+    End If
+    
+    If Not CodigoComposicaoValido() Then Exit Function
+    If Not OPMRespValido() Then Exit Function
+    
+    If IsNull(Me.txtDESCRICAO) Or Trim$(Me.txtDESCRICAO & "") = "" Then
+        Call AtualizarDescricao
+        
+        If IsNull(Me.txtDESCRICAO) Or Trim$(Me.txtDESCRICAO & "") = "" Then
+            MsgBox "Não foi possível gerar a descrição automaticamente.", vbExclamation, "Erro"
+            Exit Function
+        End If
+    End If
+    
+    If IsNull(Me.txtEPI) Or Trim$(Me.txtEPI & "") = "" Then
+        Me.txtEPI = "EPI de incêndio estrutural completo e enchente."
+    End If
+    
+    If IsNull(Me.txtOBS) Or Trim$(Me.txtOBS & "") = "" Then
+        Me.txtOBS = "O efetivo desta escala irá compor, como MOTORISTA, uma VIATURA DE INCÊNDIO/SALVAMENTO/RESGATE. O Militar DEVERÁ observar no sistema a confirmação da escala selecionada. Possuir habilitação correspondente."
+    End If
+    
+    ValidarCamposInclusao = True
+End Function
+
+Private Function ComposicaoJaCadastrada(ByVal vOPM As Variant, ByVal vComposicao As Variant) As Boolean
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Erro
+    
+    strSQL = "SELECT TOP 1 [ID] FROM [TblComposicao] " & _
+             "WHERE [OPM] = " & SQLTexto(vOPM) & _
+             " AND [COMPOSIÇÃO] = " & SQLTexto(vComposicao)
+    
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    ComposicaoJaCadastrada = Not rs.EOF
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmComposicao.ComposicaoJaCadastrada: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
+
+Private Function SQLTexto(ByVal valor As Variant) As String
+    SQLTexto = "'" & Replace(Nz(valor, ""), "'", "''") & "'"
+End Function
+
+Private Sub txtCODIGO_BeforeUpdate(Cancel As Integer)
+    ' A validação ocorre no btnSalvar_Click para permitir cancelar a operação sem prender o foco.
+End Sub
+
+Private Sub txtOPM_RESP_BeforeUpdate(Cancel As Integer)
+    ' A validação ocorre no btnSalvar_Click para permitir cancelar a operação sem prender o foco.
+End Sub
+
+Private Function CodigoComposicaoValido(Optional ByVal blnSetFocus As Boolean = True) As Boolean
+    Dim strCodigo As String
+    
+    CodigoComposicaoValido = False
+    strCodigo = Trim$(Nz(Me.txtCODIGO, ""))
+    
+    If strCodigo = "" Then
+        MsgBox "Informe o código da composição.", vbExclamation, "Campo obrigatório"
+        If blnSetFocus Then Me.txtCODIGO.SetFocus
+        Exit Function
+    End If
+    
+    If Not EhSomenteNumeros(strCodigo) Then
+        MsgBox "O código da composição deve conter apenas números.", vbExclamation, "Código inválido"
+        If blnSetFocus Then Me.txtCODIGO.SetFocus
+        Exit Function
+    End If
+    
+    CodigoComposicaoValido = True
+End Function
+
+Private Function OPMRespValido(Optional ByVal blnSetFocus As Boolean = True) As Boolean
+    Dim strOPMResp As String
+    
+    OPMRespValido = False
+    strOPMResp = Trim$(Nz(Me.txtOPM_RESP, ""))
+    
+    If strOPMResp = "" Then
+        MsgBox "Informe a OPM responsável.", vbExclamation, "Campo obrigatório"
+        If blnSetFocus Then Me.txtOPM_RESP.SetFocus
+        Exit Function
+    End If
+    
+    If Not (strOPMResp Like "#########") Then
+        MsgBox "A OPM responsável deve conter exatamente 9 dígitos numéricos.", vbExclamation, "Código inválido"
+        If blnSetFocus Then Me.txtOPM_RESP.SetFocus
+        Exit Function
+    End If
+    
+    OPMRespValido = True
+End Function
+
+Private Function EhSomenteNumeros(ByVal strValor As String) As Boolean
+    EhSomenteNumeros = (strValor <> "" And Not strValor Like "*[!0-9]*")
+End Function
+
+Private Function ValidarCamposEdicao() As Boolean
+    ValidarCamposEdicao = False
+    
+    If IsNull(Me.txtDESCRICAO) Or Trim$(Me.txtDESCRICAO & "") = "" Then
+        MsgBox "A descrição não pode ficar vazia.", vbExclamation, "Campo obrigatório"
+        Exit Function
+    End If
+    
+    If Not CodigoComposicaoValido() Then Exit Function
+    If Not OPMRespValido() Then Exit Function
+    
+    ValidarCamposEdicao = True
+End Function
+
+Private Function IncluirRegistro() As Long
+    On Error GoTo Erro_IncluirRegistro
+    
+    Dim rs As DAO.Recordset
+    
+    Set rs = CurrentDb.OpenRecordset("TblComposicao", dbOpenDynaset)
+    
+    rs.AddNew
+    rs![opm] = Me.txtOPM.Value
+    rs![LOCAL] = Me.cboLOCAL
+    rs![COMPOSIÇÃO] = Me.cboCOMPOSICAO.Value
+    rs![DESCRIÇÃO] = Me.txtDESCRICAO
+    rs![TIPO] = Me.txtTIPO
+    rs![EPI] = Me.txtEPI
+    rs![OBS] = Me.txtOBS
+    rs![AISP] = Me.txtAISP
+    rs![CODIGO] = Trim$(Nz(Me.txtCODIGO, ""))
+    rs![Convênio] = Me.txtCONVENIO
+    rs![OPM RESP] = Trim$(Nz(Me.txtOPM_RESP, ""))
+    rs.Update
+    
+    rs.Bookmark = rs.LastModified
+    IncluirRegistro = rs![id]
+    
+    rs.Close
+    Set rs = Nothing
+    
+    Exit Function
+    
+Erro_IncluirRegistro:
+    IncluirRegistro = 0
+    
+    On Error Resume Next
+    rs.Close
+    Set rs = Nothing
+End Function
+
+Private Function AtualizarRegistroEdicao(ByVal lngID As Long) As Boolean
+    On Error GoTo Erro_AtualizarRegistroEdicao
+    
+    AtualizarRegistroEdicao = False
+    
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    Set db = CurrentDb
+    
+    strSQL = "SELECT * FROM [TblComposicao] WHERE [ID] = " & lngID
+    Set rs = db.OpenRecordset(strSQL, dbOpenDynaset)
+    
+    If Not rs.EOF Then
+        rs.Edit
+        rs![EPI] = Me.txtEPI
+        rs![OBS] = Me.txtOBS
+        rs![AISP] = Me.txtAISP
+        rs![CODIGO] = Trim$(Nz(Me.txtCODIGO, ""))
+        rs![Convênio] = Me.txtCONVENIO
+        rs![OPM RESP] = Trim$(Nz(Me.txtOPM_RESP, ""))
+        rs.Update
+        
+        AtualizarRegistroEdicao = True
+    Else
+        MsgBox "Registro não encontrado.", vbCritical, "Erro"
+    End If
+    
+    rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    
+    Exit Function
+    
+Erro_AtualizarRegistroEdicao:
+    AtualizarRegistroEdicao = False
+    
+    On Error Resume Next
+    rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+End Function
+
+Private Sub btnLimpar_Click()
+    On Error GoTo Erro_btnLimpar
+    
+    If EstaEmOperacao() Then
+        If MsgBox("Você está em modo de " & IIf(mstrModoSalvar = "EDITAR", "edição", "inclusão") & "." & vbCrLf & _
+                  "As alterações não salvas serão perdidas." & vbCrLf & vbCrLf & _
+                  "Deseja cancelar a operação?", _
+                  vbYesNo + vbExclamation, "Cancelar operação") = vbYes Then
+            
+            Call EncerrarOperacao(False, 0)
+            MsgBox "Operação cancelada.", vbInformation, "Cancelado"
+        End If
+        
+        Exit Sub
+    End If
+    
+    ' Segurança: em tese o btnLimpar fica oculto fora da operação
+    If MsgBox("Tem certeza que deseja limpar todos os campos?", vbYesNo + vbQuestion, "Confirmar Limpeza") = vbYes Then
+        Call LimparCampos
+        MsgBox "Campos limpos com sucesso!", vbInformation, "Limpeza Concluída"
+    End If
+    
+    Exit Sub
+    
+Erro_btnLimpar:
+    MsgBox "Erro ao limpar/cancelar: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub LimparCampos()
+    Me.txtOPM = ""
+    Me.cboLOCAL = Null
+    Me.cboCOMPOSICAO = Null
+    Me.txtTIPO = ""
+    Me.txtDESCRICAO = ""
+    Me.txtEPI = ""
+    Me.txtOBS = ""
+    Me.txtAISP = ""
+    Me.txtCODIGO = ""
+    Me.txtCONVENIO = ""
+    Me.txtOPM_RESP = ""
+    Me.cboLOCAL.Tag = ""
+End Sub

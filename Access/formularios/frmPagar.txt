@@ -1,0 +1,45 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Form_Load()
+    On Error Resume Next
+    Me.Caption = "Pagar escalas"
+    On Error GoTo 0
+End Sub
+
+Private Sub btnPagarConfirmadas_Click()
+    On Error GoTo Erro
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Pagando escalas confirmadas... aguarde."
+    
+    Call PagarEscalasConfirmadasFiltradas
+    
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    On Error Resume Next
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    Debug.Print "Erro frmPagar.btnPagarConfirmadas_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao pagar escalas confirmadas: " & Err.Number & " - " & Err.Description, vbCritical, "Pagar escalas"
+End Sub
+
+Private Sub btnPagarNovidades_Click()
+    On Error GoTo Erro
+    
+    Call PagarEscalasNovidadesManual
+    DoCmd.Close acForm, Me.Name
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmPagar.btnPagarNovidades_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao iniciar pagamento manual: " & Err.Number & " - " & Err.Description, vbCritical, "Pagar novidades"
+End Sub
+
+Private Sub btnFechar_Click()
+    DoCmd.Close acForm, Me.Name
+End Sub

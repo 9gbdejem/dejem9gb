@@ -1,0 +1,99 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Form_Load()
+    DoCmd.Maximize
+    Forms!frmApp!frmNavegar.SourceObject = "frmDashboard"
+    Forms!frmApp!frmNavbar.Form.AtualizarBotoes "frmDashboard"
+End Sub
+
+Private Sub Form_Resize()
+    Dim lngCentro As Long
+    Dim lngMargem As Long
+    Dim lngLarguraDisponivel As Long
+    
+    ' Converter 1cm para twips de forma mais precisa
+    ' Usando a resolução da tela atual
+    lngMargem = (1440 / 2.54) ' 1440 twips/polegada ÷ 2.54 cm/polegada = aproximadamente 567 twips/cm
+    ' Ou simplesmente: lngMargem = 567
+    
+    If Me.InsideWidth = 0 Then Exit Sub
+    If Me.InsideHeight = 0 Then Exit Sub
+    
+    ' Calcular largura disponível (InsideWidth - margem esquerda - margem direita)
+    lngLarguraDisponivel = Me.InsideWidth - (2 * lngMargem)
+    
+    ' Garantir que a largura não fique negativa
+    If lngLarguraDisponivel < 0 Then lngLarguraDisponivel = 0
+    
+    ' Ajustar frmNavbar
+    Me.frmNavbar.Width = lngLarguraDisponivel
+    Me.frmNavbar.Left = lngMargem ' Posicionar na margem esquerda
+    
+    ' Ajustar frmNavegar
+    Me.frmNavegar.Width = lngLarguraDisponivel
+    Me.frmNavegar.Left = lngMargem ' Posicionar na margem esquerda
+    
+    ' Ajustar altura do frmNavegar
+    Me.frmNavegar.Height = Me.InsideHeight - Me.frmNavegar.Top
+End Sub
+
+'Private Sub Form_Resize()
+'    Dim lngCentro As Long
+'
+'    If Me.InsideWidth = 0 Then Exit Sub
+'    If Me.InsideHeight = 0 Then Exit Sub
+'
+'    lngCentro = (Me.InsideWidth - Me.frmNavbar.Width) / 2
+'    Me.frmNavbar.Left = lngCentro
+'
+'    lngCentro = (Me.InsideWidth - Me.frmNavegar.Width) / 2
+'    Me.frmNavegar.Left = lngCentro
+'
+'    Me.frmNavegar.Height = Me.InsideHeight - Me.frmNavegar.Top
+'End Sub
+
+
+'Option Compare Database
+'Option Explicit
+'
+'Private Declare PtrSafe Function SetWindowPos Lib "user32" (ByVal hwnd As Long, ByVal hWndInsertAfter As Long, ByVal x As Long, ByVal y As Long, ByVal cx As Long, ByVal cy As Long, ByVal wFlags As Long) As Long
+'Private Declare PtrSafe Function SystemParametersInfo Lib "user32" Alias "SystemParametersInfoA" (ByVal uAction As Long, ByVal uParam As Long, lpvParam As Any, ByVal fuWinIni As Long) As Long
+'
+'Private Type RECT
+'    Left   As Long
+'    Top    As Long
+'    Right  As Long
+'    Bottom As Long
+'End Type
+'
+'Private Sub MaximizarSemTaskbar()
+'    Dim rc   As RECT
+'    Dim hwnd As Long
+'
+'    SystemParametersInfo 48, 0, rc, 0
+'
+'    hwnd = Application.hWndAccessApp
+'    SetWindowPos hwnd, 0, rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top, 0
+'End Sub
+'
+'Private Sub Form_Load()
+'    MaximizarSemTaskbar
+'    Forms!frmApp!frmNavegar.SourceObject = "frmDashboard"
+'    Forms!frmApp!frmNavbar.Form.AtualizarBotoes "frmDashboard"
+'End Sub
+'
+'Private Sub Form_Resize()
+'    Dim lngCentro As Long
+'
+'    If Me.InsideWidth = 0 Then Exit Sub
+'    If Me.InsideHeight = 0 Then Exit Sub
+'
+'    lngCentro = (Me.InsideWidth - Me.frmNavbar.Width) / 2
+'    Me.frmNavbar.Left = lngCentro
+'
+'    lngCentro = (Me.InsideWidth - Me.frmNavegar.Width) / 2
+'    Me.frmNavegar.Left = lngCentro
+'
+'    Me.frmNavegar.Height = Me.InsideHeight - Me.frmNavegar.Top
+'End Sub
