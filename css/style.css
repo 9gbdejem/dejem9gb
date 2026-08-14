@@ -2537,3 +2537,29 @@ main.container-fluid {
 #confirmContent .militar-status .btn-check:checked + .btn i {
     color: #ffffff !important;
 }
+
+.overlay-atualizando-tabela {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.38);
+    backdrop-filter: blur(1px);
+}
+
+.overlay-atualizando-tabela.show {
+    display: flex;
+}
+
+.overlay-atualizando-tabela__conteudo {
+    min-width: 220px;
+    padding: 18px 28px;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #223c6c;
+    font-weight: 700;
+    text-align: center;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
+}

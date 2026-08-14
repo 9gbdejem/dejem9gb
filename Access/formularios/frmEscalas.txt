@@ -459,6 +459,7 @@ Private Sub txtDataInicial_AfterUpdate()
             Me.txtDataInicial = ""
         End If
     End If
+    Call btnFiltrar_Click
 End Sub
 
 Private Sub txtDataFinal_AfterUpdate()
@@ -495,9 +496,11 @@ Private Sub txtDataFinal_AfterUpdate()
                 MsgBox "A data final não pode ser menor que a data inicial.", vbExclamation
                 Me.txtDataFinal = ""
                 Me.txtDataFinal.SetFocus
+                Exit Sub
             End If
         End If
     End If
+    Call btnFiltrar_Click
 End Sub
 
 ' ============================================
@@ -569,7 +572,7 @@ Private Sub CarregarComboBoxStatus()
     ' Carrega as opções do combobox Status
     Dim strLista As String
     
-    strLista = "Todas;Aprovadas;Canceladas;Cadastradas;Montadas;Pagas;Aguardando"
+    strLista = "Todas;Aprovadas;Canceladas;Cadastradas;Montadas;Pagas;Aguardando;Novidades;Pend" & ChrW(234) & "ncias;" & "N" & ChrW(227) & "o houve inscritos"
     
     Me.cboStatus.RowSourceType = "Value List"
     Me.cboStatus.RowSource = strLista
@@ -604,6 +607,10 @@ Private Function StatusParaTexto(strStatus As String) As String
             StatusParaTexto = "5"
         Case "Aguardando"
             StatusParaTexto = "6"
+        Case "Novidades"
+            StatusParaTexto = "7"
+        Case "Pend" & ChrW(234) & "ncias", "Pendencias", "Pend?ncias"
+            StatusParaTexto = "8"
         Case Else
             StatusParaTexto = ""
     End Select
@@ -626,6 +633,14 @@ End Function
 ' EVENTO DO COMBOBOX STATUS
 ' ============================================
 
+
+Private Sub cboOPM_AfterUpdate()
+    Call btnFiltrar_Click
+End Sub
+
+Private Sub cboTipoEscala_AfterUpdate()
+    Call btnFiltrar_Click
+End Sub
 Private Sub cboStatus_AfterUpdate()
     ' Aplica o filtro quando o status é alterado
     Call btnFiltrar_Click
@@ -711,9 +726,13 @@ Private Function FiltroAtualEscalas() As String
     End If
     
     If Not IsNull(Me.cboStatus) And Me.cboStatus <> "" And Me.cboStatus <> "Todas" Then
-        strStatus = StatusParaTexto(Me.cboStatus)
-        If strStatus <> "" Then
-            strWhere = strWhere & " AND Status_Adm = '" & strStatus & "'"
+        If CStr(Me.cboStatus) = "N" & ChrW(227) & "o houve inscritos" Or CStr(Me.cboStatus) = "N?o houve inscritos" Then
+            strWhere = strWhere & " AND " & CondicaoSemInscritos()
+        Else
+            strStatus = StatusParaTexto(Me.cboStatus)
+            If strStatus <> "" Then
+                strWhere = strWhere & " AND Status_Adm = '" & strStatus & "'"
+            End If
         End If
     End If
     
@@ -728,6 +747,15 @@ Private Function FiltroAtualEscalas() As String
     Else
         FiltroAtualEscalas = ""
     End If
+End Function
+
+Private Function CondicaoSemInscritos() As String
+    CondicaoSemInscritos = _
+        "Esc_Superior Is Not Null AND Esc_Superior = 0 " & _
+        "AND Esc_Intermed Is Not Null AND Esc_Intermed = 0 " & _
+        "AND Esc_Subalterno Is Not Null AND Esc_Subalterno = 0 " & _
+        "AND Esc_Subten_Sgt Is Not Null AND Esc_Subten_Sgt = 0 " & _
+        "AND Esc_Cb_Sd Is Not Null AND Esc_Cb_Sd = 0"
 End Function
 
 Private Sub AtualizarTotaisFiltroAtual()
@@ -755,7 +783,7 @@ Private Sub AtualizarTotaisFiltroAtual()
     Dim lngSobrPrevPrac As Long
     Dim lngSobrUtilOfic As Long
     Dim lngSobrUtilPrac As Long
-    Dim lngStatus(1 To 7) As Long
+    Dim lngStatus(1 To 8) As Long
     Dim lngStatusAdm As Long
 
     If Me.sfrmLinhaEscala.Form Is Nothing Then
@@ -800,7 +828,7 @@ Private Sub AtualizarTotaisFiltroAtual()
             lngPrevPrac = lngPrevPrac + CLng(Nz(rs!Atz_Subten_Sgt, 0)) + CLng(Nz(rs!Atz_Cb_Sd, 0))
         End If
 
-        If lngStatusAdm >= 1 And lngStatusAdm <= 7 Then
+        If lngStatusAdm >= 1 And lngStatusAdm <= 8 Then
             lngStatus(lngStatusAdm) = lngStatus(lngStatusAdm) + 1
         End If
 
@@ -845,6 +873,7 @@ Private Sub AtualizarTotaisFiltroAtual()
     Call DefinirCaptionSeExiste("lblStatus5", CStr(lngStatus(5)))
     Call DefinirCaptionSeExiste("lblStatus6", CStr(lngStatus(6)))
     Call DefinirCaptionSeExiste("lblStatus7", CStr(lngStatus(7)))
+    Call DefinirCaptionSeExiste("lblStatus8", CStr(lngStatus(8)))
 
 Sair:
     On Error Resume Next
@@ -975,6 +1004,7 @@ Private Sub LimparTotaisFiltroAtual()
     Call DefinirCaptionSeExiste("lblStatus5", "0")
     Call DefinirCaptionSeExiste("lblStatus6", "0")
     Call DefinirCaptionSeExiste("lblStatus7", "0")
+    Call DefinirCaptionSeExiste("lblStatus8", "0")
 
     On Error GoTo 0
 End Sub
@@ -1129,11 +1159,17 @@ Private Sub btnExportar_Click()
 End Sub
 
 Private Sub btnCadastrar_Click()
-    On Error Resume Next
+    On Error GoTo Erro
+    
     DoCmd.OpenForm "frmCadastrar", , , , , acDialog
     Call AtualizarEscalasAbertasResumoFirebase(False)
     Call btnFiltrar_Click
-    On Error GoTo 0
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmEscalas.btnCadastrar_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao abrir o cadastro de escalas: " & Err.Number & " - " & Err.Description, _
+           vbCritical, "Cadastrar escalas"
 End Sub
 
 Private Sub btnAlterar_Click()
@@ -1270,4 +1306,3 @@ Private Function TipoMetodoExiste(frm As Form, strMetodo As String) As Boolean
     TipoMetodoExiste = (Err.Number = 0)
     On Error GoTo 0
 End Function
-

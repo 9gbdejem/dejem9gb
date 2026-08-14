@@ -21,10 +21,55 @@ End Sub
 
 Private Sub Form_Load()
     On Error Resume Next
-    If Nz(Me.txtDataPrazo, "") = "" Then Me.txtDataPrazo = Format(Date, "dd/mm/yyyy")
-    If Nz(Me.txtHoraPrazo, "") = "" Then Me.txtHoraPrazo = Format(Time, "hh:nn")
+    If Not PreencherPrazoPrimeiraEscalaSelecionada() Then
+        If Nz(Me.txtDataPrazo, "") = "" Then Me.txtDataPrazo = Format(Date, "dd/mm/yyyy")
+        If Nz(Me.txtHoraPrazo, "") = "" Then Me.txtHoraPrazo = Format(Time, "hh:nn")
+    End If
     On Error GoTo 0
 End Sub
+
+Private Function PreencherPrazoPrimeiraEscalaSelecionada() As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim arrIDs() As String
+    Dim strIDCadastro As String
+    Dim vPrazo As Variant
+    Dim dtPrazo As Date
+    
+    On Error GoTo Erro
+    
+    arrIDs = IDsSelecionadosTemp()
+    If UBound(arrIDs) < LBound(arrIDs) Then Exit Function
+    
+    strIDCadastro = Trim(arrIDs(LBound(arrIDs)))
+    If strIDCadastro = "" Then Exit Function
+    
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset("SELECT Prazo_Inscricao FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strIDCadastro), dbOpenSnapshot)
+    
+    If rs.EOF Then GoTo Sair
+    
+    vPrazo = Nz(rs!Prazo_Inscricao, "")
+    If Trim(CStr(vPrazo)) = "" Then GoTo Sair
+    If Not IsDate(vPrazo) Then GoTo Sair
+    
+    dtPrazo = CDate(vPrazo)
+    Me.txtDataPrazo = Format(dtPrazo, "dd/mm/yyyy")
+    Me.txtHoraPrazo = Format(dtPrazo, "hh:nn")
+    PreencherPrazoPrimeiraEscalaSelecionada = True
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    On Error GoTo 0
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmAltIntranet.PreencherPrazoPrimeiraEscalaSelecionada: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
 
 Private Sub btnIniciar_Click()
     ExecutarAlteracao
@@ -228,18 +273,43 @@ Private Function AlterarEscalaSite(ByRef driver As ChromeDriver, ByRef por As by
                                   ByVal strPrazo As String, ByVal strP1 As String, _
                                   ByVal strCoord As String, ByVal strSubcmd As String) As Boolean
     Dim blnForaPrazo As Boolean
+    Dim strIDEscala As String
     
     On Error GoTo Erro
     
+    strIDEscala = Trim(Nz(rs!ID_Escala, ""))
     blnForaPrazo = ForaPrazo(strPrazo)
     
     With driver
-        LimparEnviarPorName driver, por, "vESCOPRIDFFIL", Nz(rs!ID_Escala, "")
-        .FindElement(por.id("IMAGE4")).Click
+        If Not AguardarElementoPorName(driver, por, "vESCOPRIDFFIL", 15) Then
+            Err.Raise vbObjectError + 720, "AlterarEscalaSite", "Campo de pesquisa da ID_Escala nao encontrado."
+        End If
+        
+        LimparEnviarPorName driver, por, "vESCOPRIDFFIL", strIDEscala
+        Pausar 0.5
+        
+        If AguardarElementoPorName(driver, por, "IMAGE4", 5) Then
+            .FindElement(por.Name("IMAGE4")).Click
+        Else
+            .FindElement(por.id("IMAGE4")).Click
+        End If
+        
+        Pausar 0.5
         AguardarAjax driver, por, 30
         
+        If Not AguardarElementoPorID(driver, por, "vUPD_0001", 30) Then
+            Err.Raise vbObjectError + 721, "AlterarEscalaSite", _
+                      "A escala nao foi localizada na intranet para a ID_Escala " & strIDEscala & "."
+        End If
+        
         .FindElement(por.id("vUPD_0001")).Click
+        Pausar 0.5
         AguardarAjax driver, por, 30
+        
+        If Not AguardarElementoPorName(driver, por, "vQTDPRASUBTEN", 30) Then
+            Err.Raise vbObjectError + 722, "AlterarEscalaSite", _
+                      "A tela de alteracao da escala nao carregou para a ID_Escala " & strIDEscala & "."
+        End If
         
         LimparEnviarPorName driver, por, "vQTDOFSUP", ValorFinalQtdeTemp("AltAtzSuperior", rs!Atz_Superior)
         LimparEnviarPorName driver, por, "vQTDOFINT", ValorFinalQtdeTemp("AltAtzIntermed", rs!Atz_Intermed)
@@ -247,7 +317,7 @@ Private Function AlterarEscalaSite(ByRef driver As ChromeDriver, ByRef por As by
         LimparEnviarPorName driver, por, "vQTDPRASUBTEN", ValorFinalQtdeTemp("AltAtzSubtenSgt", rs!Atz_Subten_Sgt)
         LimparEnviarPorName driver, por, "vQTDPRACBSD", ValorFinalQtdeTemp("AltAtzCbSd", rs!Atz_Cb_Sd)
         
-        LimparEnviarPorID driver, por, "vESCOPRDATFIMISC", strPrazo
+        LimparEnviarPrazoInscricao driver, por, strPrazo
         .FindElement(por.id("vESCOPRDLGATVNOM")).Click
         
         If blnForaPrazo Then
@@ -256,6 +326,7 @@ Private Function AlterarEscalaSite(ByRef driver As ChromeDriver, ByRef por As by
         End If
         
         .FindElement(por.Name("ALTERAR")).Click
+        Pausar 0.5
         AguardarAjax driver, por, 30
     End With
     
@@ -305,16 +376,75 @@ End Sub
 
 Private Sub AguardarAjax(ByRef driver As ChromeDriver, ByRef por As by, ByVal lngTempoMax As Long)
     Dim i As Long
-    
-    On Error Resume Next
+    Dim blnVisivel As Boolean
     
     For i = 1 To lngTempoMax
+        On Error Resume Next
         Err.Clear
-        If driver.FindElement(por.id("gx_ajax_notification")).IsDisplayed = False Then Exit Sub
+        blnVisivel = driver.FindElement(por.id("gx_ajax_notification")).IsDisplayed
+        If Err.Number <> 0 Then
+            Err.Clear
+            On Error GoTo 0
+            Exit Sub
+        End If
+        On Error GoTo 0
+        
+        If Not blnVisivel Then Exit Sub
         Pausar 1
     Next
+End Sub
+
+Private Function AguardarElementoPorID(ByRef driver As ChromeDriver, ByRef por As by, _
+                                       ByVal strID As String, ByVal lngTempoMax As Long) As Boolean
+    Dim i As Long
+    Dim objElemento As Object
     
-    If Err.Number <> 0 Then Err.Clear
+    For i = 1 To lngTempoMax * 2
+        On Error Resume Next
+        Err.Clear
+        Set objElemento = driver.FindElement(por.id(strID))
+        If Err.Number = 0 And Not objElemento Is Nothing Then
+            AguardarElementoPorID = True
+            On Error GoTo 0
+            Exit Function
+        End If
+        Err.Clear
+        Set objElemento = Nothing
+        On Error GoTo 0
+        Pausar 0.5
+    Next
+End Function
+
+Private Function AguardarElementoPorName(ByRef driver As ChromeDriver, ByRef por As by, _
+                                         ByVal strName As String, ByVal lngTempoMax As Long) As Boolean
+    Dim i As Long
+    Dim objElemento As Object
+    
+    For i = 1 To lngTempoMax * 2
+        On Error Resume Next
+        Err.Clear
+        Set objElemento = driver.FindElement(por.Name(strName))
+        If Err.Number = 0 And Not objElemento Is Nothing Then
+            AguardarElementoPorName = True
+            On Error GoTo 0
+            Exit Function
+        End If
+        Err.Clear
+        Set objElemento = Nothing
+        On Error GoTo 0
+        Pausar 0.5
+    Next
+End Function
+
+Private Sub LimparEnviarPrazoInscricao(ByRef driver As ChromeDriver, ByRef por As by, ByVal strPrazo As String)
+    If Not AguardarElementoPorName(driver, por, "vESCOPRDATFIMISC", 15) Then
+        Err.Raise vbObjectError + 723, "LimparEnviarPrazoInscricao", "Campo de prazo de inscricao nao encontrado."
+    End If
+    
+    With driver.FindElement(por.Name("vESCOPRDATFIMISC"))
+        .Click
+        .SendKeys CStr(strPrazo)
+    End With
 End Sub
 
 Private Sub SelecionarSuperioresForaPrazo(ByRef driver As ChromeDriver, ByRef por As by, _
@@ -533,7 +663,7 @@ Private Function ValorFinalQtdeTemp(ByVal strTempVar As String, ByVal vAtual As 
     On Error GoTo 0
     
     If strValor = "" Then
-        ValorFinalQtdeTemp = 0
+        ValorFinalQtdeTemp = CLng(Nz(vAtual, 0))
     Else
         ValorFinalQtdeTemp = CLng(strValor)
     End If

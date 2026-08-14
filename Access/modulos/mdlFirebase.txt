@@ -499,6 +499,8 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
     Dim strSQL As String
     Dim strIDFirebase As String
     Dim strIDCadastro As String
+    Dim strStatusInicial As String
+    Dim strStatusAdmFinal As String
     Dim slcCbSd As Long
     Dim slcIntermed As Long
     Dim slcSubalterno As Long
@@ -515,9 +517,10 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
     slcSubalterno = DictVal(objSolic, "Solic_Subalterno", 0)
     slcSubtenSgt = DictVal(objSolic, "Solic_Subten_Sgt", 0)
     slcSuperior = DictVal(objSolic, "Solic_Superior", 0)
+    strStatusInicial = CStr(DictVal(objSolic, "Status_Inicial", 0))
     
     Set rsCheck = db.OpenRecordset( _
-        "SELECT ID_Cadastro FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strIDCadastro), _
+        "SELECT ID_Cadastro, ID_Escala, Status_Adm FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strIDCadastro), _
         dbOpenSnapshot)
     
     If rsCheck.EOF Then
@@ -531,7 +534,7 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
                  SQLTexto(strIDCadastro) & ", " & _
                  SQLTexto(strIDFirebase) & ", " & _
                  slcCbSd & ", " & slcIntermed & ", " & slcSubalterno & ", " & slcSubtenSgt & ", " & slcSuperior & ", " & _
-                 DictVal(objSolic, "Status_Inicial", 0) & ", " & _
+                 strStatusInicial & ", " & _
                  SQLTexto("1") & ", " & _
                  SQLTexto(DictVal(objSolic, "composicao_cod", "")) & ", " & _
                  SQLTexto(DictVal(objSolic, "composicao_nome", "")) & ", " & _
@@ -547,6 +550,16 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
         db.Execute strSQL, dbFailOnError
         importados = importados + 1
     Else
+        If strStatusInicial = "4" And _
+           Trim(Nz(rsCheck!ID_Escala, "")) <> "" And _
+           Trim(Nz(rsCheck!Status_Adm, "")) = "3" Then
+            strStatusAdmFinal = "8"
+        ElseIf Trim(Nz(rsCheck!Status_Adm, "")) = "" Then
+            strStatusAdmFinal = "1"
+        Else
+            strStatusAdmFinal = Trim(Nz(rsCheck!Status_Adm, ""))
+        End If
+        
         strSQL = "UPDATE TblEscGeral SET " & _
                  "ID_Firebase = " & SQLTexto(strIDFirebase) & ", " & _
                  "Slc_Cb_Sd = " & slcCbSd & ", " & _
@@ -554,8 +567,8 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
                  "Slc_Subalterno = " & slcSubalterno & ", " & _
                  "Slc_Subten_Sgt = " & slcSubtenSgt & ", " & _
                  "Slc_Superior = " & slcSuperior & ", " & _
-                 "Status_Inicial = " & DictVal(objSolic, "Status_Inicial", 0) & ", " & _
-                 "Status_Adm = IIf(Nz(Status_Adm,'')='', '1', Status_Adm), " & _
+                 "Status_Inicial = " & strStatusInicial & ", " & _
+                 "Status_Adm = " & SQLTexto(strStatusAdmFinal) & ", " & _
                  "Composicao_Cod = " & SQLTexto(DictVal(objSolic, "composicao_cod", "")) & ", " & _
                  "Composicao_Nome = " & SQLTexto(DictVal(objSolic, "composicao_nome", "")) & ", " & _
                  "Data_Esc = " & SqlDataFirebase(DictVal(objSolic, "data", "")) & ", " & _

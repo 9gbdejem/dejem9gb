@@ -44,14 +44,12 @@ Private Sub btnAlterarCancel_Click()
 End Sub
 
 Private Sub btnAlterarIntranet_Click()
-    If mstrModo = MODO_INTR Then Exit Sub
-    
     mstrModo = MODO_INTR
     LimparCamposQtde
     PintarBotoesModo mstrModo
     MostrarCamposQtde True
     MostrarBotoesAcao False, False, True
-    CarregarLista "3,4"
+    CarregarLista "3,4,8"
 End Sub
 
 Private Sub btnConfirmarQtde_Click()
@@ -220,12 +218,15 @@ Private Sub btnConfirmarIntranet_Click()
         Exit Sub
     End If
     
-    If strStatus <> "3" And strStatus <> "4" Then
-        MsgBox "Este modo aceita somente Status_Adm 3 ou 4.", vbExclamation, "Alterar intranet"
+    If strStatus <> "3" And strStatus <> "4" And strStatus <> "8" Then
+        MsgBox "Este modo aceita somente Status_Adm 3, 4 ou 8.", vbExclamation, "Alterar intranet"
         Exit Sub
     End If
     
     If Not QuantidadesValidas() Then Exit Sub
+    If strStatus = "8" And AlgumaQuantidadeInformada() Then
+        If Not ConfirmarSobrescritaQuantidadePendencia() Then Exit Sub
+    End If
     If Not QuantidadesRespeitamEscalados(colIDs) Then Exit Sub
     If Not TodasChavesComIDCadastro(colIDs) Then
         MsgBox "Para alterar na intranet, todas as escalas selecionadas precisam ter ID_Cadastro preenchido.", _
@@ -236,7 +237,7 @@ Private Sub btnConfirmarIntranet_Click()
     SalvarTempVarsAlteracao colIDs, strStatus
     DoCmd.OpenForm "frmAltIntranet", , , , , acDialog
     
-    CarregarLista "3,4"
+    CarregarLista "3,4,8"
     AtualizarFrmEscalas
     Call AtualizarEscalasAbertasResumoFirebase(False)
     Exit Sub
@@ -338,6 +339,8 @@ Private Function SimboloStatusAdm(ByVal vStatus As Variant) As String
             SimboloStatusAdm = ChrW(&HD83D) & ChrW(&HDCB2)
         Case "6"
             SimboloStatusAdm = ChrW(&H2753)
+        Case "8"
+            SimboloStatusAdm = ChrW(&H26D4)
         Case Else
             SimboloStatusAdm = ""
     End Select
@@ -410,6 +413,33 @@ Private Function QuantidadesValidas() As Boolean
     If Not CampoQuantidadeValido(Me.txtAtzCbSd, "Cb/Sd") Then Exit Function
     
     QuantidadesValidas = True
+End Function
+
+Private Function AlgumaQuantidadeInformada() As Boolean
+    AlgumaQuantidadeInformada = (Trim(Nz(Me.txtAtzSuperior, "")) <> "" Or _
+                                 Trim(Nz(Me.txtAtzIntermed, "")) <> "" Or _
+                                 Trim(Nz(Me.txtAtzSubalterno, "")) <> "" Or _
+                                 Trim(Nz(Me.txtAtzSubtenSgt, "")) <> "" Or _
+                                 Trim(Nz(Me.txtAtzCbSd, "")) <> "")
+End Function
+
+Private Function ConfirmarSobrescritaQuantidadePendencia() As Boolean
+    Dim resposta As VbMsgBoxResult
+    
+    resposta = MsgBox("As escalas selecionadas estao com Status_Adm 8 (Pendencia)." & vbCrLf & vbCrLf & _
+                      "Normalmente a quantidade importada da alteracao feita pelo solicitante deve ser mantida." & vbCrLf & _
+                      "Como ha valor informado em pelo menos um campo de quantidade, o sistema usara esses valores para TODAS as escalas selecionadas." & vbCrLf & vbCrLf & _
+                      "Deseja realmente sobrescrever as quantidades importadas?", _
+                      vbQuestion + vbYesNo, "Confirmar sobrescrita")
+    If resposta = vbNo Then Exit Function
+    
+    resposta = MsgBox("Confirmacao final:" & vbCrLf & vbCrLf & _
+                      "As quantidades digitadas serao aplicadas na intranet e no banco local, substituindo a alteracao do solicitante." & vbCrLf & _
+                      "Deseja continuar?", _
+                      vbQuestion + vbYesNo, "Confirmacao final")
+    If resposta = vbNo Then Exit Function
+    
+    ConfirmarSobrescritaQuantidadePendencia = True
 End Function
 
 Private Function CampoQuantidadeValido(ByVal ctl As Control, ByVal strNome As String) As Boolean
@@ -811,7 +841,11 @@ Private Function QuantidadesRespeitamEscalados(ByVal colIDs As Collection) As Bo
 End Function
 
 Private Function ValorFinalQtde(ByVal ctl As Control, ByVal vAtual As Variant) As Long
-    ValorFinalQtde = ValorQuantidadeInformada(ctl)
+    If Trim(Nz(ctl.Value, "")) = "" Then
+        ValorFinalQtde = CLng(Nz(vAtual, 0))
+    Else
+        ValorFinalQtde = ValorQuantidadeInformada(ctl)
+    End If
 End Function
 
 Private Function ValorQuantidadeInformada(ByVal ctl As Control) As Long
@@ -833,12 +867,20 @@ Private Sub SalvarTempVarsAlteracao(ByVal colIDs As Collection, ByVal strStatus 
     
     SetTempVar "AltIDs", strIDs
     SetTempVar "AltStatusAdm", strStatus
-    SetTempVar "AltAtzSuperior", CStr(ValorQuantidadeInformada(Me.txtAtzSuperior))
-    SetTempVar "AltAtzIntermed", CStr(ValorQuantidadeInformada(Me.txtAtzIntermed))
-    SetTempVar "AltAtzSubalterno", CStr(ValorQuantidadeInformada(Me.txtAtzSubalterno))
-    SetTempVar "AltAtzSubtenSgt", CStr(ValorQuantidadeInformada(Me.txtAtzSubtenSgt))
-    SetTempVar "AltAtzCbSd", CStr(ValorQuantidadeInformada(Me.txtAtzCbSd))
+    SetTempVar "AltAtzSuperior", ValorQuantidadeTemp(Me.txtAtzSuperior)
+    SetTempVar "AltAtzIntermed", ValorQuantidadeTemp(Me.txtAtzIntermed)
+    SetTempVar "AltAtzSubalterno", ValorQuantidadeTemp(Me.txtAtzSubalterno)
+    SetTempVar "AltAtzSubtenSgt", ValorQuantidadeTemp(Me.txtAtzSubtenSgt)
+    SetTempVar "AltAtzCbSd", ValorQuantidadeTemp(Me.txtAtzCbSd)
 End Sub
+
+Private Function ValorQuantidadeTemp(ByVal ctl As Control) As String
+    If Trim(Nz(ctl.Value, "")) = "" Then
+        ValorQuantidadeTemp = ""
+    Else
+        ValorQuantidadeTemp = CStr(ValorQuantidadeInformada(ctl))
+    End If
+End Function
 
 Private Sub SetTempVar(ByVal strNome As String, ByVal strValor As String)
     On Error Resume Next
@@ -852,11 +894,11 @@ Private Function StatusPermitido(ByVal vStatus As Variant, ByVal strPermitidos A
     Dim i As Long
     Dim strStatus As String
     
-    strStatus = Trim(Nz(vStatus, ""))
+    strStatus = Trim(CStr(Nz(vStatus, "")))
     arr = Split(strPermitidos, ",")
     
     For i = LBound(arr) To UBound(arr)
-        If Trim(arr(i)) = strStatus Then
+        If Trim(CStr(arr(i))) = strStatus Then
             StatusPermitido = True
             Exit Function
         End If

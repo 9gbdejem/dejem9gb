@@ -1838,12 +1838,6 @@ function renderInterface() {
                                     })()}
                                 </select>
                             </div>
-                            <div class="col-xl-2 col-lg-2 col-md-2">
-                                <label class="form-label small mb-1 d-none d-md-block">&nbsp;</label>
-                                <button class="btn btn-primary btn-sm w-100" id="btnAtualizarFiltro">
-                                    <i class="fas fa-sync me-1"></i>Atualizar
-                                </button>
-                            </div>
                             <div class="col-xl-2 col-lg-2 col-md-3">
                                 <label class="form-label small mb-1 d-none d-md-block">&nbsp;</label>
                                 <a class="btn btn-info btn-sm w-100"
@@ -2144,6 +2138,11 @@ function renderInterface() {
                                     <div class="col-12 col-xl-1 d-grid">
                                         <button type="button" class="btn btn-sm btn-outline-secondary" id="btnResetarFiltrosTabela">
                                             Resetar
+                                        </button>
+                                    </div>
+                                    <div class="col-12 col-xl-2 d-grid">
+                                        <button type="button" class="btn btn-sm btn-primary" id="btnAtualizarFiltro">
+                                            <i class="fas fa-sync me-1"></i>Atualizar
                                         </button>
                                     </div>
                                 </div>
@@ -2575,6 +2574,30 @@ function exibirAtualizandoTabela() {
     `;
 }
 
+function mostrarOverlayAtualizandoTabela() {
+    let overlay = document.getElementById('overlayAtualizandoTabela');
+
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'overlayAtualizandoTabela';
+        overlay.className = 'overlay-atualizando-tabela';
+        overlay.innerHTML = `
+            <div class="overlay-atualizando-tabela__conteudo">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                Atualizando
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+
+    overlay.classList.add('show');
+}
+
+function ocultarOverlayAtualizandoTabela() {
+    const overlay = document.getElementById('overlayAtualizandoTabela');
+    if (overlay) overlay.classList.remove('show');
+}
+
 async function atualizarTabelaComDelay() {
     const selectOpm = document.getElementById('selectOpm');
     const selectMes = document.getElementById('selectMes');
@@ -2586,10 +2609,16 @@ async function atualizarTabelaComDelay() {
     }
 
     exibirAtualizandoTabela();
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    await carregarSolicitacoesMes();
-    atualizarTabelaSolicitacoes();
-    atualizarComposicoesDropdown();
+    mostrarOverlayAtualizandoTabela();
+
+    try {
+        await new Promise(resolve => setTimeout(resolve, 4000));
+        await carregarSolicitacoesMes();
+        atualizarTabelaSolicitacoes();
+        atualizarComposicoesDropdown();
+    } finally {
+        ocultarOverlayAtualizandoTabela();
+    }
 }
 
 async function registrarPendenciaSolicitacao(idFirebase, dados = {}) {

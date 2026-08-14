@@ -146,7 +146,13 @@ Private Function MontarUmaEscala(ByRef driver As ChromeDriver, ByRef por As by, 
     driver.FindElement(por.id("vVW_MOT_ESCEFE_ESCEFERSPPTR_0001")).AsSelect.SelectByValue "S"
     On Error GoTo Erro
     
-    CapturarMilitaresEscalados driver, por, rsEscala
+    If Not CapturarMilitaresEscaladosComTentativas(driver, por, rsEscala, lngQtdEscalados) Then
+        LimparMontagemFalha rsEscala
+        Err.Raise vbObjectError + 925, "MontarUmaEscala", _
+                  "Nao foi possivel capturar todos os dados dos militares da escala " & strIDEscala & _
+                  " apos 3 tentativa(s)." & vbCrLf & _
+                  "As linhas desta escala foram removidas da TblMilEsc, o Status_Adm voltou para 3 e as quantidades Esc_ foram zeradas."
+    End If
     AtualizarEscalaMontada rsEscala
     
     AguardarAjax driver, por, 30
@@ -157,6 +163,64 @@ Private Function MontarUmaEscala(ByRef driver As ChromeDriver, ByRef por As by, 
 Erro:
     Debug.Print "Erro mdlMontarEscalas.MontarUmaEscala ID_Escala=" & strIDEscala & ": " & Err.Number & " - " & Err.Description
     Err.Raise Err.Number, "MontarUmaEscala", Err.Description
+End Function
+
+Private Function CapturarMilitaresEscaladosComTentativas(ByRef driver As ChromeDriver, ByRef por As by, _
+                                                         ByRef rsEscala As DAO.Recordset, _
+                                                         ByVal lngQtdEsperada As Long) As Boolean
+    Dim i As Long
+    Dim strIDEscala As String
+    Dim strListaREBase As String
+    Dim strListaREAtual As String
+    Dim strErroValidacao As String
+    
+    On Error GoTo Erro
+    
+    strIDEscala = Trim(Nz(rsEscala!ID_Escala, ""))
+    
+    For i = 1 To 3
+        CapturarMilitaresEscalados driver, por, rsEscala
+        strListaREAtual = ListaREMilitaresEscala(strIDEscala)
+        
+        If strListaREBase = "" And ListaREConfiavel(strListaREAtual, lngQtdEsperada) Then
+            strListaREBase = strListaREAtual
+        ElseIf strListaREBase <> "" And ListaREConfiavel(strListaREAtual, lngQtdEsperada) And _
+               strListaREAtual <> strListaREBase Then
+            strErroValidacao = "A lista de RE mudou entre as tentativas. RE inicial: " & _
+                               strListaREBase & " | RE atual: " & strListaREAtual
+            Exit For
+        End If
+        
+        If MilitaresEscaladosCompletos(strIDEscala, lngQtdEsperada, strErroValidacao) Then
+            CapturarMilitaresEscaladosComTentativas = True
+            Exit Function
+        End If
+        
+        Pausar 0.5
+    Next
+    
+    Debug.Print "Falha ao capturar militares da escala " & strIDEscala & ": " & strErroValidacao
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro mdlMontarEscalas.CapturarMilitaresEscaladosComTentativas: " & Err.Number & " - " & Err.Description
+    Err.Raise Err.Number, "CapturarMilitaresEscaladosComTentativas", Err.Description
+End Function
+
+Private Function ListaREConfiavel(ByVal strListaRE As String, ByVal lngQtdEsperada As Long) As Boolean
+    Dim arr() As String
+    Dim i As Long
+    
+    If Trim(strListaRE) = "" Then Exit Function
+    
+    arr = Split(strListaRE, "|")
+    If UBound(arr) - LBound(arr) + 1 <> lngQtdEsperada Then Exit Function
+    
+    For i = LBound(arr) To UBound(arr)
+        If Trim(arr(i)) = "" Then Exit Function
+    Next
+    
+    ListaREConfiavel = True
 End Function
 
 Private Sub CapturarMilitaresEscalados(ByRef driver As ChromeDriver, ByRef por As by, ByRef rsEscala As DAO.Recordset)
@@ -187,6 +251,12 @@ Private Sub CapturarMilitaresEscalados(ByRef driver As ChromeDriver, ByRef por A
         strPosto = TextoElementoPorXPath(driver, por, "//*[@id='Grid2ContainerRow_" & strIdx & "']/td[7]")
         If strPosto = "" Then strPosto = TextoElementoPorID(driver, por, "span_vGRIDPOSDES2_" & strIdx)
         strOPM = TextoElementoPorID(driver, por, "span_vGRIDPMOPMDES2_" & strIdx)
+        If strOPM = "" Then
+            Pausar 0.3
+            strOPM = TextoElementoPorID(driver, por, "span_vGRIDPMOPMDES2_" & strIdx)
+        End If
+        If strOPM = "" Then strOPM = TextoElementoPorXPath(driver, por, "//*[@id='Grid2ContainerRow_" & strIdx & "']/td[9]")
+        If strOPM = "" Then strOPM = TextoElementoPorXPath(driver, por, "//*[@id='Grid2ContainerRow_" & strIdx & "']/td[10]")
         
         If Trim(strRE & strNome & strPosto & strOPM) <> "" Then
             InserirMilitarEscalado rsEscala, strRE, strNome, strPosto, strOPM
@@ -321,6 +391,87 @@ Private Sub ExcluirMilitaresEscala(ByVal strIDEscala As String)
     On Error GoTo 0
 End Sub
 
+Private Function MilitaresEscaladosCompletos(ByVal strIDEscala As String, ByVal lngQtdEsperada As Long, _
+                                             ByRef strErroValidacao As String) As Boolean
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim lngQtdGravada As Long
+    
+    On Error GoTo Erro
+    
+    If Trim(strIDEscala) = "" Then
+        strErroValidacao = "ID_Escala vazio."
+        Exit Function
+    End If
+    
+    lngQtdGravada = CLng(DCount("*", "TblMilEsc", "ID_Escala = " & SQLTexto(strIDEscala)))
+    If lngQtdGravada <> lngQtdEsperada Then
+        strErroValidacao = "A escala retornou " & lngQtdEsperada & _
+                           " militar(es) no site, mas gravou " & lngQtdGravada & " na TblMilEsc."
+        GoTo Sair
+    End If
+    
+    strSQL = "SELECT TOP 1 Militar_RE, Militar_Nome, Militar_Posto_Grad, Militar_OPM " & _
+             "FROM TblMilEsc WHERE ID_Escala = " & SQLTexto(strIDEscala) & " AND (" & _
+             "Militar_RE Is Null OR Militar_RE = '' OR " & _
+             "Militar_Nome Is Null OR Militar_Nome = '' OR " & _
+             "Militar_Posto_Grad Is Null OR Militar_Posto_Grad = '' OR " & _
+             "Militar_OPM Is Null OR Militar_OPM = '')"
+    
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    
+    If Not rs.EOF Then
+        strErroValidacao = "Militar com campo obrigatorio vazio. RE=" & Nz(rs!Militar_RE, "") & _
+                           " | Nome=" & Nz(rs!Militar_Nome, "") & _
+                           " | Posto=" & Nz(rs!Militar_Posto_Grad, "") & _
+                           " | OPM=" & Nz(rs!Militar_OPM, "")
+        GoTo Sair
+    End If
+    
+    MilitaresEscaladosCompletos = True
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro mdlMontarEscalas.MilitaresEscaladosCompletos: " & Err.Number & " - " & Err.Description
+    Err.Raise Err.Number, "MilitaresEscaladosCompletos", Err.Description
+End Function
+
+Private Function ListaREMilitaresEscala(ByVal strIDEscala As String) As String
+    Dim rs As DAO.Recordset
+    Dim strLista As String
+    
+    On Error GoTo Erro
+    
+    If Trim(strIDEscala) = "" Then Exit Function
+    
+    Set rs = CurrentDb.OpenRecordset( _
+        "SELECT Militar_RE FROM TblMilEsc WHERE ID_Escala = " & SQLTexto(strIDEscala) & _
+        " ORDER BY Militar_RE", dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        If strLista <> "" Then strLista = strLista & "|"
+        strLista = strLista & Trim(Nz(rs!Militar_RE, ""))
+        rs.MoveNext
+    Loop
+    
+    ListaREMilitaresEscala = strLista
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro mdlMontarEscalas.ListaREMilitaresEscala: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
+
 Private Sub AtualizarQuantidadesEscaladas(ByRef rsEscala As DAO.Recordset, _
                                           ByVal lngSup As Long, ByVal lngIntermed As Long, _
                                           ByVal lngSubalterno As Long, ByVal lngSubtenSgt As Long, _
@@ -379,6 +530,37 @@ Private Sub RegistrarSemInscritos(ByRef rsEscala As DAO.Recordset)
              "WHERE " & strWhere
     
     CurrentDb.Execute strSQL, dbFailOnError
+End Sub
+
+Private Sub LimparMontagemFalha(ByRef rsEscala As DAO.Recordset)
+    Dim strSQL As String
+    Dim strWhere As String
+    Dim strIDEscala As String
+    
+    On Error GoTo Erro
+    
+    strWhere = WhereEscala(rsEscala)
+    If strWhere = "" Then Exit Sub
+    
+    strIDEscala = Trim(Nz(rsEscala!ID_Escala, ""))
+    If strIDEscala <> "" Then ExcluirMilitaresEscala strIDEscala
+    
+    strSQL = "UPDATE TblEscGeral SET " & _
+             "Esc_Superior = 0, " & _
+             "Esc_Intermed = 0, " & _
+             "Esc_Subalterno = 0, " & _
+             "Esc_Subten_Sgt = 0, " & _
+             "Esc_Cb_Sd = 0, " & _
+             "Status_Adm = '3', " & _
+             "Alteracao = 1 " & _
+             "WHERE " & strWhere
+    
+    CurrentDb.Execute strSQL, dbFailOnError
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro mdlMontarEscalas.LimparMontagemFalha: " & Err.Number & " - " & Err.Description
+    Err.Raise Err.Number, "LimparMontagemFalha", Err.Description
 End Sub
 
 Private Function WhereEscala(ByRef rsEscala As DAO.Recordset) As String
@@ -512,17 +694,41 @@ Private Sub AguardarTelaMilitarEscalado(ByRef driver As ChromeDriver, ByRef por 
 End Sub
 
 Private Function TextoElementoPorID(ByRef driver As ChromeDriver, ByRef por As by, ByVal strID As String) As String
+    Dim el As WebElement
+    Dim strTexto As String
+    
     On Error GoTo Erro
-    TextoElementoPorID = Trim(Nz(driver.FindElement(por.id(strID)).Text, ""))
+    
+    Set el = driver.FindElement(por.id(strID))
+    
+    strTexto = Trim(Nz(el.Text, ""))
+    If strTexto = "" Then strTexto = Trim(Nz(el.Attribute("innerText"), ""))
+    If strTexto = "" Then strTexto = Trim(Nz(el.Attribute("textContent"), ""))
+    If strTexto = "" Then strTexto = Trim(Nz(el.Attribute("value"), ""))
+    
+    TextoElementoPorID = strTexto
     Exit Function
+    
 Erro:
     TextoElementoPorID = ""
 End Function
 
 Private Function TextoElementoPorXPath(ByRef driver As ChromeDriver, ByRef por As by, ByVal strXPath As String) As String
+    Dim el As WebElement
+    Dim strTexto As String
+    
     On Error GoTo Erro
-    TextoElementoPorXPath = Trim(Nz(driver.FindElement(por.xpath(strXPath)).Text, ""))
+    
+    Set el = driver.FindElement(por.xpath(strXPath))
+    
+    strTexto = Trim(Nz(el.Text, ""))
+    If strTexto = "" Then strTexto = Trim(Nz(el.Attribute("innerText"), ""))
+    If strTexto = "" Then strTexto = Trim(Nz(el.Attribute("textContent"), ""))
+    If strTexto = "" Then strTexto = Trim(Nz(el.Attribute("value"), ""))
+    
+    TextoElementoPorXPath = strTexto
     Exit Function
+    
 Erro:
     TextoElementoPorXPath = ""
 End Function

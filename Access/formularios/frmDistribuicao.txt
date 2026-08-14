@@ -16,6 +16,10 @@ Erro:
     Debug.Print "Erro frmDistribuicao.Form_Load: " & Err.Number & " - " & Err.Description
 End Sub
 
+Private Sub btnLink_Click()
+    CreateObject("Shell.Application").Open ("http://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/caddisefedjmcia.aspx?" & LinkUsuarioLogado())
+End Sub
+
 Private Sub btnMesCorrente_Click()
     Dim dtPrimeiroDia As Date
     

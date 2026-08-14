@@ -22,10 +22,56 @@ End Sub
 
 Private Sub Form_Load()
     On Error Resume Next
-    If Nz(Me.txtDataPrazo, "") = "" Then Me.txtDataPrazo = Format(Date, "dd/mm/yyyy")
-    If Nz(Me.txtHoraPrazo, "") = "" Then Me.txtHoraPrazo = Format(Time, "hh:nn")
+    If Not PreencherPrazoPrimeiraEscalaFiltrada() Then
+        If Nz(Me.txtDataPrazo, "") = "" Then Me.txtDataPrazo = Format(Date, "dd/mm/yyyy")
+        If Nz(Me.txtHoraPrazo, "") = "" Then Me.txtHoraPrazo = Format(Time, "hh:nn")
+    End If
     On Error GoTo 0
 End Sub
+
+Private Function PreencherPrazoPrimeiraEscalaFiltrada() As Boolean
+    Dim frm As Form
+    Dim rs As DAO.Recordset
+    Dim vPrazo As Variant
+    Dim dtPrazo As Date
+    
+    On Error GoTo Erro
+    
+    Set frm = ObterSubformLinhaEscalas()
+    If frm Is Nothing Then Exit Function
+    
+    Set rs = frm.RecordsetClone
+    If rs.BOF And rs.EOF Then GoTo Sair
+    
+    rs.MoveFirst
+    Do While Not rs.EOF
+        vPrazo = Nz(rs!Prazo_Inscricao, "")
+        
+        If Trim(CStr(vPrazo)) <> "" Then
+            If IsDate(vPrazo) Then
+                dtPrazo = CDate(vPrazo)
+                Me.txtDataPrazo = Format(dtPrazo, "dd/mm/yyyy")
+                Me.txtHoraPrazo = Format(dtPrazo, "hh:nn")
+                PreencherPrazoPrimeiraEscalaFiltrada = True
+                Exit Do
+            End If
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set frm = Nothing
+    On Error GoTo 0
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro frmCadastrar.PreencherPrazoPrimeiraEscalaFiltrada: " & Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
 
 Private Sub txtDataPrazo_AfterUpdate()
     Dim strValor As String
@@ -652,7 +698,11 @@ Sair:
     Exit Sub
     
 Erro:
-    MsgBox "Erro na automação da Intranet: " & Err.Number & " - " & Err.Description, vbCritical
+    If Err.Number = vbObjectError + 514 Then
+        MsgBox Err.Description, vbExclamation, "Cadastro na Intranet"
+    Else
+        MsgBox "Erro na automa��o da Intranet: " & Err.Number & " - " & Err.Description, vbCritical
+    End If
     Resume Sair
 End Sub
 
@@ -697,6 +747,12 @@ Private Sub PreencherEscalaNoSite(ByRef driver As ChromeDriver, ByRef por As by,
         
         .FindElement(por.Name("vESCOPRDLGOBS")).Click
         .FindElement(por.Name("INCLUIR")).Click
+        Pausar 0.5
+        AguardarAjax driver, por, 30
+        If ExisteErroDistribuicaoVagas(driver, por) Then
+            Err.Raise vbObjectError + 514, "PreencherEscalaNoSite", _
+                      "Não foram distribuídas vagas para esta escala. Realize a distribuição das vagas no site antes de continuar o cadastro."
+        End If
     End With
 End Sub
 
@@ -741,6 +797,39 @@ Private Sub SelecionarComboPorValor(ByRef driver As ChromeDriver, ByRef por As b
     driver.FindElement(por.id(strID)).AsSelect.SelectByValue (strValor)
 End Sub
 
+Private Sub AguardarAjax(ByRef driver As ChromeDriver, ByRef por As by, ByVal lngTempoMax As Long)
+    Dim i As Long
+    Dim blnVisivel As Boolean
+    
+    For i = 1 To lngTempoMax
+        On Error Resume Next
+        Err.Clear
+        blnVisivel = driver.FindElement(por.id("gx_ajax_notification")).IsDisplayed
+        If Err.Number <> 0 Then
+            Err.Clear
+            On Error GoTo 0
+            Exit Sub
+        End If
+        On Error GoTo 0
+        
+        If Not blnVisivel Then Exit Sub
+        Pausar 1
+    Next
+End Sub
+
+Private Function ExisteErroDistribuicaoVagas(ByRef driver As ChromeDriver, ByRef por As by) As Boolean
+    Dim strTextoErro As String
+    
+    On Error Resume Next
+    strTextoErro = Nz(driver.FindElement(por.id("gxErrorViewer")).Attribute("innerText"), "")
+    If Trim(strTextoErro) = "" Then strTextoErro = Nz(driver.FindElement(por.id("gxErrorViewer")).Text, "")
+    On Error GoTo 0
+    
+    ExisteErroDistribuicaoVagas = (InStr(1, strTextoErro, "foram distribu", vbTextCompare) > 0 And _
+                                   InStr(1, strTextoErro, "vagas", vbTextCompare) > 0) Or _
+                                  (InStr(1, strTextoErro, "unidade informada", vbTextCompare) > 0 And _
+                                   InStr(1, strTextoErro, "vagas distribu", vbTextCompare) > 0)
+End Function
 Private Function ValorElementoPorID(ByRef driver As ChromeDriver, ByRef por As by, _
                                     ByVal strID As String) As String
     On Error GoTo Erro
