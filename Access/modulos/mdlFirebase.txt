@@ -58,6 +58,27 @@ Erro:
     EnviarDadosFirebase = False
 End Function
 
+Public Function EnviarDadosFirebasePatch(strNode As String, strDados As String) As Boolean
+    Dim strURL As String
+    Dim objXML As Object
+    
+    On Error GoTo Erro
+    
+    strURL = FIREBASE_URL & strNode & ".json"
+    
+    Set objXML = CreateObject("MSXML2.XMLHTTP")
+    objXML.Open "PATCH", strURL, False
+    objXML.setRequestHeader "Content-Type", "application/json"
+    objXML.Send strDados
+    
+    EnviarDadosFirebasePatch = (objXML.status = 200)
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro EnviarDadosFirebasePatch: " & Err.Description
+    EnviarDadosFirebasePatch = False
+End Function
+
 Public Function TestarConexaoFirebase() As Boolean
     Dim resp As FirebaseResponse
     resp = BuscarDadosFirebase("SolicPendentes")
@@ -225,7 +246,7 @@ Private Function MontarJsonComposicoesFirebase(ByRef strJsonLocal As String, _
         strOPM = Trim$(Nz(ValorCampoRS(rs, "OPM"), ""))
         strLocal = Trim$(Nz(ValorCampoRS(rs, "LOCAL"), ""))
         strCodigo = Trim$(Nz(ValorCampoRS(rs, "CODIGO"), ""))
-        strComposicao = Trim$(Nz(ValorCampoRS(rs, "COMPOSIÇÃO", "COMPOSICAO", "Composicao", "Composição"), ""))
+        strComposicao = Trim$(Nz(ValorCampoRS(rs, "COMPOSIï¿½ï¿½O", "COMPOSICAO", "Composicao", "Composiï¿½ï¿½o"), ""))
         If strComposicao = "" Then strComposicao = Trim$(Nz(ValorCampoIndiceRS(rs, 4), ""))
         
         If strOPM <> "" And strLocal <> "" Then

@@ -1181,7 +1181,34 @@ Private Sub btnAlterar_Click()
 End Sub
 
 Private Sub btnMontar_Click()
+    On Error GoTo Erro
+
     Call MontarEscalasFiltradasIntranet
+    Call AtualizarEscalasAbertasResumoFirebase(False)
+    Call SincronizarEscalasPendentesFirebase
+    Call btnFiltrar_Click
+
+    MsgBox "Montagem das escalas concluida e envio pendente ao Firebase finalizado.", _
+           vbInformation, "Montar escalas"
+    Exit Sub
+
+Erro:
+    Debug.Print "Erro frmEscalas.btnMontar_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao montar e enviar as escalas para o Firebase: " & Err.Number & " - " & Err.Description, _
+           vbCritical, "Montar escalas"
+End Sub
+
+Private Sub btnEnviarEscal_Click()
+    On Error GoTo Erro
+
+    Call SincronizarEscalasPendentesFirebase
+    MsgBox "Envio das escalas pendentes ao Firebase foi concluido.", vbInformation, "Enviar escalas"
+    Exit Sub
+
+Erro:
+    Debug.Print "Erro frmEscalas.btnEnviarEscal_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao enviar as escalas pendentes para o Firebase: " & Err.Number & " - " & Err.Description, _
+           vbCritical, "Enviar escalas"
 End Sub
 
 Private Sub btnPagar_Click()

@@ -122,6 +122,377 @@ Erro:
     Resume Sair
 End Sub
 
+Public Sub ReenviarSolicitacoesMesFirebase(ByVal intAno As Integer, ByVal intMes As Integer)
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strNode As String
+    Dim strJson As String
+    Dim strOPM As String
+    Dim strComposicao As String
+    Dim strDiaHora As String
+    Dim strDataInicio As String
+    Dim strDataFim As String
+    Dim strMes As String
+    Dim dictBase As Object
+    Dim dictOPM As Object
+    Dim dictComposicao As Object
+    Dim lngRegistros As Long
+    Dim lngEnviados As Long
+    
+    On Error GoTo Erro
+    
+    If intAno <= 0 Or intMes < 1 Or intMes > 12 Then
+        MsgBox "Período inválido para reenvio de solicitações. Informe ano e mês válidos.", vbExclamation, "Reenviar mês Firebase"
+        Exit Sub
+    End If
+    
+    strMes = Right("00" & CStr(intMes), 2)
+    strDataInicio = CStr(intAno) & "-" & strMes & "-01"
+    If intMes = 12 Then
+        strDataFim = CStr(intAno + 1) & "-01-01"
+    Else
+        strDataFim = CStr(intAno) & "-" & Right("00" & CStr(intMes + 1), 2) & "-01"
+    End If
+    
+    strNode = "solicitacoes/" & CStr(intAno) & "/" & strMes
+    
+    strSQL = "SELECT * FROM TblEscGeral " & _
+             "WHERE Data_Esc >= #" & strDataInicio & "# " & _
+             "AND Data_Esc < #" & strDataFim & "# " & _
+             "AND Trim(Nz(ID_Escala,'')) <> '' " & _
+             "ORDER BY Data_Esc, ID_Escala"
+    
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    If rs.EOF And rs.BOF Then
+        MsgBox "Nenhuma escala encontrada para o período " & strMes & "/" & intAno & ".", vbInformation, "Reenviar mês Firebase"
+        Exit Sub
+    End If
+    
+    Set dictBase = CreateObject("Scripting.Dictionary")
+    rs.MoveFirst
+    Do While Not rs.EOF
+        strOPM = Trim(Nz(CampoSegura(rs, "OPM_Codigo", ""), ""))
+        strComposicao = Trim(Nz(CampoSegura(rs, "Composicao_Cod", ""), ""))
+        strDiaHora = ChaveDiaHoraSolicitacaoMes(rs)
+        
+        If strOPM = "" Or strComposicao = "" Or strDiaHora = "" Then
+            If Trim(Nz(CampoSegura(rs, "ID_Firebase", ""), "")) <> "" Then
+                strOPM = ExtrairOPMIdFirebase(CampoSegura(rs, "ID_Firebase", ""))
+                strComposicao = ExtrairComposicaoIdFirebase(CampoSegura(rs, "ID_Firebase", ""))
+                strDiaHora = ExtrairDiaHoraIdFirebase(CampoSegura(rs, "ID_Firebase", ""))
+            End If
+        End If
+        
+        If Trim(strOPM) <> "" And Trim(strComposicao) <> "" And Trim(strDiaHora) <> "" Then
+            If Not dictBase.Exists(strOPM) Then
+                Set dictOPM = CreateObject("Scripting.Dictionary")
+                dictBase.Add strOPM, dictOPM
+            End If
+            
+            If Not dictBase(strOPM).Exists(strComposicao) Then
+                Set dictComposicao = CreateObject("Scripting.Dictionary")
+                dictBase(strOPM).Add strComposicao, dictComposicao
+            End If
+            
+            If Not dictBase(strOPM)(strComposicao).Exists(strDiaHora) Then
+                dictBase(strOPM)(strComposicao).Add strDiaHora, MontarJsonSolicitacaoMesFirebase(rs)
+                lngRegistros = lngRegistros + 1
+            End If
+        Else
+            Debug.Print "Ignorando linha sem chave válida: OPM='" & strOPM & "' | Composicao='" & strComposicao & "' | DiaHora='" & strDiaHora & "' | ID_Firebase='" & Nz(CampoSegura(rs, "ID_Firebase", ""), "") & "'"
+        End If
+        
+        rs.MoveNext
+    Loop
+    
+    strJson = MontarJsonSolicitacoesMesEstruturado(dictBase)
+    
+    Debug.Print "DEBUG JSON FINAL: " & strJson
+    Debug.Print "ReenviarSolicitacoesMesFirebase: node=" & strNode & " | registros=" & lngRegistros & " | payloadLen=" & Len(strJson)
+    Debug.Print "Payload exemplo: " & Left(strJson, 260)
+    
+    If lngRegistros = 0 Then
+        MsgBox "Nenhum registro válido foi encontrado para reconstruir o nó " & strNode & ".", vbExclamation, "Reenviar mês Firebase"
+        Exit Sub
+    End If
+    
+    If Len(Trim(strJson)) <= 2 Or Trim(strJson) = "{}" Then
+        Debug.Print "Bloqueado envio vazio: " & strNode & " | payload='" & strJson & "' | registros=" & lngRegistros
+        MsgBox "Payload montado está vazio. O Firebase não será atualizado para evitar envio sem dados." & vbCrLf & _
+               "Nó: " & strNode & vbCrLf & _
+               "Registros contados: " & lngRegistros, vbExclamation, "Reenviar mês Firebase"
+        Exit Sub
+    End If
+    
+    DoCmd.Hourglass True
+    SysCmd acSysCmdSetStatus, "Reconstruindo nó " & strNode & " no Firebase... aguarde."
+    
+    If EnviarDadosFirebasePatch(strNode, strJson) Then
+        lngEnviados = lngRegistros
+        MsgBox "Reconstrução concluída." & vbCrLf & _
+               "Nó: " & strNode & vbCrLf & _
+               "Registros reenviados: " & lngEnviados, vbInformation, "Reenviar mês Firebase"
+    Else
+        MsgBox "Falha ao reenviar o nó " & strNode & " para o Firebase.", vbCritical, "Reenviar mês Firebase"
+    End If
+    
+Sair:
+    On Error Resume Next
+    SysCmd acSysCmdClearStatus
+    DoCmd.Hourglass False
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro ReenviarSolicitacoesMesFirebase: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao reenviar o mês " & strMes & "/" & intAno & ": " & Err.Number & " - " & Err.Description, vbCritical, "Reenviar mês Firebase"
+    Resume Sair
+End Sub
+
+Private Function MontarJsonSolicitacaoMesFirebase(ByRef rs As DAO.Recordset) As String
+    Dim strJson As String
+    Dim strStatusAdm As String
+    Dim strStatusInicial As String
+    Dim strDataEscala As String
+    Dim strIDFirebase As String
+    Dim strComposicaoCod As String
+    Dim strComposicaoNome As String
+    Dim strOPMCod As String
+    Dim strOPMNome As String
+    Dim strMotivo As String
+    Dim strObservacoes As String
+    Dim strNecessidade As String
+    Dim strPrazo As String
+    Dim strPagConfirm As String
+    Dim strREPag As String
+    
+    On Error GoTo Erro
+    
+    strStatusAdm = Trim(CStr(Nz(CampoSegura(rs, "Status_Adm", ""), "")))
+    strStatusInicial = CStr(StatusInicialPorStatusAdm(strStatusAdm))
+    strDataEscala = FormatarDataResumo(CampoSegura(rs, "Data_Esc", ""))
+    strIDFirebase = Trim(Nz(CampoSegura(rs, "ID_Firebase", ""), ""))
+    strComposicaoCod = Trim(Nz(CampoSegura(rs, "Composicao_Cod", ""), ""))
+    strComposicaoNome = Trim(Nz(CampoSegura(rs, "Composicao_Nome", ""), ""))
+    strOPMCod = Trim(Nz(CampoSegura(rs, "OPM_Codigo", ""), ""))
+    strOPMNome = Trim(Nz(CampoSegura(rs, "OPM_Nome", ""), ""))
+    strMotivo = Trim(Nz(CampoSegura(rs, "Motivo", ""), ""))
+    strObservacoes = Trim(Nz(CampoSegura(rs, "Observacoes_Slc", ""), ""))
+    strNecessidade = Trim(Nz(CampoSegura(rs, "Necessidade", ""), ""))
+    strPrazo = FormatarPrazoResumo(CampoSegura(rs, "Prazo_Inscricao", ""))
+    strPagConfirm = FormatarDataResumo(CampoSegura(rs, "Pag_Confirm", ""))
+    strREPag = Trim(Nz(CampoSegura(rs, "RE_Pagamento", ""), ""))
+    
+    strJson = "{"
+    strJson = strJson & JsonPatchTexto("ID_Cadastro", CampoSegura(rs, "ID_Cadastro", "")) & ","
+    strJson = strJson & JsonPatchTexto("ID_Escala", CampoSegura(rs, "ID_Escala", "")) & ","
+    strJson = strJson & JsonPatchTexto("ID_Firebase", strIDFirebase) & ","
+    strJson = strJson & JsonPatchTexto("composicao_cod", strComposicaoCod) & ","
+    strJson = strJson & JsonPatchTexto("composicao_nome", strComposicaoNome) & ","
+    strJson = strJson & JsonPatchTexto("data", strDataEscala) & ","
+    strJson = strJson & JsonPatchTexto("horario_inicial", FormatarHoraResumo(CampoSegura(rs, "Horario_Inicial", ""))) & ","
+    strJson = strJson & JsonPatchTexto("horario_final", FormatarHoraResumo(CampoSegura(rs, "Horario_Final", ""))) & ","
+    strJson = strJson & JsonPatchTexto("motivo", strMotivo) & ","
+    strJson = strJson & JsonPatchTexto("observacoes", strObservacoes) & ","
+    strJson = strJson & JsonPatchTexto("opm_codigo", strOPMCod) & ","
+    strJson = strJson & JsonPatchTexto("opm_nome", strOPMNome) & ","
+    strJson = strJson & JsonPatchTexto("necessidade", strNecessidade) & ","
+    strJson = strJson & JsonPatchTexto("Prazo_Inscricao", strPrazo) & ","
+    strJson = strJson & JsonPatchTexto("Pag_Confirm", strPagConfirm) & ","
+    strJson = strJson & JsonPatchTexto("RE_Pagamento", strREPag) & ","
+    strJson = strJson & JsonPatchNumero("Solic_Cb_Sd", CampoSegura(rs, "Slc_Cb_Sd", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Solic_Intermed", CampoSegura(rs, "Slc_Intermed", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Solic_Subalterno", CampoSegura(rs, "Slc_Subalterno", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Solic_Subten_Sgt", CampoSegura(rs, "Slc_Subten_Sgt", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Solic_Superior", CampoSegura(rs, "Slc_Superior", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Status_Inicial", strStatusInicial) & ","
+    strJson = strJson & JsonPatchNumero("Status_Adm", strStatusAdm) & ","
+    strJson = strJson & JsonPatchNumero("Atz_Superior", CampoSegura(rs, "Atz_Superior", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Atz_Intermed", CampoSegura(rs, "Atz_Intermed", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Atz_Subalterno", CampoSegura(rs, "Atz_Subalterno", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Atz_Subten_Sgt", CampoSegura(rs, "Atz_Subten_Sgt", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Atz_Cb_Sd", CampoSegura(rs, "Atz_Cb_Sd", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Esc_Superior", CampoSegura(rs, "Esc_Superior", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Esc_Intermed", CampoSegura(rs, "Esc_Intermed", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Esc_Subalterno", CampoSegura(rs, "Esc_Subalterno", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Esc_Subten_Sgt", CampoSegura(rs, "Esc_Subten_Sgt", 0)) & ","
+    strJson = strJson & JsonPatchNumero("Esc_Cb_Sd", CampoSegura(rs, "Esc_Cb_Sd", 0)) & ","
+    strJson = strJson & JsonPatchTexto("atualizado_em", Format(Now, "dd/mm/yyyy hh:nn:ss"))
+    strJson = strJson & "}"
+
+    MontarJsonSolicitacaoMesFirebase = strJson
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro MontarJsonSolicitacaoMesFirebase: " & Err.Number & " - " & Err.Description
+    MontarJsonSolicitacaoMesFirebase = "{}"
+End Function
+
+Private Function CampoSegura(ByRef rs As DAO.Recordset, ByVal strCampo As String, Optional ByVal vPadrao As Variant = "") As Variant
+    On Error Resume Next
+    CampoSegura = rs.Fields(strCampo).Value
+    If Err.Number <> 0 Then
+        CampoSegura = vPadrao
+    End If
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+Private Function ChaveDiaHoraSolicitacaoMes(ByRef rs As DAO.Recordset) As String
+    Dim strData As String
+    Dim strHora As String
+    
+    On Error GoTo Erro
+    
+    If IsDate(CampoSegura(rs, "Data_Esc", "")) Then
+        strData = Format(CDate(CampoSegura(rs, "Data_Esc", "")), "dd")
+    Else
+        strData = ""
+    End If
+    
+    strHora = FormatarHoraResumo(CampoSegura(rs, "Horario_Inicial", ""))
+    strHora = Replace(strHora, ":", "")
+    
+    If strData <> "" And strHora <> "" Then
+        ChaveDiaHoraSolicitacaoMes = strData & strHora
+    Else
+        ChaveDiaHoraSolicitacaoMes = ""
+    End If
+    Exit Function
+    
+Erro:
+    ChaveDiaHoraSolicitacaoMes = ""
+End Function
+
+Private Function ExtrairOPMIdFirebase(ByVal strValor As String) As String
+    Dim arrPartes As Variant
+    Dim i As Long
+    
+    strValor = Replace(Trim(Nz(strValor, "")), "\\", "/")
+    If strValor = "" Then
+        ExtrairOPMIdFirebase = ""
+        Exit Function
+    End If
+    
+    arrPartes = Split(strValor, "/")
+    If UBound(arrPartes) >= 2 Then
+        ExtrairOPMIdFirebase = Trim(arrPartes(2))
+    ElseIf UBound(arrPartes) >= 0 Then
+        ExtrairOPMIdFirebase = Trim(arrPartes(0))
+    Else
+        ExtrairOPMIdFirebase = ""
+    End If
+End Function
+
+Private Function ExtrairComposicaoIdFirebase(ByVal strValor As String) As String
+    Dim arrPartes As Variant
+    
+    strValor = Replace(Trim(Nz(strValor, "")), "\\", "/")
+    If strValor = "" Then
+        ExtrairComposicaoIdFirebase = ""
+        Exit Function
+    End If
+    
+    arrPartes = Split(strValor, "/")
+    If UBound(arrPartes) >= 3 Then
+        ExtrairComposicaoIdFirebase = Trim(arrPartes(3))
+    ElseIf UBound(arrPartes) >= 1 Then
+        ExtrairComposicaoIdFirebase = Trim(arrPartes(1))
+    Else
+        ExtrairComposicaoIdFirebase = ""
+    End If
+End Function
+
+Private Function ExtrairDiaHoraIdFirebase(ByVal strValor As String) As String
+    Dim arrPartes As Variant
+    
+    strValor = Replace(Trim(Nz(strValor, "")), "\\", "/")
+    If strValor = "" Then
+        ExtrairDiaHoraIdFirebase = ""
+        Exit Function
+    End If
+    
+    arrPartes = Split(strValor, "/")
+    If UBound(arrPartes) >= 4 Then
+        ExtrairDiaHoraIdFirebase = Trim(arrPartes(4))
+    ElseIf UBound(arrPartes) >= 2 Then
+        ExtrairDiaHoraIdFirebase = Trim(arrPartes(2))
+    Else
+        ExtrairDiaHoraIdFirebase = ""
+    End If
+End Function
+
+Private Function MontarJsonSolicitacoesMesEstruturado(ByVal obj As Object) As String
+    Dim strJson As String
+    Dim strOPM As Variant
+    Dim strComposicao As Variant
+    Dim strDiaHora As Variant
+    Dim objOPM As Object
+    Dim objComposicao As Object
+    Dim lngOPM As Long
+    Dim lngComposicoes As Long
+    Dim lngDias As Long
+    
+    On Error GoTo Erro
+    
+    If obj Is Nothing Then
+        MontarJsonSolicitacoesMesEstruturado = "{}"
+        Exit Function
+    End If
+    
+    If obj.Count = 0 Then
+        MontarJsonSolicitacoesMesEstruturado = "{}"
+        Exit Function
+    End If
+    
+    strJson = "{"
+    lngOPM = 0
+    For Each strOPM In obj.Keys
+        lngOPM = lngOPM + 1
+        If lngOPM > 1 Then strJson = strJson & ","
+        strJson = strJson & """" & JsonEscapeResumo(CStr(strOPM)) & """:{"
+        Set objOPM = obj(CStr(strOPM))
+        
+        lngComposicoes = 0
+        For Each strComposicao In objOPM.Keys
+            lngComposicoes = lngComposicoes + 1
+            If lngComposicoes > 1 Then strJson = strJson & ","
+            strJson = strJson & """" & JsonEscapeResumo(CStr(strComposicao)) & """:{"
+            Set objComposicao = objOPM(CStr(strComposicao))
+            
+            lngDias = 0
+            For Each strDiaHora In objComposicao.Keys
+                lngDias = lngDias + 1
+                If lngDias > 1 Then strJson = strJson & ","
+                strJson = strJson & """" & JsonEscapeResumo(CStr(strDiaHora)) & """:" & CStr(objComposicao(CStr(strDiaHora)))
+            Next
+            strJson = strJson & "}"
+        Next
+        strJson = strJson & "}"
+    Next
+    strJson = strJson & "}"
+    
+    Debug.Print "MontarJsonSolicitacoesMesEstruturado: OPM=" & lngOPM & " | composicoes=" & lngComposicoes & " | dias=" & lngDias & " | jsonLen=" & Len(strJson)
+    MontarJsonSolicitacoesMesEstruturado = strJson
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro MontarJsonSolicitacoesMesEstruturado: " & Err.Number & " - " & Err.Description
+    MontarJsonSolicitacoesMesEstruturado = "{}"
+End Function
+
+Private Function FormatarHoraResumo(ByVal vHora As Variant) As String
+    If IsDate(vHora) Then
+        FormatarHoraResumo = Format(CDate(vHora), "hh:nn")
+    Else
+        FormatarHoraResumo = Trim(Nz(vHora, ""))
+    End If
+End Function
+
 Private Function MontarJsonEscalasAbertasResumo(ByRef strResumo As String, ByRef strMeta As String, _
                                                 ByRef lngGrupos As Long, ByRef lngEscalas As Long, _
                                                 ByRef lngVagas As Long) As Boolean
