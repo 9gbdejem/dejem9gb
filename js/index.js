@@ -76,7 +76,11 @@ document.addEventListener('DOMContentLoaded', function() {
             // console.log('📦 Resultado da busca:', snapshot.exists() ? snapshot.val() : 'NÃO ENCONTRADO'); // DEBUG 3
 
             if (snapshot.exists()) {
-                const userData = snapshot.val();
+                const efetivoSnapshot = await get(ref(database, `efetivo/${re}`));
+                const userData = {
+                    ...(efetivoSnapshot.exists() ? efetivoSnapshot.val() : {}),
+                    ...snapshot.val()
+                };
                 userEmail = primeiroValor(userData.mail_funcional, userData.email, userData['e-mail']);
                 userFullName = primeiroValor(userData.nome_completo, userData.nome, userData.name, re);
                 userLevel = Number(userData.nivel || 3);

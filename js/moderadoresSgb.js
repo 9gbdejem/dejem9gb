@@ -5,6 +5,17 @@ import { getDatabase, ref, set, onValue, get } from 'https://www.gstatic.com/fir
 const CONFIG_URL_GBLAUREAS = 'https://gblaureas-default-rtdb.firebaseio.com/firebase-config.json';
 
 const CONFIG_SGB = {
+    'moderadores-em': {
+        titulo: 'EM',
+        no: 'Solic_Moderador_EM',
+        opms: [
+            ['Comando', '704090000'], ['Ch Seção Administrativa EM', '704099100'],
+            ['EM - B/1 Pessoal', '704099110'], ['EM - B/2 Agência de Inteligência', '704099120'],
+            ['EM - B/3 Seção de Operações', '704099130'], ['EM - COBOM', '704099131'],
+            ['EM - B/4 Logística', '704099140'], ['EM - UGE', '704099150'],
+            ['EM - PJMD', '704099160'], ['EM - SAT', '704099200']
+        ]
+    },
     'moderadores2sgb': {
         titulo: '2º SGB',
         no: 'Solic_Moderador_2SGB',

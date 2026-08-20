@@ -85,7 +85,8 @@ function renderTabela() {
 
     if (info) {
         info.textContent = `Mostrando ${dados.length} de ${resumoCache.length} grupo(s). ` +
-            `Total de escalas abertas: ${metaAtual?.total_escalas ?? '-'}.`;
+            `Total de escalas abertas: ${metaAtual?.total_escalas ?? '-'}. ` +
+            `Última atualização: ${metaAtual?.atualizado_em || '-'}.`;
     }
 }
 
@@ -119,9 +120,6 @@ function renderDashboardBase() {
 
     container.innerHTML = `
         <div class="mb-3">
-            <button id="btnCarregarAbertas" type="button" class="btn btn-lg btn-secondary w-100">
-                Verificando escalas abertas...
-            </button>
             <div id="dashboardInfo" class="small text-muted text-center mt-2"></div>
         </div>
 
@@ -208,9 +206,7 @@ async function baixarResumoPorClique() {
 async function prepararBotaoResumo() {
     metaAtual = await carregarMetaEscalasAbertas();
     const btn = document.getElementById('btnCarregarAbertas');
-    if (!btn) return;
-
-    btn.addEventListener('click', baixarResumoPorClique);
+    if (btn) btn.addEventListener('click', baixarResumoPorClique);
 
     if (!metaAtual || Number(metaAtual.total_grupos || 0) === 0) {
         resumoCache = [];
@@ -232,6 +228,8 @@ async function prepararBotaoResumo() {
             setBotaoEstado('Clique aqui para atualizar a tabela abaixo, pois há novas escalas', 'btn-warning', false);
         }
     } else {
+        await baixarResumoPorClique();
+        return;
         resumoCache = [];
         atualizarFiltros();
         renderTabela();

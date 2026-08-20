@@ -37,7 +37,7 @@ export function checkAuth(requiredLevel = 1) {
                 const efetivoData = snapshot.exists() ? snapshot.val() : {};
                 const loginData = loginSnap.exists() ? loginSnap.val() : {};
                 const userData = { ...efetivoData, ...loginData };
-                const userLevel = Number(userData.nivel || uidData.nivel || 3);
+                const userLevel = Number(loginData.nivel ?? efetivoData.nivel ?? uidData.nivel ?? 3);
                 const expectedEmail = String(userData.mail_funcional || userData.email || '').toLowerCase();
                 if (userData.uid && userData.uid !== user.uid) throw new Error('UsuÃ¡rio autenticado nÃ£o confere com o RE.');
                 if (expectedEmail && expectedEmail !== String(user.email || '').toLowerCase()) {
@@ -52,6 +52,8 @@ export function checkAuth(requiredLevel = 1) {
                     ultimo_login: now,
                     atualizado_em: now
                 });
+                sessionStorage.setItem('userNivel', String(userLevel));
+                sessionStorage.setItem('currentUserLevel', String(userLevel));
                 
                 if (userLevel <= requiredLevel) {
                     resolve({ 
