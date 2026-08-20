@@ -1,7 +1,11 @@
 import { database, auth } from './firebase-config.js';
-import { ref, get } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+import { ref, get, update, set } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import { updateProfile } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+
+function primeiroValor(...valores) {
+    return valores.find(valor => String(valor || '').trim() !== '') || '';
+}
 
 async function getUserEmailFromRE(re) {
     try {
@@ -41,6 +45,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let userRE = '';  // Vamos armazenar o RE
     let userEmail = '';
     let userFullName = '';
+    let userLevel = 3;
 
     // Máscara para RE (apenas números, máximo 6 dígitos)
     reInput.addEventListener('input', function() {
@@ -72,8 +77,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (snapshot.exists()) {
                 const userData = snapshot.val();
-                userEmail = userData.email;  // ou userData["e-mail"] conforme sua estrutura
-                userFullName = userData.nome;
+                userEmail = primeiroValor(userData.mail_funcional, userData.email, userData['e-mail']);
+                userFullName = primeiroValor(userData.nome_completo, userData.nome, userData.name, re);
+                userLevel = Number(userData.nivel || 3);
                 
                 // DEBUG 4 - Mostra o que foi encontrado
                 // console.log('✅ Dados encontrados:', {
@@ -124,6 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
         userRE = '';
         userEmail = '';
         userFullName = '';
+        userLevel = 3;
     });
 
 
@@ -164,14 +171,35 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // No index.js, no login bem-sucedido, ADICIONE:
             const userCredential = await signInWithEmailAndPassword(auth, userEmail, password);
+            const authenticatedUser = userCredential.user;
+            const now = new Date().toISOString();
+            const nivel = userLevel;
+            await update(ref(database, `login/${userRE}`), {
+                uid: authenticatedUser.uid,
+                re: userRE,
+                mail_funcional: userEmail,
+                nome_completo: userFullName,
+                ultimo_login: now,
+                atualizado_em: now
+            });
+            await set(ref(database, `usuariosPorUid/${authenticatedUser.uid}`), {
+                re: userRE,
+                nivel,
+                mail_funcional: userEmail,
+                nome_completo: userFullName,
+                atualizado_em: now
+            });
 
             // 1. SALVAR NO sessionStorage (funciona na mesma aba)
             sessionStorage.setItem('userRE', userRE);
             sessionStorage.setItem('userName', userFullName);
+            sessionStorage.setItem('userNivel', String(nivel));
+            sessionStorage.setItem('currentUserLevel', String(nivel));
 
             // 2. SALVAR NO localStorage (persiste entre abas)
             localStorage.setItem('userRE', userRE);
             localStorage.setItem('userName', userFullName);
+            localStorage.setItem('userNivel', String(nivel));
 
             await new Promise(resolve => setTimeout(resolve, 100));
 

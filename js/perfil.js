@@ -181,6 +181,10 @@ function renderPerfil(userData, re) {
                                     <i class="fas fa-user-shield me-2"></i>Gerenciar Permissões
                                     <span class="badge bg-primary float-end">Admin</span>
                                 </a>
+                                <a href="#" class="list-group-item list-group-item-action" id="link-moderadores">
+                                    <i class="fas fa-users-cog me-2"></i>Moderadores
+                                    <span class="badge bg-primary float-end">Admin</span>
+                                </a>
                             ` : ''}
                         </div>
                     </div>
@@ -683,7 +687,7 @@ function showMessage(message, type, container) {
 // Configurar event listeners
 function setupEventListeners() {
     // Usar event delegation para links dinâmicos
-    document.addEventListener('click', function(e) {
+    document.addEventListener('click', async function(e) {
         // Link "Alterar Senha"
         if (e.target.closest('#link-alterar-senha')) {
             e.preventDefault();
@@ -713,6 +717,18 @@ function setupEventListeners() {
                 item.classList.remove('active');
             });
             e.target.closest('#link-permissoes').classList.add('active');
+        }
+
+        if (e.target.closest('#link-moderadores')) {
+            e.preventDefault();
+            if (!userDataCache || userDataCache.nivel !== 1) {
+                alert('Acesso restrito a administradores');
+                return;
+            }
+            const modulo = await import('./perfil-moderadores.js');
+            await modulo.initModeradores();
+            document.querySelectorAll('.list-group-item').forEach(item => item.classList.remove('active'));
+            e.target.closest('#link-moderadores').classList.add('active');
         }
     });
 }

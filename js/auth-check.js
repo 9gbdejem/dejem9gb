@@ -1,7 +1,7 @@
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import { database } from './firebase-config.js';
-import { ref, get } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+import { ref, get, update } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
 // Verificar autenticação e nível de acesso
 export function checkAuth(requiredLevel = 1) {
@@ -23,15 +23,35 @@ export function checkAuth(requiredLevel = 1) {
                 }
 
                 // 2. BUSCAR DADOS DO USUÁRIO
+                const uidSnap = await get(ref(database, `usuariosPorUid/${user.uid}`));
+                const uidData = uidSnap.exists() ? uidSnap.val() : {};
+                userRE = uidData.re || userRE;
+                const loginSnap = await get(ref(database, `login/${userRE}`));
                 const efetivoRef = ref(database, `efetivo/${userRE}`);
                 const snapshot = await get(efetivoRef);
 
-                if (!snapshot.exists()) {
+                if (!snapshot.exists() && !loginSnap.exists()) {
                     throw new Error('Dados do usuário não encontrados');
                 }
 
-                const userData = snapshot.val();
-                const userLevel = userData.nivel || 3;
+                const efetivoData = snapshot.exists() ? snapshot.val() : {};
+                const loginData = loginSnap.exists() ? loginSnap.val() : {};
+                const userData = { ...efetivoData, ...loginData };
+                const userLevel = Number(userData.nivel || uidData.nivel || 3);
+                const expectedEmail = String(userData.mail_funcional || userData.email || '').toLowerCase();
+                if (userData.uid && userData.uid !== user.uid) throw new Error('UsuÃ¡rio autenticado nÃ£o confere com o RE.');
+                if (expectedEmail && expectedEmail !== String(user.email || '').toLowerCase()) {
+                    throw new Error('E-mail autenticado nÃ£o confere com o cadastro.');
+                }
+                const now = new Date().toISOString();
+                await update(ref(database, `login/${userRE}`), {
+                    uid: user.uid,
+                    re: userRE,
+                    mail_funcional: userData.mail_funcional || userData.email || user.email,
+                    nome_completo: userData.nome_completo || userData.nome || userRE,
+                    ultimo_login: now,
+                    atualizado_em: now
+                });
                 
                 if (userLevel <= requiredLevel) {
                     resolve({ 
@@ -86,8 +106,11 @@ export function checkAuth(requiredLevel = 1) {
 function clearUserData() {
     sessionStorage.removeItem('userRE');
     sessionStorage.removeItem('userName');
+    sessionStorage.removeItem('userNivel');
+    sessionStorage.removeItem('currentUserLevel');
     localStorage.removeItem('userRE');
     localStorage.removeItem('userName');
+    localStorage.removeItem('userNivel');
 }
 
 export async function loadNavbar() {
