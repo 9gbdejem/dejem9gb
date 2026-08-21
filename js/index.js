@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let userEmail = '';
     let userFullName = '';
     let userLevel = 3;
+    let enviandoRecuperacao = false;
 
     // Máscara para RE (apenas números, máximo 6 dígitos)
     reInput.addEventListener('input', function() {
@@ -73,13 +74,15 @@ document.addEventListener('DOMContentLoaded', function() {
             // console.log('📡 Buscando no caminho:', `login/${re}`); // DEBUG 2
             
             const snapshot = await get(loginRef);
+            const permissoesSnapshot = await get(ref(database, `permissoes/${re}`));
             // console.log('📦 Resultado da busca:', snapshot.exists() ? snapshot.val() : 'NÃO ENCONTRADO'); // DEBUG 3
 
             if (snapshot.exists()) {
                 const efetivoSnapshot = await get(ref(database, `efetivo/${re}`));
                 const userData = {
                     ...(efetivoSnapshot.exists() ? efetivoSnapshot.val() : {}),
-                    ...snapshot.val()
+                    ...snapshot.val(),
+                    ...(permissoesSnapshot.exists() ? permissoesSnapshot.val() : {})
                 };
                 userEmail = primeiroValor(userData.mail_funcional, userData.email, userData['e-mail']);
                 userFullName = primeiroValor(userData.nome_completo, userData.nome, userData.name, re);
@@ -178,20 +181,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const authenticatedUser = userCredential.user;
             const now = new Date().toISOString();
             const nivel = userLevel;
-            await update(ref(database, `login/${userRE}`), {
-                uid: authenticatedUser.uid,
-                re: userRE,
-                mail_funcional: userEmail,
-                nome_completo: userFullName,
-                ultimo_login: now,
-                atualizado_em: now
-            });
-            await set(ref(database, `usuariosPorUid/${authenticatedUser.uid}`), {
-                re: userRE,
-                nivel,
-                mail_funcional: userEmail,
-                nome_completo: userFullName,
-                atualizado_em: now
+            await set(ref(database, `login/${userRE}`), {
+                atualizado_em: now,
+                email: userEmail,
+                nome: userFullName
             });
 
             // 1. SALVAR NO sessionStorage (funciona na mesma aba)
@@ -261,21 +254,28 @@ document.addEventListener('DOMContentLoaded', function() {
     // Recuperação de senha
     forgotPassword.addEventListener('click', async function(e) {
         e.preventDefault();
+
+        if (enviandoRecuperacao) return;
         
         if (!userEmail) {
             showInfo('Por favor, verifique seu RE primeiro para habilitar a recuperação.');
             return;
         }
         
-        console.log('📧 Iniciando recuperação para:', userEmail); // DEBUG
-        
         try {
+            enviandoRecuperacao = true;
+            forgotPassword.classList.add('disabled');
+            forgotPassword.setAttribute('aria-disabled', 'true');
             await sendPasswordResetEmail(auth, userEmail);
             showInfo(`E-mail de recuperação enviado para: ${userEmail}`);
             console.log('✅ E-mail de recuperação enviado');
         } catch (error) {
             console.error('💥 Erro ao enviar e-mail de recuperação:', error);
             showError('Erro ao enviar e-mail de recuperação: ' + error.message);
+        } finally {
+            enviandoRecuperacao = false;
+            forgotPassword.classList.remove('disabled');
+            forgotPassword.removeAttribute('aria-disabled');
         }
     });
 

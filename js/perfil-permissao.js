@@ -22,7 +22,8 @@ export async function initPermissoes() {
         
         // Buscar dados do usuário atual pelo RE (nova estrutura)
         const userRef = ref(database, `efetivo/${userRE}`);
-        const userSnap = await get(userRef);
+        const permissoesRef = ref(database, `permissoes/${userRE}`);
+        const [userSnap, permissoesSnap] = await Promise.all([get(userRef), get(permissoesRef)]);
         
         if (!userSnap.exists()) {
             // Se não encontrar, buscar pela estrutura antiga (compatibilidade)
@@ -50,7 +51,7 @@ export async function initPermissoes() {
             }
             
             // Usar dados encontrados
-            const nivelUsuario = usuarioEncontrado.nivel || 0;
+            const nivelUsuario = (permissoesSnap.exists() ? permissoesSnap.val().nivel : usuarioEncontrado.nivel) || 0;
             
             // Somente nível 1 (admin) pode acessar
             if (nivelUsuario !== 1) {
@@ -60,7 +61,7 @@ export async function initPermissoes() {
         } else {
             // Usuário encontrado na nova estrutura
             const userData = userSnap.val();
-            const nivelUsuario = userData.nivel || 0;
+            const nivelUsuario = (permissoesSnap.exists() ? permissoesSnap.val().nivel : userData.nivel) || 0;
             
             // Somente nível 1 (admin) pode acessar
             if (nivelUsuario !== 1) {
@@ -488,12 +489,18 @@ async function pesquisarMilitar() {
         
         // BUSCAR DIRETAMENTE PELO RE (nova estrutura)
         const usuarioRef = ref(database, `efetivo/${re}`);
-        const snapshot = await get(usuarioRef);
+        const loginRef = ref(database, `login/${re}`);
+        const [snapshot, loginSnapshot] = await Promise.all([get(usuarioRef), get(loginRef)]);
         
         // Processar resultado
-        if (snapshot.exists()) {
+        if (snapshot.exists() || loginSnapshot.exists()) {
             // Usuário encontrado
-            usuarioAtual = snapshot.val();
+            const permissoesEncontradas = await get(ref(database, `permissoes/${re}`));
+            usuarioAtual = {
+                ...(snapshot.exists() ? snapshot.val() : {}),
+                ...(loginSnapshot.exists() ? loginSnapshot.val() : {}),
+                ...(permissoesEncontradas.exists() ? permissoesEncontradas.val() : {})
+            };
             reAtual = re;
             
             mostrarMensagemStatus(
@@ -583,7 +590,7 @@ function preencherFormulario(usuario, re) {
     }
     
     // Permissões OPM
-    const permissoes = usuario.permissaoOPM || {};
+    const permissoes = usuario.opms || usuario.permissaoOPM || {};
     
     document.querySelectorAll('.opm-checkbox input[type="checkbox"]').forEach(cb => {
         const codigo = cb.value;
@@ -711,6 +718,9 @@ async function salvarPermissoes(e) {
         // Buscar dados atuais para comparar
         const userRef = ref(database, `efetivo/${re}`);
         const existingUser = await get(userRef);
+        const loginRef = ref(database, `login/${re}`);
+        const loginSnapshotAtual = await get(loginRef);
+        const loginAtual = loginSnapshotAtual.exists() ? loginSnapshotAtual.val() : {};
         
         let emailAntigo = null;
         if (existingUser.exists()) {
@@ -724,7 +734,6 @@ async function salvarPermissoes(e) {
             nome: nome,
             email: email,
             nivel: nivel,
-            permissaoOPM: permissoesOPM,
             atualizado_em: new Date().toISOString(),
             re: re
         };
@@ -736,6 +745,16 @@ async function salvarPermissoes(e) {
         
         // 3. SALVAR NO NÓ EFETIVO
         await set(userRef, userData);
+        await set(loginRef, {
+            atualizado_em: new Date().toISOString(),
+            email,
+            nome
+        });
+        await set(ref(database, `permissoes/${re}`), {
+            nivel,
+            opms: permissoesOPM,
+            atualizado_em: new Date().toISOString()
+        });
         console.log(`✅ Dados salvos em efetivo/${re}`);
         
         // 4. SE EMAIL FOI ALTERADO, ATUALIZAR TAMBÉM NO NÓ LOGIN

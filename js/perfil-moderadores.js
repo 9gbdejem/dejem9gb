@@ -4,6 +4,7 @@ import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail, signOu
 import { ref, get, set } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
 
 const GRUPOS = [
+    { chave: 'EM', titulo: 'Estado-Maior', origem: 'Solic_Moderador_EM' },
     { chave: '1SGB', titulo: '1º SGB', origem: 'Solic_Moderador' },
     { chave: '2SGB', titulo: '2º SGB', origem: 'Solic_Moderador_2SGB' },
     { chave: '3SGB', titulo: '3º SGB', origem: 'Solic_Moderador_3SGB' },
@@ -55,6 +56,20 @@ async function cadastrarSelecionados() {
     if (!confirm(`Cadastrar ${selecionados.length} moderador(es)?`)) return;
     const origem = new Map();
     for (const grupo of GRUPOS) { const snap = await get(ref(database, grupo.origem)); Object.entries(snap.val() || {}).forEach(([re, item]) => origem.set(`${grupo.chave}/${re}`, { grupo, re, item })); }
+    const semOPM = [];
+    for (const c of selecionados) {
+        const dado = origem.get(`${c.dataset.grupo}/${c.dataset.re}`);
+        if (!dado) continue;
+        const opm = String(dado.item.opm || '').trim();
+        const opmSnapshot = await get(ref(database, `LocalOPM/${opm}`));
+        if (!opm || !opmSnapshot.exists()) {
+            semOPM.push(`RE ${dado.re} - ${dado.item.nome_completo || dado.item.nome || ''} - OPM ${opm || '(vazia)'}`);
+        }
+    }
+    if (semOPM.length) {
+        alert('Permiss\u00e3o de OPM n\u00e3o cadastrada para:\n\n' + semOPM.join('\n') + '\n\nO cadastro dos demais dados continuar\u00e1.');
+    }
+
     const botao = document.getElementById('btnCadastrarModeradores'); botao.disabled = true;
     try { for (const c of selecionados) { const dado = origem.get(`${c.dataset.grupo}/${c.dataset.re}`); if (dado) await cadastrarUm(dado.grupo, dado.re, dado.item); } mostrarMensagem('Cadastro concluído.', 'success'); await carregarTabelas(); }
     catch (error) { console.error('Erro ao cadastrar moderadores:', error); mostrarMensagem(error.message, 'danger'); }
@@ -69,8 +84,16 @@ async function cadastrarUm(grupo, re, item) {
     let contaNova = false;
     if (!uid) { try { const cred = await createUserWithEmailAndPassword(getAuthSecundario(), email, gerarSenha()); uid = cred.user.uid; contaNova = true; await sendPasswordResetEmail(getAuthSecundario(), email); await signOut(getAuthSecundario()).catch(() => {}); } catch (error) { if (error.code !== 'auth/email-already-in-use') throw error; } }
     const agora = new Date().toISOString();
-    await set(ref(database, `login/${re}`), { ...login, re: String(re), uid: uid || null, nome_completo: item.nome_completo || item.nome || '', mail_funcional: email, nivel: Number(login.nivel || 2), criado_em: login.criado_em || agora, atualizado_em: agora });
-    if (uid) await set(ref(database, `usuariosPorUid/${uid}`), { re: String(re), nivel: Number(login.nivel || 2), mail_funcional: email, nome_completo: item.nome_completo || item.nome || '', atualizado_em: agora });
+    await set(ref(database, `login/${re}`), { atualizado_em: agora, email, nome: item.nome_completo || item.nome || '' });
+    const opm = String(item.opm || '').trim();
+    const opmSnapshot = await get(ref(database, `LocalOPM/${opm}`));
+    if (opm && opmSnapshot.exists()) {
+        await set(ref(database, `permissoes/${re}`), {
+            nivel: Number(login.nivel || 2),
+            opms: { [opm]: true },
+            atualizado_em: agora
+        });
+    }
     await set(ref(database, `Moderadores_Cadastrados/${grupo.chave}/${re}`), { re: String(re), sgb: grupo.chave, uid: uid || null, criado_em: agora, atualizado_em: agora });
 }
 

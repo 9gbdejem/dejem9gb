@@ -203,11 +203,14 @@ async function carregarDadosIniciais() {
                 opmsNomes = localSnapshot.val();
             }
         } else {
-            const permissaoRef = ref(database, `efetivo/${userRE}/permissaoOPM`);
+            const permissaoRef = ref(database, `permissoes/${userRE}/opms`);
             const permissaoSnapshot = await get(permissaoRef);
 
             if (permissaoSnapshot.exists()) {
-                opmsPermitidas = Object.keys(permissaoSnapshot.val());
+                const opms = permissaoSnapshot.val() || {};
+                opmsPermitidas = Object.entries(opms)
+                    .filter(([, permitido]) => permitido === true)
+                    .map(([codigo]) => codigo);
             }
 
             const localRef = ref(database, 'local');
@@ -2096,7 +2099,7 @@ function renderInterface() {
                         <div class="px-3 pb-3">
                             <div class="border rounded bg-light p-3">
                                 <div class="row g-2 align-items-end">
-                                    <div class="col-12 col-xl-5">
+                                    <div class="col-12 col-xl-4">
                                         <label class="form-label small fw-bold mb-1">
                                             Código de local
                                         </label>
@@ -2127,7 +2130,7 @@ function renderInterface() {
                                             <option value="">Todos</option>
                                         </select>
                                     </div>
-                                    <div class="col-6 col-xl-2">
+                                    <div class="col-6 col-xl-1">
                                         <label class="form-label small fw-bold mb-1" for="filtroTabelaStatus">
                                             Status
                                         </label>

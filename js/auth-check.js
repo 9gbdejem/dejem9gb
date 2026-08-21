@@ -23,12 +23,9 @@ export function checkAuth(requiredLevel = 1) {
                 }
 
                 // 2. BUSCAR DADOS DO USUÁRIO
-                const uidSnap = await get(ref(database, `usuariosPorUid/${user.uid}`));
-                const uidData = uidSnap.exists() ? uidSnap.val() : {};
-                userRE = uidData.re || userRE;
                 const loginSnap = await get(ref(database, `login/${userRE}`));
                 const efetivoRef = ref(database, `efetivo/${userRE}`);
-                const snapshot = await get(efetivoRef);
+                const [snapshot, permissoesSnap] = await Promise.all([get(efetivoRef), get(ref(database, `permissoes/${userRE}`))]);
 
                 if (!snapshot.exists() && !loginSnap.exists()) {
                     throw new Error('Dados do usuário não encontrados');
@@ -36,22 +33,18 @@ export function checkAuth(requiredLevel = 1) {
 
                 const efetivoData = snapshot.exists() ? snapshot.val() : {};
                 const loginData = loginSnap.exists() ? loginSnap.val() : {};
-                const userData = { ...efetivoData, ...loginData };
-                const userLevel = Number(loginData.nivel ?? efetivoData.nivel ?? uidData.nivel ?? 3);
+                const permissoesData = permissoesSnap.exists() ? permissoesSnap.val() : {};
+                const nomePadrao = loginData.nome_completo || loginData.nome || efetivoData.nome_completo || efetivoData.nome || userRE;
+                const emailPadrao = loginData.mail_funcional || loginData.email || efetivoData.mail_funcional || efetivoData.email || user.email;
+                const userData = { ...efetivoData, ...loginData, ...permissoesData, nome: nomePadrao, nome_completo: nomePadrao, email: emailPadrao, mail_funcional: emailPadrao };
+                const userLevel = Number(permissoesData.nivel ?? efetivoData.nivel ?? 3);
                 const expectedEmail = String(userData.mail_funcional || userData.email || '').toLowerCase();
                 if (userData.uid && userData.uid !== user.uid) throw new Error('UsuÃ¡rio autenticado nÃ£o confere com o RE.');
                 if (expectedEmail && expectedEmail !== String(user.email || '').toLowerCase()) {
                     throw new Error('E-mail autenticado nÃ£o confere com o cadastro.');
                 }
                 const now = new Date().toISOString();
-                await update(ref(database, `login/${userRE}`), {
-                    uid: user.uid,
-                    re: userRE,
-                    mail_funcional: userData.mail_funcional || userData.email || user.email,
-                    nome_completo: userData.nome_completo || userData.nome || userRE,
-                    ultimo_login: now,
-                    atualizado_em: now
-                });
+                await update(ref(database, `login/${userRE}`), { atualizado_em: now });
                 sessionStorage.setItem('userNivel', String(userLevel));
                 sessionStorage.setItem('currentUserLevel', String(userLevel));
                 
@@ -184,13 +177,16 @@ async function hideNavbarItemsByLevel() {
             let userRE = sessionStorage.getItem('userRE');
             if (!userRE) return;
             
-            const efetivoRef = ref(database, `efetivo/${userRE}`);
-            const snapshot = await get(efetivoRef);
+            const [snapshot, permissoesSnap] = await Promise.all([
+                get(ref(database, `efetivo/${userRE}`)),
+                get(ref(database, `permissoes/${userRE}`))
+            ]);
             
             if (!snapshot.exists()) return;
             
-            const userData = snapshot.val();
-            userLevel = userData.nivel || 3;
+            const userData = snapshot.exists() ? snapshot.val() : {};
+            const permissoes = permissoesSnap.exists() ? permissoesSnap.val() : {};
+            userLevel = permissoes.nivel || userData.nivel || 3;
             sessionStorage.setItem('currentUserLevel', userLevel);
         }
         
