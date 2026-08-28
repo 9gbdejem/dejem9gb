@@ -1,0 +1,137 @@
+Option Compare Database
+Option Explicit
+
+Private Const FIREBASE_URL As String = "https://dejem-9gb-default-rtdb.firebaseio.com/"
+
+' Execucao unica: pressione F5 nesta rotina.
+Public Sub CompararSolicitacoesMesFirebase()
+    Dim dtReferencia As Date
+    Dim strAno As String
+    Dim strMes As String
+    Dim strJson As String
+    Dim colFirebase As Collection
+    Dim item As Variant
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim dictAccess As Object
+    Dim chave As String
+    Dim encontrados As Long
+    Dim ausentesAccess As Long
+    Dim totalFirebase As Long
+    Dim caminho As String
+    
+    On Error GoTo Erro
+    
+    If Not IsDate(Forms!frmEscalas!txtDataInicial) Then
+        Debug.Print "Comparacao: txtDataInicial nao contem uma data valida."
+        Exit Sub
+    End If
+    
+    dtReferencia = CDate(Forms!frmEscalas!txtDataInicial)
+    strAno = Format$(dtReferencia, "yyyy")
+    strMes = Format$(dtReferencia, "mm")
+    caminho = "solicitacoes/" & strAno & "/" & strMes
+    
+    Debug.Print String$(80, "-")
+    Debug.Print "Comparacao Firebase x TblEscGeral"
+    Debug.Print "Mes: " & Format$(dtReferencia, "mm/yyyy")
+    Debug.Print "No consultado: /" & caminho
+    
+    strJson = BaixarNoFirebase(caminho)
+    If strJson = "" Or LCase$(Trim$(strJson)) = "null" Then
+        Debug.Print "Firebase: nenhum dado encontrado para este mes."
+        Exit Sub
+    End If
+    
+    Set colFirebase = ExtrairIDsFirebase(strJson)
+    If colFirebase Is Nothing Or colFirebase.Count = 0 Then
+        Debug.Print "Firebase: nenhum ID_Firebase encontrado no JSON."
+        Exit Sub
+    End If
+    
+    Set dictAccess = CreateObject("Scripting.Dictionary")
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset("SELECT ID_Firebase FROM TblEscGeral " & _
+                             "WHERE Data_Esc >= #" & Format$(DateSerial(Year(dtReferencia), Month(dtReferencia), 1), "yyyy-mm-dd") & "# " & _
+                             "AND Data_Esc < #" & Format$(DateSerial(Year(dtReferencia), Month(dtReferencia) + 1, 1), "yyyy-mm-dd") & "#", _
+                             dbOpenSnapshot)
+    
+    Do While Not rs.EOF
+        chave = NormalizarID(Nz(rs!ID_Firebase, ""))
+        If chave <> "" Then dictAccess(chave) = True
+        rs.MoveNext
+    Loop
+    rs.Close
+    Set rs = Nothing
+    
+    totalFirebase = colFirebase.Count
+    For Each item In colFirebase
+        chave = NormalizarID(CStr(item))
+        If dictAccess.Exists(chave) Then
+            encontrados = encontrados + 1
+            Debug.Print "OK | Firebase=" & item & " | TblEscGeral=localizado"
+        Else
+            ausentesAccess = ausentesAccess + 1
+            Debug.Print "FALTANDO NO ACCESS | Firebase=" & item
+        End If
+    Next item
+    
+    Debug.Print "Resumo: Firebase=" & totalFirebase & _
+                " | encontrados no Access=" & encontrados & _
+                " | faltando no Access=" & ausentesAccess
+    Debug.Print String$(80, "-")
+    Exit Sub
+    
+Erro:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Debug.Print "Erro mdlCompararSolicitacoesMesFirebase: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Function BaixarNoFirebase(ByVal strNode As String) As String
+    Dim xml As Object
+    On Error GoTo Erro
+    Set xml = CreateObject("MSXML2.XMLHTTP")
+    xml.Open "GET", FIREBASE_URL & strNode & ".json", False
+    xml.setRequestHeader "Content-Type", "application/json"
+    xml.Send
+    If xml.Status = 200 Then BaixarNoFirebase = xml.ResponseText
+    Exit Function
+Erro:
+    Debug.Print "Erro ao baixar Firebase: " & Err.Number & " - " & Err.Description
+End Function
+
+Private Function ExtrairIDsFirebase(ByVal strJson As String) As Collection
+    Dim resultado As New Collection
+    Dim regex As Object
+    Dim matches As Object
+    Dim match As Object
+    Dim id As String
+    
+    On Error GoTo Erro
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Global = True
+    regex.IgnoreCase = False
+    regex.MultiLine = True
+    regex.Pattern = """ID_Firebase""\s*:\s*""([^""\\]+)"""
+    Set matches = regex.Execute(strJson)
+    
+    For Each match In matches
+        id = Trim$(match.SubMatches(0))
+        If id <> "" Then resultado.Add id
+    Next match
+    
+    Set ExtrairIDsFirebase = resultado
+    Exit Function
+Erro:
+    Debug.Print "Erro ao interpretar JSON do Firebase: " & Err.Number & " - " & Err.Description
+    Set ExtrairIDsFirebase = Nothing
+End Function
+
+Private Function NormalizarID(ByVal valor As String) As String
+    valor = Trim$(valor)
+    Do While Left$(valor, 1) = "/"
+        valor = Mid$(valor, 2)
+    Loop
+    NormalizarID = LCase$(valor)
+End Function

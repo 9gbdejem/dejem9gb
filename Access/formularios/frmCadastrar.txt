@@ -701,7 +701,7 @@ Erro:
     If Err.Number = vbObjectError + 514 Then
         MsgBox Err.Description, vbExclamation, "Cadastro na Intranet"
     Else
-        MsgBox "Erro na automação da Intranet: " & Err.Number & " - " & Err.Description, vbCritical
+        MsgBox "Erro na automa??o da Intranet: " & Err.Number & " - " & Err.Description, vbCritical
     End If
     Resume Sair
 End Sub
@@ -741,7 +741,10 @@ Private Sub PreencherEscalaNoSite(ByRef driver As ChromeDriver, ByRef por As by,
         .FindElement(por.Name("vESCOPRDLGOBS")).SendKeys (Nz(rs!OBS_Intranet, ""))
         
         If blnForaPrazo Then
+            AguardarAjax driver, por, 30
             .FindElement(por.id("vRADIOJUSTDTESCALAREMANEJ")).Click
+            Pausar 0.5
+            AguardarAjax driver, por, 30
             Call SelecionarSuperioresForaPrazo(driver, por, strP1, strCoord, strSubcmd)
         End If
         
@@ -763,6 +766,8 @@ Private Sub SelecionarSuperioresForaPrazo(ByRef driver As ChromeDriver, ByRef po
     On Error GoTo Erro
     
     Do While Not SuperioresPreenchidos(driver, por, strP1, strCoord, strSubcmd)
+        AguardarAjax driver, por, 30
+
         lngTentativas = lngTentativas + 1
         If lngTentativas > 30 Then
             Err.Raise vbObjectError + 513, "SelecionarSuperioresForaPrazo", _
@@ -771,12 +776,15 @@ Private Sub SelecionarSuperioresForaPrazo(ByRef driver As ChromeDriver, ByRef po
         
         Call SelecionarComboPorValor(driver, por, "vCOMBOP1", strP1)
         Pausar 0.5
+        AguardarAjax driver, por, 30
         
         Call SelecionarComboPorValor(driver, por, "vCOMBOCOORD", strCoord)
         Pausar 0.5
+        AguardarAjax driver, por, 30
         
         Call SelecionarComboPorValor(driver, por, "vCOMBOSUCMD", strSubcmd)
         Pausar 0.5
+        AguardarAjax driver, por, 30
     Loop
     
     Exit Sub

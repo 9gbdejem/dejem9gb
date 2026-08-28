@@ -1843,6 +1843,12 @@ function renderInterface() {
                             </div>
                             <div class="col-xl-2 col-lg-2 col-md-3">
                                 <label class="form-label small mb-1 d-none d-md-block">&nbsp;</label>
+                                <button type="button" class="btn btn-primary btn-sm w-100" id="btnAtualizarFiltro">
+                                    <i class="fas fa-sync-alt me-1"></i>Atualizar
+                                </button>
+                            </div>
+                            <div class="col-xl-2 col-lg-2 col-md-3">
+                                <label class="form-label small mb-1 d-none d-md-block">&nbsp;</label>
                                 <a class="btn btn-info btn-sm w-100"
                                    id="btnTutorial"
                                    href="https://www.youtube.com/playlist?list=PL-_9SSH-2eArJx7k8AZDLrd8e8UbTAl5Q"
@@ -2144,7 +2150,7 @@ function renderInterface() {
                                         </button>
                                     </div>
                                     <div class="col-12 col-xl-2 d-grid">
-                                        <button type="button" class="btn btn-sm btn-primary" id="btnAtualizarFiltro">
+                                        <button type="button" class="btn btn-sm btn-primary" id="btnAtualizarTabela">
                                             <i class="fas fa-sync me-1"></i>Atualizar
                                         </button>
                                     </div>
@@ -2414,6 +2420,21 @@ function bloquearFormularioAoAlterarFiltros() {
     setFormularioSolicitacaoBloqueado(true);
 }
 
+function limparDadosAoAlterarFiltros() {
+    solicitacoesCache = [];
+    filtrosTabelaSolicitacoes = {
+        composicaoCodigos: [],
+        diaInicial: '',
+        diaFinal: '',
+        status: ''
+    };
+    anexosExistentesCache = {};
+    usarAnexoExistente = false;
+    anexoExistenteSelecionado = null;
+    limparFormularioSilencioso();
+    atualizarTabelaSolicitacoes();
+}
+
 function atualizarBloqueioFormularioPorTabela() {
     const tbody = document.getElementById('tbodySolicitacoes');
     const tabelaCarregada = Boolean(tbody && !tbody.querySelector('.fa-spinner'));
@@ -2436,13 +2457,8 @@ function inicializarEventListeners() {
             }
 
             opmSelecionada = valorSelecionado;
-            await atualizarTabelaComDelay();
-            atualizarComposicoesDropdown();
-
-            const prioridade = document.getElementById('selectPrioridade')?.value;
-            if (prioridade === 'minimo_operacional' || prioridade === 'vistoria_tecnica') {
-                await atualizarCampoAnexo(prioridade);
-            }
+            limparDadosAoAlterarFiltros();
+            mostrarMensagemFormulario('Filtros alterados. Clique em "Atualizar" para carregar as solicitações.', 'info');
         });
     }
 
@@ -2451,9 +2467,8 @@ function inicializarEventListeners() {
         selectMes.addEventListener('change', async (e) => {
             bloquearFormularioAoAlterarFiltros();
             mesFiltro = parseInt(e.target.value);
-            anexosExistentesCache = {};
-            usarAnexoExistente = false;
-            await atualizarTabelaComDelay();
+            limparDadosAoAlterarFiltros();
+            mostrarMensagemFormulario('Filtros alterados. Clique em "Atualizar" para carregar as solicitações.', 'info');
         });
     }
 
@@ -2462,9 +2477,8 @@ function inicializarEventListeners() {
         selectAno.addEventListener('change', async (e) => {
             bloquearFormularioAoAlterarFiltros();
             anoFiltro = parseInt(e.target.value);
-            anexosExistentesCache = {};
-            usarAnexoExistente = false;
-            await atualizarTabelaComDelay();
+            limparDadosAoAlterarFiltros();
+            mostrarMensagemFormulario('Filtros alterados. Clique em "Atualizar" para carregar as solicitações.', 'info');
         });
     }
 
@@ -3152,6 +3166,8 @@ function atualizarCardsResumoSolicitacoes(solicitacoes) {
     };
 
     const totais = solicitacoes.reduce((acc, solicitacao) => {
+        // Status 3 representa cancelamento pelo administrador e nao entra nos totais.
+        if (Number(solicitacao.Status_Inicial ?? solicitacao.status) === 3) return acc;
         acc.subSgtSolicitado += getNumero(solicitacao.solic_subten_sgt);
         acc.subSgtEscalados += getNumero(solicitacao.esc_subten_sgt);
         acc.cbSdSolicitado += getNumero(solicitacao.solic_cb_sd);

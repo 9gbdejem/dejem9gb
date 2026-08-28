@@ -3,6 +3,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/fi
 import { database } from './firebase-config.js';
 import { ref, get, update } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
+const PERFIS_TEMPORARIOS = {
+    '777777': { perfil: 'COBOM_TEMPORARIO', nivel: 2, podeConfirmarEscalas: true },
+    '555555': { perfil: 'PRONTIDAO_TEMPORARIO', nivel: 3, somenteLeitura: true }
+};
+
 // Verificar autenticação e nível de acesso
 export function checkAuth(requiredLevel = 1) {
     return new Promise((resolve, reject) => {
@@ -27,17 +32,18 @@ export function checkAuth(requiredLevel = 1) {
                 const efetivoRef = ref(database, `efetivo/${userRE}`);
                 const [snapshot, permissoesSnap] = await Promise.all([get(efetivoRef), get(ref(database, `permissoes/${userRE}`))]);
 
-                if (!snapshot.exists() && !loginSnap.exists()) {
+                if (!snapshot.exists() && !loginSnap.exists() && !PERFIS_TEMPORARIOS[userRE]) {
                     throw new Error('Dados do usuário não encontrados');
                 }
 
                 const efetivoData = snapshot.exists() ? snapshot.val() : {};
                 const loginData = loginSnap.exists() ? loginSnap.val() : {};
                 const permissoesData = permissoesSnap.exists() ? permissoesSnap.val() : {};
-                const nomePadrao = loginData.nome_completo || loginData.nome || efetivoData.nome_completo || efetivoData.nome || userRE;
-                const emailPadrao = loginData.mail_funcional || loginData.email || efetivoData.mail_funcional || efetivoData.email || user.email;
-                const userData = { ...efetivoData, ...loginData, ...permissoesData, nome: nomePadrao, nome_completo: nomePadrao, email: emailPadrao, mail_funcional: emailPadrao };
-                const userLevel = Number(permissoesData.nivel ?? efetivoData.nivel ?? 3);
+                const perfilTemporario = PERFIS_TEMPORARIOS[userRE] || {};
+                const nomePadrao = loginData.nome_completo || loginData.nome || efetivoData.nome_completo || efetivoData.nome || perfilTemporario.nome || userRE;
+                const emailPadrao = loginData.mail_funcional || loginData.email || efetivoData.mail_funcional || efetivoData.email || perfilTemporario.email || user.email;
+                const userData = { ...efetivoData, ...loginData, ...permissoesData, ...perfilTemporario, nome: nomePadrao, nome_completo: nomePadrao, email: emailPadrao, mail_funcional: emailPadrao };
+                const userLevel = Number(perfilTemporario.nivel ?? permissoesData.nivel ?? efetivoData.nivel ?? 3);
                 const expectedEmail = String(userData.mail_funcional || userData.email || '').toLowerCase();
                 if (userData.uid && userData.uid !== user.uid) throw new Error('UsuÃ¡rio autenticado nÃ£o confere com o RE.');
                 if (expectedEmail && expectedEmail !== String(user.email || '').toLowerCase()) {

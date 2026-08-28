@@ -19,13 +19,13 @@ Public Function RemoverMilitarEscalaIntranet(ByVal strIDEscala As String, ByVal 
     strMilitarRE = Trim(Nz(strMilitarRE, ""))
     
     If strIDEscala = "" Or strMilitarRE = "" Then
-        MsgBox "ID_Escala ou RE do militar n„o informado.", vbExclamation, "Remover militar"
+        MsgBox "ID_Escala ou RE do militar n√£o informado.", vbExclamation, "Remover militar"
         Exit Function
     End If
     
     strLink = LinkUsuarioLogado()
     If strLink = "" Then
-        MsgBox "Link do usu·rio logado n„o encontrado. RefaÁa o login.", vbExclamation, "Remover militar"
+        MsgBox "Link do usu√°rio logado n√£o encontrado. Refa√ßa o login.", vbExclamation, "Remover militar"
         Exit Function
     End If
     
@@ -43,7 +43,7 @@ Public Function RemoverMilitarEscalaIntranet(ByVal strIDEscala As String, ByVal 
         Pausar 1
         
         If Left(TextoElementoPorID(driver, por, "gxErrorViewer"), 14) = "Nao autorizado" Then
-            MsgBox "Usu·rio n„o autorizado no sistema online. RefaÁa o login.", vbExclamation, "Remover militar"
+            MsgBox "Usu√°rio n√£o autorizado no sistema online. Refa√ßa o login.", vbExclamation, "Remover militar"
             GoTo Sair
         End If
         
@@ -71,6 +71,10 @@ Public Function RemoverMilitarEscalaIntranet(ByVal strIDEscala As String, ByVal 
                       vbQuestion + vbYesNo, "Confirmar exclus√£o")
     
     If resposta = vbYes Then
+        If Not RemoverMilitarFirebase(strIDEscala, strMilitarRE, strConferencia) Then
+            MsgBox "O militar foi exclu√≠do na Intranet, mas n√£o foi poss√≠vel remov√™-lo do Firebase. A exclus√£o local n√£o ser√° realizada.", vbCritical, "Remover militar"
+            GoTo Sair
+        End If
         RegistrarExclusaoLocal strIDEscala, strMilitarRE, strConferencia, strDataSol, strDocumento, strMotivo
         RemoverMilitarLocal strIDEscala, strMilitarRE, strConferencia
         RecalcularEscalados strIDEscala
@@ -108,7 +112,7 @@ Private Sub RegistrarExclusaoLocal(ByVal strIDEscala As String, ByVal strMilitar
     
     If rsMil.EOF Then
         Err.Raise vbObjectError + 930, "RegistrarExclusaoLocal", _
-                  "Militar n„o encontrado na TblMilEsc para registrar exclus„o."
+                  "Militar n√£o encontrado na TblMilEsc para registrar exclus√£o."
     End If
     
     Set rsExc = CurrentDb.OpenRecordset("TblExclusoes", dbOpenDynaset)
@@ -146,6 +150,38 @@ End Sub
 Private Sub RemoverMilitarLocal(ByVal strIDEscala As String, ByVal strMilitarRE As String, ByVal strConferencia As String)
     CurrentDb.Execute "DELETE FROM TblMilEsc WHERE " & WhereMilitar(strIDEscala, strMilitarRE, strConferencia), dbFailOnError
 End Sub
+
+Private Function RemoverMilitarFirebase(ByVal strIDEscala As String, ByVal strMilitarRE As String, _
+                                        ByVal strConferencia As String) As Boolean
+    Dim rs As DAO.Recordset
+    Dim strNode As String
+    Dim strBody As String
+
+    On Error GoTo Erro
+
+    Set rs = CurrentDb.OpenRecordset("SELECT TOP 1 Data_Esc, ID_Escala, Militar_RE FROM TblMilEsc WHERE " & _
+                                    WhereMilitar(strIDEscala, strMilitarRE, strConferencia), dbOpenSnapshot)
+    If rs.EOF Or Not IsDate(rs!Data_Esc) Then GoTo Falha
+
+    strNode = "escalados/" & Format(CDate(rs!Data_Esc), "yyyy/mm/dd") & "/" & _
+              Trim(CStr(rs!ID_Escala)) & Trim(CStr(rs!Militar_RE))
+    strBody = "{""" & strNode & """:null}"
+    RemoverMilitarFirebase = PatchDadosFirebase(strBody)
+    If Not RemoverMilitarFirebase Then Debug.Print "RemoverMilitarFirebase: PATCH falhou. Node=" & strNode
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+Falha:
+    RemoverMilitarFirebase = False
+    GoTo Sair
+Erro:
+    Debug.Print "Erro mdlRemoverMilitarEscala.RemoverMilitarFirebase: " & Err.Number & " - " & Err.Description
+    RemoverMilitarFirebase = False
+    Resume Sair
+End Function
 Private Sub PerguntarMontarNovamente(ByVal strIDEscala As String)
     Dim resposta As VbMsgBoxResult
     

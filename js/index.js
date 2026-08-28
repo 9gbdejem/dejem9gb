@@ -7,6 +7,11 @@ function primeiroValor(...valores) {
     return valores.find(valor => String(valor || '').trim() !== '') || '';
 }
 
+const PERFIS_TEMPORARIOS = {
+    '777777': { email: '9gbb3@policiamilitar.sp.gov.br', nome: 'COBOM', perfil: 'COBOM_TEMPORARIO', nivel: 2 },
+    '555555': { email: 'nonogrupamento@gmail.com', nome: 'PRONTIDÃO', perfil: 'PRONTIDAO_TEMPORARIO', nivel: 3 }
+};
+
 async function getUserEmailFromRE(re) {
     try {
         // Em produção, você precisaria de um Cloud Function ou outra solução
@@ -77,12 +82,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const permissoesSnapshot = await get(ref(database, `permissoes/${re}`));
             // console.log('📦 Resultado da busca:', snapshot.exists() ? snapshot.val() : 'NÃO ENCONTRADO'); // DEBUG 3
 
-            if (snapshot.exists()) {
+            const perfilTemporario = PERFIS_TEMPORARIOS[re];
+            if (snapshot.exists() || perfilTemporario) {
                 const efetivoSnapshot = await get(ref(database, `efetivo/${re}`));
                 const userData = {
                     ...(efetivoSnapshot.exists() ? efetivoSnapshot.val() : {}),
-                    ...snapshot.val(),
-                    ...(permissoesSnapshot.exists() ? permissoesSnapshot.val() : {})
+                    ...(snapshot.exists() ? snapshot.val() : {}),
+                    ...(permissoesSnapshot.exists() ? permissoesSnapshot.val() : {}),
+                    ...(perfilTemporario || {})
                 };
                 userEmail = primeiroValor(userData.mail_funcional, userData.email, userData['e-mail']);
                 userFullName = primeiroValor(userData.nome_completo, userData.nome, userData.name, re);
@@ -181,10 +188,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const authenticatedUser = userCredential.user;
             const now = new Date().toISOString();
             const nivel = userLevel;
-            await set(ref(database, `login/${userRE}`), {
+            await update(ref(database, `login/${userRE}`), {
                 atualizado_em: now,
                 email: userEmail,
-                nome: userFullName
+                nome: userFullName,
+                ...(PERFIS_TEMPORARIOS[userRE] || {})
             });
 
             // 1. SALVAR NO sessionStorage (funciona na mesma aba)

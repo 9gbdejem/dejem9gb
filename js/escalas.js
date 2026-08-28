@@ -10,6 +10,7 @@ const itemsPerPage = 15;
 let uniqueStations = new Set();
 let userNivel = 3;
 let userRE = '';
+let perfilUsuario = '';
 let confirmacoesCache = {};
 
 // Cache para dias já carregados
@@ -62,6 +63,7 @@ async function initializeApp() {
         
         userRE = re;
         userNivel = userData.nivel || 3;
+        perfilUsuario = userData.perfil || '';
         
         sessionStorage.setItem('userRE', userRE);
         sessionStorage.setItem('userName', userData.nome);
@@ -413,11 +415,13 @@ window.applyTodayFilter = async function() {
     const dayFilter = document.getElementById('filterDay');
     const monthFilter = document.getElementById('filterMonth');
     const yearFilter = document.getElementById('filterYear');
+    const calendarFilter = document.getElementById('filterDate');
     const stationFilter = document.getElementById('filterStation');
     
     if (dayFilter) dayFilter.value = day;
     if (monthFilter) monthFilter.value = month;
     if (yearFilter) yearFilter.value = year;
+    if (calendarFilter) calendarFilter.value = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     if (stationFilter) stationFilter.value = '';
     
     await window.loadPeriod(year, month, day);
@@ -772,6 +776,25 @@ function setupFilterChangeEvents() {
     const dayFilter = document.getElementById('filterDay');
     const monthFilter = document.getElementById('filterMonth');
     const yearFilter = document.getElementById('filterYear');
+    const calendarFilter = document.getElementById('filterDate');
+
+    if (calendarFilter) {
+        const hoje = new Date();
+        calendarFilter.value = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+        calendarFilter.addEventListener('change', () => {
+            if (!calendarFilter.value) {
+                dayFilter.value = '';
+                monthFilter.value = '';
+                yearFilter.value = '';
+            } else {
+                const [year, month, day] = calendarFilter.value.split('-');
+                yearFilter.value = year;
+                monthFilter.value = String(parseInt(month, 10));
+                dayFilter.value = String(parseInt(day, 10));
+            }
+            onFilterChange();
+        });
+    }
     
     const onFilterChange = function() {
         const startDateInput = document.getElementById('rangeStartDate');
@@ -1238,8 +1261,10 @@ window.openConfirmModal = async function(escalaId, reClicado) {
     const escalasComMesmoId = allEscalas.filter(e => e.Id == escalaId);
     const usuarioEstaNaEscala = escalasComMesmoId.some(e => e.RE == userRE);
     const isAdmin = userNivel === 1;
+    const isCobomTemporario = perfilUsuario === 'COBOM_TEMPORARIO';
+    const podeConfirmarComoAdministrador = isAdmin || isCobomTemporario;
     
-    if (!usuarioEstaNaEscala && !isAdmin) {
+    if (!usuarioEstaNaEscala && !podeConfirmarComoAdministrador) {
         showMessage('Você não tem permissão para confirmar esta escala.', 'warning');
         return;
     }
@@ -1251,7 +1276,7 @@ window.openConfirmModal = async function(escalaId, reClicado) {
     const confirmacoesEscala = confirmacoesCache[escalaId] || {};
     const dadosGerais = confirmacoesEscala.dadosGerais || {};
     const militaresConfirmacoes = confirmacoesEscala.militares || {};
-    const adminSemLinkSEIChecked = isAdmin && dadosGerais.sem_link_sei === true;
+    const adminSemLinkSEIChecked = isCobomTemporario || (isAdmin && dadosGerais.sem_link_sei === true);
     
     const primeiraEscala = escalasComMesmoId[0];
     
@@ -1391,7 +1416,8 @@ async function saveConfirmation() {
     const escalaId = document.getElementById('modalEscalaId')?.value;
     const userRE = document.getElementById('modalUserRE')?.value;
     const seiLink = document.getElementById('seiLink')?.value.trim();
-    const semLinkSEI = userNivel === 1 && document.getElementById('semLinkSEI')?.checked === true;
+    const semLinkSEI = perfilUsuario === 'COBOM_TEMPORARIO' ||
+        (userNivel === 1 && document.getElementById('semLinkSEI')?.checked === true);
     
     if (!escalaId || !userRE) {
         showMessage('Erro: Dados da escala não encontrados.', 'error');

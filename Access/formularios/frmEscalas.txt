@@ -1215,6 +1215,18 @@ Private Sub btnPagar_Click()
     Call IniciarPagamentoEscalasFiltradas
 End Sub
 
+Private Sub btnCompSolic_Click()
+    On Error GoTo Erro
+
+    Call CompararSolicitacoesMesFirebase
+    Exit Sub
+
+Erro:
+    Debug.Print "Erro frmEscalas.btnCompSolic_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao comparar as solicitações: " & Err.Number & " - " & Err.Description, _
+           vbCritical, "Comparar solicitações"
+End Sub
+
 Private Sub btnRemover_Click()
     DoCmd.OpenForm "frmRemoveSelID", , , , , acDialog
 End Sub

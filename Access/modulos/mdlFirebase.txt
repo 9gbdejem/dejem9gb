@@ -556,7 +556,7 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
                  SQLTexto(strIDFirebase) & ", " & _
                  slcCbSd & ", " & slcIntermed & ", " & slcSubalterno & ", " & slcSubtenSgt & ", " & slcSuperior & ", " & _
                  strStatusInicial & ", " & _
-                 SQLTexto("1") & ", " & _
+                 SQLTexto(IIf(strStatusInicial = "5", "2", "1")) & ", " & _
                  SQLTexto(DictVal(objSolic, "composicao_cod", "")) & ", " & _
                  SQLTexto(DictVal(objSolic, "composicao_nome", "")) & ", " & _
                  SqlDataFirebase(DictVal(objSolic, "data", "")) & ", " & _
@@ -571,7 +571,9 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
         db.Execute strSQL, dbFailOnError
         importados = importados + 1
     Else
-        If strStatusInicial = "4" And _
+        If strStatusInicial = "5" Then
+            strStatusAdmFinal = "2"
+        ElseIf strStatusInicial = "4" And _
            Trim(Nz(rsCheck!ID_Escala, "")) <> "" And _
            Trim(Nz(rsCheck!Status_Adm, "")) = "3" Then
             strStatusAdmFinal = "8"
@@ -800,18 +802,30 @@ Private Function EncontrarFimObjetoJson(ByVal strJson As String, ByVal lngInicio
 End Function
 
 Private Function MarcarSolicitacoesImportadasEmLote(ByVal colIDsImportados As Collection) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
     Dim strBody As String
+    Dim strStatusInicial As String
     Dim vID As Variant
     
     On Error GoTo Erro
     
+    Set db = CurrentDb
     strBody = "{"
     
     For Each vID In colIDsImportados
         If Len(strBody) > 1 Then strBody = strBody & ","
         
+        strStatusInicial = "2"
+        Set rs = db.OpenRecordset("SELECT Status_Adm FROM TblEscGeral WHERE ID_Firebase = " & SQLTexto(CStr(vID)), dbOpenSnapshot)
+        If Not rs.EOF Then
+            If Trim(Nz(rs!Status_Adm, "")) = "2" Then strStatusInicial = "3"
+        End If
+        rs.Close
+        Set rs = Nothing
+
         strBody = strBody & _
-                  """" & JsonEscape("solicitacoes/" & CStr(vID) & "/Status_Inicial") & """:2," & _
+                  """" & JsonEscape("solicitacoes/" & CStr(vID) & "/Status_Inicial") & """:" & strStatusInicial & "," & _
                   """" & JsonEscape("SolicPendentes/" & CStr(vID)) & """:null"
     Next vID
     
@@ -821,6 +835,10 @@ Private Function MarcarSolicitacoesImportadasEmLote(ByVal colIDsImportados As Co
     Exit Function
     
 Erro:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
     Debug.Print "Erro MarcarSolicitacoesImportadasEmLote: " & Err.Number & " - " & Err.Description
     MarcarSolicitacoesImportadasEmLote = False
 End Function
@@ -1003,5 +1021,3 @@ Erro:
     Debug.Print "Erro PatchDadosFirebase: " & Err.Description
     PatchDadosFirebase = False
 End Function
-
-
