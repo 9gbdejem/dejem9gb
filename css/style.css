@@ -2497,6 +2497,23 @@ main.container-fluid {
     padding-right: 2px !important;
     white-space: nowrap;
 }
+
+/* Permite que os filtros múltiplos do dashboard ultrapassem a altura da tabela. */
+#dashboardEscalasCard,
+#dashboardEscalasCard .card-body,
+#dashboard-filtros,
+#dashboard-content {
+    overflow: visible !important;
+}
+
+#dashboard-filtros .dropdown {
+    position: relative;
+    z-index: 1055;
+}
+
+#dashboard-filtros .dropdown-menu.show {
+    z-index: 1060;
+}
 /* Remove setas dos inputs numericos das quantidades na tabela de solicitacoes. */
 #tabelaSolicitacoes .vagas-cell input[type="number"] {
     appearance: textfield;

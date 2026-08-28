@@ -5,6 +5,10 @@ import { ref, get } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-dat
 let resumoCache = [];
 let metaAtual = null;
 let userNivel = 3;
+let filtrosDashboard = {
+    codigos: [],
+    opms: []
+};
 
 const CACHE_VERSION_KEY = 'escAbertasResumoVersao';
 const CACHE_DATA_KEY = 'escAbertasResumoDados';
@@ -15,37 +19,148 @@ function formatarPrazo(prazo = '') {
 }
 
 function lerFiltros() {
-    return {
-        codigo: document.getElementById('filtroCodigo')?.value || '',
-        local: document.getElementById('filtroLocal')?.value || '',
-        composicao: document.getElementById('filtroComposicao')?.value || ''
-    };
+    return filtrosDashboard;
 }
 
 function aplicarFiltrosLocal() {
     const f = lerFiltros();
     return resumoCache.filter((e) => {
-        if (f.codigo && String(e.codigo) !== String(f.codigo)) return false;
-        if (f.local && e.opm !== f.local) return false;
-        if (f.composicao && e.composicao !== f.composicao) return false;
+        if (f.codigos.length > 0 && !f.codigos.includes(String(e.codigo || ''))) return false;
+        if (f.opms.length > 0 && !f.opms.includes(String(e.opm || ''))) return false;
         return true;
     });
 }
 
-function preencherSelect(id, values) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.innerHTML = '<option value="">Todos</option>' + [...new Set(values)]
-        .filter(Boolean)
-        .sort((a, b) => String(a).localeCompare(String(b), 'pt-BR', { numeric: true }))
-        .map(v => `<option value="${v}">${v}</option>`)
-        .join('');
+function escaparHTML(valor) {
+    return String(valor ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
 }
 
 function atualizarFiltros() {
-    preencherSelect('filtroCodigo', resumoCache.map(e => String(e.codigo || '')));
-    preencherSelect('filtroLocal', resumoCache.map(e => e.opm));
-    preencherSelect('filtroComposicao', resumoCache.map(e => e.composicao));
+    const codigos = new Map();
+    const opms = new Set();
+
+    resumoCache.forEach((item) => {
+        const codigo = String(item.codigo || '').trim();
+        const opm = String(item.opm || '').trim();
+        if (codigo) codigos.set(codigo, String(item.composicao || '').trim());
+        if (opm) opms.add(opm);
+    });
+
+    const codigosDisponiveis = [...codigos.keys()];
+    const opmsDisponiveis = [...opms];
+    filtrosDashboard.codigos = filtrosDashboard.codigos.filter((codigo) => codigosDisponiveis.includes(codigo));
+    filtrosDashboard.opms = filtrosDashboard.opms.filter((opm) => opmsDisponiveis.includes(opm));
+
+    const opcoesCodigo = document.getElementById('filtroDashboardCodigoOpcoes');
+    if (opcoesCodigo) {
+        const ordenados = codigosDisponiveis.sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+        opcoesCodigo.innerHTML = ordenados.length ? `
+            <div class="d-flex justify-content-between align-items-center px-2 pb-2 mb-1 border-bottom">
+                <span class="small fw-semibold">Códigos disponíveis</span>
+                <button type="button" class="btn btn-link btn-sm p-0" id="btnLimparFiltroDashboardCodigo">Limpar</button>
+            </div>
+            ${ordenados.map((codigo) => `
+                <div class="form-check px-2 py-1">
+                    <input class="form-check-input ms-0 me-2 filtro-dashboard-codigo-check" type="checkbox"
+                           id="filtroDashboardCodigo_${escaparHTML(codigo)}" value="${escaparHTML(codigo)}"
+                           ${filtrosDashboard.codigos.includes(codigo) ? 'checked' : ''}>
+                    <label class="form-check-label small" for="filtroDashboardCodigo_${escaparHTML(codigo)}">
+                        ${escaparHTML(codigo)} - ${escaparHTML(codigos.get(codigo) || '')}
+                    </label>
+                </div>
+            `).join('')}
+        ` : '<div class="text-muted small px-2 py-1">Nenhum código disponível</div>';
+    }
+
+    const opcoesOPM = document.getElementById('filtroDashboardOpmOpcoes');
+    if (opcoesOPM) {
+        const ordenadas = opmsDisponiveis.sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+        opcoesOPM.innerHTML = ordenadas.length ? `
+            <div class="d-flex justify-content-between align-items-center px-2 pb-2 mb-1 border-bottom">
+                <span class="small fw-semibold">OPMs disponíveis</span>
+                <button type="button" class="btn btn-link btn-sm p-0" id="btnLimparFiltroDashboardOpm">Limpar</button>
+            </div>
+            ${ordenadas.map((opm, indice) => `
+                <div class="form-check px-2 py-1">
+                    <input class="form-check-input ms-0 me-2 filtro-dashboard-opm-check" type="checkbox"
+                           id="filtroDashboardOpm_${indice}" value="${escaparHTML(opm)}"
+                           ${filtrosDashboard.opms.includes(opm) ? 'checked' : ''}>
+                    <label class="form-check-label small" for="filtroDashboardOpm_${indice}">${escaparHTML(opm)}</label>
+                </div>
+            `).join('')}
+        ` : '<div class="text-muted small px-2 py-1">Nenhuma OPM disponível</div>';
+    }
+
+    atualizarResumosFiltros();
+}
+
+function atualizarResumosFiltros() {
+    const resumoCodigo = document.getElementById('filtroDashboardCodigoResumo');
+    const resumoOPM = document.getElementById('filtroDashboardOpmResumo');
+
+    if (resumoCodigo) {
+        resumoCodigo.textContent = filtrosDashboard.codigos.length === 0
+            ? 'Todos'
+            : filtrosDashboard.codigos.length === 1
+                ? filtrosDashboard.codigos[0]
+                : `${filtrosDashboard.codigos.length} códigos selecionados`;
+    }
+
+    if (resumoOPM) {
+        resumoOPM.textContent = filtrosDashboard.opms.length === 0
+            ? 'Todas'
+            : filtrosDashboard.opms.length === 1
+                ? filtrosDashboard.opms[0]
+                : `${filtrosDashboard.opms.length} OPMs selecionadas`;
+    }
+}
+
+function configurarFiltrosDashboard() {
+    const filtroCodigo = document.getElementById('filtroDashboardCodigo');
+    const filtroOPM = document.getElementById('filtroDashboardOpm');
+
+    filtroCodigo?.addEventListener('change', (event) => {
+        if (!event.target.classList.contains('filtro-dashboard-codigo-check')) return;
+        filtrosDashboard.codigos = [...filtroCodigo.querySelectorAll('.filtro-dashboard-codigo-check:checked')]
+            .map((checkbox) => checkbox.value);
+        atualizarResumosFiltros();
+        renderTabela();
+    });
+
+    filtroCodigo?.addEventListener('click', (event) => {
+        if (!event.target.closest('#btnLimparFiltroDashboardCodigo')) return;
+        event.preventDefault();
+        filtrosDashboard.codigos = [];
+        filtroCodigo.querySelectorAll('.filtro-dashboard-codigo-check').forEach((checkbox) => {
+            checkbox.checked = false;
+        });
+        atualizarResumosFiltros();
+        renderTabela();
+    });
+
+    filtroOPM?.addEventListener('change', (event) => {
+        if (!event.target.classList.contains('filtro-dashboard-opm-check')) return;
+        filtrosDashboard.opms = [...filtroOPM.querySelectorAll('.filtro-dashboard-opm-check:checked')]
+            .map((checkbox) => checkbox.value);
+        atualizarResumosFiltros();
+        renderTabela();
+    });
+
+    filtroOPM?.addEventListener('click', (event) => {
+        if (!event.target.closest('#btnLimparFiltroDashboardOpm')) return;
+        event.preventDefault();
+        filtrosDashboard.opms = [];
+        filtroOPM.querySelectorAll('.filtro-dashboard-opm-check').forEach((checkbox) => {
+            checkbox.checked = false;
+        });
+        atualizarResumosFiltros();
+        renderTabela();
+    });
 }
 
 function renderTabela() {
@@ -116,26 +231,43 @@ function salvarCacheLocal(versao, dados) {
 
 function renderDashboardBase() {
     const container = document.getElementById('dashboard-content');
-    if (!container) return;
+    const filtrosContainer = document.getElementById('dashboard-filtros');
+    if (!container || !filtrosContainer) return;
+
+    filtrosContainer.innerHTML = `
+        <div class="row g-2">
+            <div class="col-12 col-md-6">
+                <label class="form-label small fw-bold mb-1">Código de local</label>
+                <div class="dropdown w-100" id="filtroDashboardCodigo">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <span id="filtroDashboardCodigoResumo">Todos</span>
+                    </button>
+                    <div class="dropdown-menu w-100 p-2 shadow-sm" id="filtroDashboardCodigoOpcoes"
+                         style="max-height: 320px; overflow-y: auto; min-width: 100%;">
+                        <div class="text-muted small px-2 py-1">Carregando...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6">
+                <label class="form-label small fw-bold mb-1">OPM</label>
+                <div class="dropdown w-100" id="filtroDashboardOpm">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <span id="filtroDashboardOpmResumo">Todas</span>
+                    </button>
+                    <div class="dropdown-menu w-100 p-2 shadow-sm" id="filtroDashboardOpmOpcoes"
+                         style="max-height: 320px; overflow-y: auto; min-width: 100%;">
+                        <div class="text-muted small px-2 py-1">Carregando...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 
     container.innerHTML = `
         <div class="mb-3">
             <div id="dashboardInfo" class="small text-muted text-center mt-2"></div>
-        </div>
-
-        <div class="row g-2 mb-3">
-            <div class="col-md-2">
-                <label class="form-label">Código</label>
-                <select id="filtroCodigo" class="form-select form-select-sm"></select>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">OPM</label>
-                <select id="filtroLocal" class="form-select form-select-sm"></select>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">Composição</label>
-                <select id="filtroComposicao" class="form-select form-select-sm"></select>
-            </div>
         </div>
 
         <div class="table-responsive">
@@ -148,7 +280,7 @@ function renderDashboardBase() {
                         <th>Prazo</th>
                         <th>Dias</th>
                         <th class="text-center">Sup</th>
-                        <th class="text-center">Int</th>
+                        <th class="text-center">Cap</th>
                         <th class="text-center">Ten</th>
                         <th class="text-center">Sgt</th>
                         <th class="text-center">CbSd</th>
@@ -243,10 +375,7 @@ export async function initDashboard() {
         userNivel = userData.nivel || 3;
 
         renderDashboardBase();
-
-        ['filtroCodigo', 'filtroLocal', 'filtroComposicao'].forEach((id) => {
-            document.getElementById(id)?.addEventListener('change', renderTabela);
-        });
+        configurarFiltrosDashboard();
 
         await prepararBotaoResumo();
     } catch (error) {

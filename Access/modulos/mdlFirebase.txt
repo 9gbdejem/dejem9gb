@@ -468,6 +468,7 @@ Private Function ParseSolicitacaoUnica(strJson As String, Optional ByVal strIDFi
     AddJsonValue dict, strJson, "Solic_Subten_Sgt", False
     AddJsonValue dict, strJson, "Solic_Superior", False
     AddJsonValue dict, strJson, "Status_Inicial", False
+    AddJsonValue dict, strJson, "Status_Adm", False
     AddJsonValue dict, strJson, "composicao_cod", True
     AddJsonValue dict, strJson, "composicao_nome", True
     AddJsonValue dict, strJson, "data", True
@@ -522,6 +523,7 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
     Dim strIDCadastro As String
     Dim strStatusInicial As String
     Dim strStatusAdmFinal As String
+    Dim strStatusAdmFirebase As String
     Dim slcCbSd As Long
     Dim slcIntermed As Long
     Dim slcSubalterno As Long
@@ -539,12 +541,21 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
     slcSubtenSgt = DictVal(objSolic, "Solic_Subten_Sgt", 0)
     slcSuperior = DictVal(objSolic, "Solic_Superior", 0)
     strStatusInicial = CStr(DictVal(objSolic, "Status_Inicial", 0))
+    strStatusAdmFirebase = Trim(CStr(DictVal(objSolic, "Status_Adm", "")))
     
     Set rsCheck = db.OpenRecordset( _
         "SELECT ID_Cadastro, ID_Escala, Status_Adm FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strIDCadastro), _
         dbOpenSnapshot)
     
     If rsCheck.EOF Then
+        If strStatusAdmFirebase <> "" Then
+            strStatusAdmFinal = strStatusAdmFirebase
+        ElseIf strStatusInicial = "5" Then
+            strStatusAdmFinal = "2"
+        Else
+            strStatusAdmFinal = "1"
+        End If
+
         strSQL = "INSERT INTO TblEscGeral (" & _
                  "ID_Cadastro, ID_Firebase, " & _
                  "Slc_Cb_Sd, Slc_Intermed, Slc_Subalterno, Slc_Subten_Sgt, Slc_Superior, " & _
@@ -556,7 +567,7 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
                  SQLTexto(strIDFirebase) & ", " & _
                  slcCbSd & ", " & slcIntermed & ", " & slcSubalterno & ", " & slcSubtenSgt & ", " & slcSuperior & ", " & _
                  strStatusInicial & ", " & _
-                 SQLTexto(IIf(strStatusInicial = "5", "2", "1")) & ", " & _
+                 SQLTexto(strStatusAdmFinal) & ", " & _
                  SQLTexto(DictVal(objSolic, "composicao_cod", "")) & ", " & _
                  SQLTexto(DictVal(objSolic, "composicao_nome", "")) & ", " & _
                  SqlDataFirebase(DictVal(objSolic, "data", "")) & ", " & _
@@ -620,6 +631,70 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
     
     db.Execute strSQL, dbFailOnError
 End Sub
+
+Public Function ImportarSolicitacaoAusenteDoJson(ByVal strJsonMes As String, _
+                                                 ByVal strIDFirebase As String) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim objSolic As Object
+    Dim strJsonSolicitacao As String
+    Dim strIDCadastro As String
+    Dim importados As Long
+    Dim atualizados As Long
+
+    On Error GoTo Erro
+
+    strIDFirebase = Trim(strIDFirebase)
+    strIDCadastro = Replace(strIDFirebase, "/", "")
+    If strIDFirebase = "" Or strIDCadastro = "" Then Exit Function
+
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset( _
+        "SELECT ID_Cadastro FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strIDCadastro) & _
+        " OR ID_Firebase = " & SQLTexto(strIDFirebase), dbOpenSnapshot)
+
+    If Not rs.EOF Then
+        Debug.Print "IGNORADO, JA EXISTE NO ACCESS | Firebase=" & strIDFirebase
+        ImportarSolicitacaoAusenteDoJson = True
+        GoTo Sair
+    End If
+    rs.Close
+    Set rs = Nothing
+
+    strJsonSolicitacao = ExtrairObjetoSolicitacaoPorID(strJsonMes, strIDFirebase)
+    If Trim(strJsonSolicitacao) = "" Or Trim(strJsonSolicitacao) = "null" Then
+        Debug.Print "ERRO AO EXTRAIR DO JSON | Firebase=" & strIDFirebase
+        GoTo Sair
+    End If
+
+    Set objSolic = ParseSolicitacaoUnica(strJsonSolicitacao, strIDFirebase)
+    If objSolic Is Nothing Then
+        Debug.Print "ERRO AO INTERPRETAR SOLICITACAO | Firebase=" & strIDFirebase
+        GoTo Sair
+    End If
+
+    SalvarSolicitacaoLocal db, objSolic, importados, atualizados
+    ImportarSolicitacaoAusenteDoJson = (importados = 1)
+    If ImportarSolicitacaoAusenteDoJson Then
+        Debug.Print "IMPORTADO | Firebase=" & strIDFirebase & _
+                    " | Status_Inicial=" & DictVal(objSolic, "Status_Inicial", "") & _
+                    " | Status_Adm=" & DictVal(objSolic, "Status_Adm", "calculado")
+    End If
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Set objSolic = Nothing
+    Exit Function
+
+Erro:
+    Debug.Print "Erro ImportarSolicitacaoAusenteDoJson [" & strIDFirebase & "]: " & _
+                Err.Number & " - " & Err.Description
+    ImportarSolicitacaoAusenteDoJson = False
+    Resume Sair
+End Function
 
 Public Function ImportarSolicitacoesFirebase() As Boolean
     Dim db As DAO.Database

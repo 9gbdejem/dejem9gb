@@ -549,22 +549,8 @@ class AppCore {
         });
         
         if (pageUrl === 'dashboard.html') {
-            const cardBody = doc.querySelector('.card-body');
-            if (cardBody) {
-                return `
-                    <div class="container-fluid">
-                        <div class="row">
-                            <div class="col-12">
-                                <div class="card mt-3">
-                                    <div class="card-body" id="dashboard-content">
-                                        ${cardBody.innerHTML}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
+            const dashboardMain = doc.querySelector('main');
+            if (dashboardMain) return dashboardMain.innerHTML;
         }
         
         const mainContent = doc.querySelector('main, .container-fluid');

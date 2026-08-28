@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Sistema</title>
+    <title>DEJEM 9GB</title>
+    <link rel="icon" type="image/png" href="img/logo.png">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -12,11 +13,12 @@
     <div id="navbar"></div>
     
     <main class="container-fluid mt-4">
-        <div class="card">
+        <div class="card" id="dashboardEscalasCard">
             <div class="card-header bg-primary text-white">
                 <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>Escalas abertas para inscrição</h5>
             </div>
-            <div class="card-body" id="dashboard-content">
+            <div class="card-body pb-0" id="dashboard-filtros"></div>
+            <div class="card-body pt-2" id="dashboard-content">
                 <p class="lead mb-0">Carregando...</p>
             </div>
         </div>

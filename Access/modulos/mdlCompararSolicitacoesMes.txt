@@ -19,15 +19,19 @@ Public Sub CompararSolicitacoesMesFirebase()
     Dim ausentesAccess As Long
     Dim totalFirebase As Long
     Dim caminho As String
+    Dim colAusentes As Collection
+    Dim resposta As VbMsgBoxResult
+    Dim importadosAgora As Long
+    Dim falhasImportacao As Long
     
     On Error GoTo Erro
     
-    If Not IsDate(Forms!frmEscalas!txtDataInicial) Then
+    If Not IsDate(Forms!frmApp!frmNavegar.Form!txtDataInicial) Then
         Debug.Print "Comparacao: txtDataInicial nao contem uma data valida."
         Exit Sub
     End If
     
-    dtReferencia = CDate(Forms!frmEscalas!txtDataInicial)
+    dtReferencia = CDate(Forms!frmApp!frmNavegar.Form!txtDataInicial)
     strAno = Format$(dtReferencia, "yyyy")
     strMes = Format$(dtReferencia, "mm")
     caminho = "solicitacoes/" & strAno & "/" & strMes
@@ -50,6 +54,7 @@ Public Sub CompararSolicitacoesMesFirebase()
     End If
     
     Set dictAccess = CreateObject("Scripting.Dictionary")
+    Set colAusentes = New Collection
     Set db = CurrentDb
     Set rs = db.OpenRecordset("SELECT ID_Firebase FROM TblEscGeral " & _
                              "WHERE Data_Esc >= #" & Format$(DateSerial(Year(dtReferencia), Month(dtReferencia), 1), "yyyy-mm-dd") & "# " & _
@@ -72,6 +77,7 @@ Public Sub CompararSolicitacoesMesFirebase()
             Debug.Print "OK | Firebase=" & item & " | TblEscGeral=localizado"
         Else
             ausentesAccess = ausentesAccess + 1
+            colAusentes.Add CStr(item)
             Debug.Print "FALTANDO NO ACCESS | Firebase=" & item
         End If
     Next item
@@ -80,21 +86,61 @@ Public Sub CompararSolicitacoesMesFirebase()
                 " | encontrados no Access=" & encontrados & _
                 " | faltando no Access=" & ausentesAccess
     Debug.Print String$(80, "-")
+
+    If colAusentes.Count > 0 Then
+        resposta = MsgBox("Foram encontradas " & colAusentes.Count & _
+                          " solicitações que existem no Firebase, mas não existem no Access." & vbCrLf & vbCrLf & _
+                          "Deseja importar somente essas solicitações?", _
+                          vbQuestion + vbYesNo, "Importar solicitações ausentes")
+
+        If resposta = vbYes Then
+            DoCmd.Hourglass True
+            For Each item In colAusentes
+                If ImportarSolicitacaoAusenteDoJson(strJson, CStr(item)) Then
+                    importadosAgora = importadosAgora + 1
+                Else
+                    falhasImportacao = falhasImportacao + 1
+                End If
+            Next item
+            DoCmd.Hourglass False
+
+            Debug.Print "Importação de ausentes concluída | Importados=" & importadosAgora & _
+                        " | Falhas=" & falhasImportacao
+            MsgBox "Importação concluída." & vbCrLf & _
+                   "Novas solicitações: " & importadosAgora & vbCrLf & _
+                   "Falhas: " & falhasImportacao, vbInformation, "Solicitações ausentes"
+
+            On Error Resume Next
+            Forms!frmApp!frmNavegar.Form.btnFiltrar_Click
+            On Error GoTo Erro
+        End If
+    End If
     Exit Sub
     
 Erro:
+    Dim numeroErro As Long
+    Dim descricaoErro As String
+    numeroErro = Err.Number
+    descricaoErro = Err.Description
     On Error Resume Next
+    DoCmd.Hourglass False
     If Not rs Is Nothing Then rs.Close
-    Debug.Print "Erro mdlCompararSolicitacoesMesFirebase: " & Err.Number & " - " & Err.Description
+    Debug.Print "Erro mdlCompararSolicitacoesMesFirebase: " & numeroErro & " - " & descricaoErro
 End Sub
 
 Private Function BaixarNoFirebase(ByVal strNode As String) As String
     Dim xml As Object
+    Dim strURL As String
     On Error GoTo Erro
+    strURL = FIREBASE_URL & strNode & ".json"
+    Debug.Print "Firebase - URL consultada: " & strURL
     Set xml = CreateObject("MSXML2.XMLHTTP")
-    xml.Open "GET", FIREBASE_URL & strNode & ".json", False
+    xml.Open "GET", strURL, False
     xml.setRequestHeader "Content-Type", "application/json"
     xml.Send
+    Debug.Print "Firebase - Status HTTP: " & xml.Status & " | Descricao: " & xml.statusText
+    Debug.Print "Firebase - Tamanho da resposta: " & Len(xml.ResponseText)
+    Debug.Print "Firebase - Inicio da resposta: " & Left$(xml.ResponseText, 150)
     If xml.Status = 200 Then BaixarNoFirebase = xml.ResponseText
     Exit Function
 Erro:
