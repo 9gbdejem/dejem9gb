@@ -72,6 +72,11 @@ Public Function EnviarDadosFirebasePatch(strNode As String, strDados As String) 
     objXML.Send strDados
     
     EnviarDadosFirebasePatch = (objXML.status = 200)
+    If Not EnviarDadosFirebasePatch Then
+        Debug.Print "Falha EnviarDadosFirebasePatch: nó=" & strNode & _
+                    " | HTTP=" & objXML.status & _
+                    " | resposta=" & Left$(objXML.ResponseText, 500)
+    End If
     Exit Function
     
 Erro:
@@ -516,7 +521,7 @@ Private Function DictVal(ByVal dict As Object, ByVal campo As String, Optional B
     End If
 End Function
 
-Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As Object, ByRef importados As Long, ByRef atualizados As Long)
+Private Function SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As Object, ByRef importados As Long, ByRef atualizados As Long) As Boolean
     Dim rsCheck As DAO.Recordset
     Dim strSQL As String
     Dim strIDFirebase As String
@@ -533,7 +538,7 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
     strIDFirebase = DictVal(objSolic, "ID_Firebase", "")
     strIDCadastro = Replace(strIDFirebase, "/", "")
     
-    If strIDCadastro = "" Then Exit Sub
+    If strIDCadastro = "" Then Exit Function
     
     slcCbSd = DictVal(objSolic, "Solic_Cb_Sd", 0)
     slcIntermed = DictVal(objSolic, "Solic_Intermed", 0)
@@ -542,6 +547,9 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
     slcSuperior = DictVal(objSolic, "Solic_Superior", 0)
     strStatusInicial = CStr(DictVal(objSolic, "Status_Inicial", 0))
     strStatusAdmFirebase = Trim(CStr(DictVal(objSolic, "Status_Adm", "")))
+
+    ' Solicitação excluída pelo usuário: permanece somente no histórico do Firebase.
+    If strStatusInicial = "5" Then Exit Function
     
     Set rsCheck = db.OpenRecordset( _
         "SELECT ID_Cadastro, ID_Escala, Status_Adm FROM TblEscGeral WHERE ID_Cadastro = " & SQLTexto(strIDCadastro), _
@@ -550,8 +558,6 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
     If rsCheck.EOF Then
         If strStatusAdmFirebase <> "" Then
             strStatusAdmFinal = strStatusAdmFirebase
-        ElseIf strStatusInicial = "5" Then
-            strStatusAdmFinal = "2"
         Else
             strStatusAdmFinal = "1"
         End If
@@ -582,9 +588,7 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
         db.Execute strSQL, dbFailOnError
         importados = importados + 1
     Else
-        If strStatusInicial = "5" Then
-            strStatusAdmFinal = "2"
-        ElseIf strStatusInicial = "4" And _
+        If strStatusInicial = "4" And _
            Trim(Nz(rsCheck!ID_Escala, "")) <> "" And _
            Trim(Nz(rsCheck!Status_Adm, "")) = "3" Then
             strStatusAdmFinal = "8"
@@ -630,7 +634,8 @@ Private Sub SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic As O
              "WHERE ID_Cadastro = " & SQLTexto(strIDCadastro)
     
     db.Execute strSQL, dbFailOnError
-End Sub
+    SalvarSolicitacaoLocal = True
+End Function
 
 Public Function ImportarSolicitacaoAusenteDoJson(ByVal strJsonMes As String, _
                                                  ByVal strIDFirebase As String) As Boolean
@@ -673,7 +678,7 @@ Public Function ImportarSolicitacaoAusenteDoJson(ByVal strJsonMes As String, _
         GoTo Sair
     End If
 
-    SalvarSolicitacaoLocal db, objSolic, importados, atualizados
+    If Not SalvarSolicitacaoLocal(db, objSolic, importados, atualizados) Then GoTo Sair
     ImportarSolicitacaoAusenteDoJson = (importados = 1)
     If ImportarSolicitacaoAusenteDoJson Then
         Debug.Print "IMPORTADO | Firebase=" & strIDFirebase & _
@@ -761,8 +766,11 @@ Public Function ImportarSolicitacoesFirebase() As Boolean
             GoTo ProximaSolicitacao
         End If
         
-        Call SalvarSolicitacaoLocal(db, objSolic, importados, atualizados)
-        colIDsImportados.Add CStr(strIDFirebase)
+        If SalvarSolicitacaoLocal(db, objSolic, importados, atualizados) Then
+            colIDsImportados.Add CStr(strIDFirebase)
+        Else
+            ignorados = ignorados + 1
+        End If
         
 ProximaSolicitacao:
     Next

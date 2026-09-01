@@ -248,7 +248,7 @@ class AppCore {
             this.showError(error);
         }
     }
-    
+
     async loadExclusoesScript() {
         try {
             await this.loadExternalScripts();

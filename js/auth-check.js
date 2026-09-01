@@ -207,6 +207,7 @@ async function hideNavbarItemsByLevel() {
             // ✅ ADICIONAR ESTA LINHA: Ocultar Solicitações também
             hideElement('#navSolicitacoes');
         }
+
         
         // Nível 2 e 1 - vê tudo
         

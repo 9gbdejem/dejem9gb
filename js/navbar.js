@@ -209,6 +209,7 @@ export function updateNavbarByLevel(userLevel) {
             console.log('🔒 Menu Exclusões ocultado para nível 3+');
         }
     }
+
 }
 
 // 8. INICIALIZAÇÃO

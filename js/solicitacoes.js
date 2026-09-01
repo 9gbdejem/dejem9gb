@@ -29,6 +29,7 @@ let userDataCache = null;
 let userRE = null;
 let opmsPermitidas = [];
 let opmsNomes = {};
+let opmFiltrosEspeciais = {};
 let composicoesDisponiveis = {};
 let solicitacoesCache = [];
 let opmSelecionada = null;
@@ -245,6 +246,7 @@ async function carregarDadosIniciais() {
         mesFiltro = mesFiltro || hoje.getMonth() + 1;
         anoFiltro = anoFiltro || hoje.getFullYear();
 
+        prepararOpcoesEspeciaisOpm();
         await carregarSolicitacoesMes();
 
     } catch (error) {
@@ -276,13 +278,13 @@ async function carregarSolicitacoesMes() {
 
         const mesStr = mesFiltro.toString().padStart(2, '0');
         const anoStr = anoFiltro.toString();
-        const caminhoBase = `solicitacoes/${anoStr}/${mesStr}/${opmSelecionada}`;
-
-        console.log('🔍 Buscando em:', caminhoBase);
+        const opmsParaBuscar = obterOpmsDaSelecao();
+        const filtroOficiais = opmSelecionada === '__OFICIAIS__';
 
         try {
-            const solicitacoesRef = ref(database, caminhoBase);
-            const snapshot = await get(solicitacoesRef);
+            for (const opmCodigo of opmsParaBuscar) {
+                const caminhoBase = `solicitacoes/${anoStr}/${mesStr}/${opmCodigo}`;
+                const snapshot = await get(ref(database, caminhoBase));
 
             if (snapshot.exists()) {
                 snapshot.forEach((composicaoSnapshot) => {
@@ -299,14 +301,19 @@ async function carregarSolicitacoesMes() {
                         const dataInfo = extrairDataDoIdHierarquico(anoStr, mesStr, idSolicitacao);
 
                         if (dataInfo) {
-                            const idCompleto = `${anoStr}/${mesStr}/${opmSelecionada}/${composicaoCod}/${idSolicitacao}`;
+                            const dadosNormalizados = normalizarSolicitacaoFirebase(dados);
+                            const nomeComposicao = String(dadosNormalizados.composicao_nome || '').toLowerCase();
+                            const nomeLocal = String(opmsNomes[opmCodigo] || '').toLowerCase();
+                            if (filtroOficiais && !nomeComposicao.includes('oficial') && !nomeLocal.includes('oficial')) return;
+
+                            const idCompleto = `${anoStr}/${mesStr}/${opmCodigo}/${composicaoCod}/${idSolicitacao}`;
 
                             solicitacoesCache.push({
                                 id: idCompleto,
                                 id_simplificado: idSolicitacao,
-                                ...normalizarSolicitacaoFirebase(dados),
-                                opm_codigo: opmSelecionada,
-                                opm_nome: opmsNomes[opmSelecionada] || opmSelecionada,
+                                ...dadosNormalizados,
+                                opm_codigo: opmCodigo,
+                                opm_nome: opmsNomes[opmCodigo] || opmCodigo,
                                 composicao_cod: composicaoCod,
                                 data_extraida: dataInfo.data,
                                 data_local: dataInfo.data_local
@@ -314,6 +321,7 @@ async function carregarSolicitacoesMes() {
                         }
                     });
                 });
+            }
             }
 
         } catch (error) {
@@ -335,25 +343,10 @@ async function carregarSolicitacoesMes() {
 
         solicitacoesCache.sort((a, b) => {
             try {
-                let dataA, dataB;
-
-                if (a.data_local) dataA = a.data_local;
-                else if (a.data_extraida) dataA = new Date(a.data_extraida);
-                else dataA = new Date(a.data);
-
-                if (b.data_local) dataB = b.data_local;
-                else if (b.data_extraida) dataB = new Date(b.data_extraida);
-                else dataB = new Date(b.data);
-
-                dataA = new Date(dataA.getTime() - (dataA.getTimezoneOffset() * 60000));
-                dataB = new Date(dataB.getTime() - (dataB.getTimezoneOffset() * 60000));
+                const dataA = obterDataHoraInicioEscala(a);
+                const dataB = obterDataHoraInicioEscala(b);
 
                 if (isNaN(dataA.getTime()) || isNaN(dataB.getTime())) return 0;
-
-                if (dataA.getTime() === dataB.getTime() && a.horario_inicial && b.horario_inicial) {
-                    return a.horario_inicial.localeCompare(b.horario_inicial);
-                }
-
                 return dataA - dataB;
             } catch {
                 return 0;
@@ -365,7 +358,50 @@ async function carregarSolicitacoesMes() {
     }
 }
 
+function obterDataHoraInicioEscala(solicitacao) {
+    const data = String(solicitacao?.data || solicitacao?.data_extraida || '').trim();
+    const horario = String(solicitacao?.horario_inicial || '00:00').trim();
+    const dataHora = new Date(`${data}T${horario}:00`);
+
+    if (!isNaN(dataHora.getTime())) return dataHora;
+    if (solicitacao?.data_local instanceof Date) return solicitacao.data_local;
+    return new Date(solicitacao?.data_local || data);
+}
+
 // FUNÇÃO: Extrair data do ID hierárquico
+function obterPrefixoOpm(nome) {
+    const texto = String(nome || '').trim();
+    const indiceTraco = texto.indexOf(' - ');
+    return indiceTraco > 0 ? texto.substring(0, indiceTraco).trim() : '';
+}
+
+function prepararOpcoesEspeciaisOpm() {
+    opmFiltrosEspeciais = {};
+
+    if (userDataCache?.nivel === 1) {
+        opmFiltrosEspeciais.__OFICIAIS__ = [];
+    }
+
+    const grupos = new Map();
+    opmsPermitidas.forEach((codigo) => {
+        const prefixo = obterPrefixoOpm(opmsNomes[codigo]);
+        if (!prefixo) return;
+        if (!grupos.has(prefixo)) grupos.set(prefixo, []);
+        grupos.get(prefixo).push(codigo);
+    });
+
+    grupos.forEach((codigos, prefixo) => {
+        if (codigos.length > 1) {
+            opmFiltrosEspeciais[`__GRUPO__${prefixo}`] = codigos;
+        }
+    });
+}
+
+function obterOpmsDaSelecao() {
+    if (opmFiltrosEspeciais[opmSelecionada]) return opmFiltrosEspeciais[opmSelecionada];
+    return opmsPermitidas.includes(opmSelecionada) ? [opmSelecionada] : [];
+}
+
 function extrairDataDoIdHierarquico(ano, mes, diaHoraMinuto) {
     try {
         if (!diaHoraMinuto || diaHoraMinuto.length !== 6) return null;
@@ -1800,6 +1836,14 @@ function renderInterface() {
                                 <label class="form-label small mb-1">OPM / Estação</label>
                                 <select class="form-select form-select-sm" id="selectOpm">
                                     <option value="" ${!opmSelecionada ? 'selected' : ''}>Selecione a OPM</option>
+                                    ${userDataCache.nivel === 1 ? '<option value="__OFICIAIS__" ' + (opmSelecionada === '__OFICIAIS__' ? 'selected' : '') + '>OFICIAIS</option>' : ''}
+                                    ${Object.entries(opmFiltrosEspeciais)
+                                        .filter(([chave]) => chave !== '__OFICIAIS__')
+                                        .map(([chave]) => `
+                                            <option value="${chave}" ${chave === opmSelecionada ? 'selected' : ''}>
+                                                ${chave.replace('__GRUPO__', '')} - TODAS
+                                            </option>
+                                        `).join('')}
                                     ${opmsPermitidas.map(opm => `
                                         <option value="${opm}" ${opm === opmSelecionada ? 'selected' : ''}>
                                             ${opmsNomes[opm] || opm}
@@ -2114,7 +2158,7 @@ function renderInterface() {
                                                     data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                                                 <span id="filtroTabelaCodigoResumo">Todos</span>
                                             </button>
-                                            <div class="dropdown-menu w-100 p-2 shadow-sm" style="max-height: 320px; overflow-y: auto; min-width: 100%;"
+                                            <div class="dropdown-menu w-100 p-2 shadow-sm" style="max-height: min(60vh, 420px); overflow-y: scroll; min-width: 100%;"
                                                  id="filtroTabelaCodigoOpcoes">
                                                 <div class="text-muted small px-2 py-1">Carregando...</div>
                                             </div>
@@ -2438,8 +2482,10 @@ function limparDadosAoAlterarFiltros() {
 function atualizarBloqueioFormularioPorTabela() {
     const tbody = document.getElementById('tbodySolicitacoes');
     const tabelaCarregada = Boolean(tbody && !tbody.querySelector('.fa-spinner'));
+    const selecaoOpm = document.getElementById('selectOpm')?.value || '';
+    const opmVirtual = Boolean(opmFiltrosEspeciais[selecaoOpm]);
 
-    setFormularioSolicitacaoBloqueado(!(filtrosObrigatoriosPreenchidos() && tabelaCarregada));
+    setFormularioSolicitacaoBloqueado(!(filtrosObrigatoriosPreenchidos() && tabelaCarregada && !opmVirtual));
 }
 
 function inicializarEventListeners() {
@@ -2458,6 +2504,7 @@ function inicializarEventListeners() {
 
             opmSelecionada = valorSelecionado;
             limparDadosAoAlterarFiltros();
+            atualizarComposicoesDropdown();
             mostrarMensagemFormulario('Filtros alterados. Clique em "Atualizar" para carregar as solicitações.', 'info');
         });
     }
@@ -2494,6 +2541,13 @@ function inicializarEventListeners() {
             await carregarSolicitacoesMes();
             atualizarTabelaSolicitacoes();
             atualizarComposicoesDropdown();
+        });
+    }
+
+    const btnAtualizarTabela = document.getElementById('btnAtualizarTabela');
+    if (btnAtualizarTabela) {
+        btnAtualizarTabela.addEventListener('click', async () => {
+            await atualizarTabelaComDelay();
         });
     }
 
@@ -2629,7 +2683,6 @@ async function atualizarTabelaComDelay() {
     mostrarOverlayAtualizandoTabela();
 
     try {
-        await new Promise(resolve => setTimeout(resolve, 4000));
         await carregarSolicitacoesMes();
         atualizarTabelaSolicitacoes();
         atualizarComposicoesDropdown();
@@ -2744,6 +2797,37 @@ function inicializarFiltrosTabelaSolicitacoes() {
             atualizarTabelaSolicitacoes();
         });
     }
+
+    if (filtroCodigo) {
+        filtroCodigo.addEventListener('shown.bs.dropdown', () => {
+            const menu = document.getElementById('filtroTabelaCodigoOpcoes');
+            if (!menu) return;
+
+            const retangulo = filtroCodigo.getBoundingClientRect();
+            const margem = 8;
+            const alturaMaxima = Math.min(420, window.innerHeight - (margem * 2));
+            const espacoAbaixo = window.innerHeight - retangulo.bottom - margem;
+            const abrirAcima = espacoAbaixo < alturaMaxima;
+
+            menu.style.setProperty('position', 'fixed', 'important');
+            menu.style.setProperty('left', `${retangulo.left}px`, 'important');
+            menu.style.setProperty('top', `${abrirAcima
+                ? Math.max(margem, retangulo.top - alturaMaxima - 4)
+                : retangulo.bottom + 4}px`, 'important');
+            menu.style.setProperty('width', `${retangulo.width}px`, 'important');
+            menu.style.setProperty('max-height', `${alturaMaxima}px`, 'important');
+            menu.style.setProperty('overflow-y', 'scroll', 'important');
+            menu.style.setProperty('transform', 'none', 'important');
+            menu.style.setProperty('z-index', '2000', 'important');
+        });
+
+        filtroCodigo.addEventListener('hidden.bs.dropdown', () => {
+            const menu = document.getElementById('filtroTabelaCodigoOpcoes');
+            if (!menu) return;
+            ['position', 'left', 'top', 'width', 'max-height', 'overflow-y', 'transform', 'z-index']
+                .forEach((propriedade) => menu.style.removeProperty(propriedade));
+        });
+    }
 }
 
 function obterDataSolicitacaoTabela(solicitacao) {
@@ -2807,6 +2891,14 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
         }
 
         statusDisponiveis.add(valorStatusFiltroSolicitacao(solicitacao));
+    });
+
+    obterOpmsDaSelecao().forEach((opmCodigo) => {
+        Object.entries(composicoesDisponiveis[opmCodigo] || {}).forEach(([cod, dados]) => {
+            const codigo = String(cod || '').trim();
+            if (!codigo || composicoes.has(codigo)) return;
+            composicoes.set(codigo, dados?.composicao || codigo);
+        });
     });
 
     const composicoesOrdenadas = [...composicoes.entries()]
@@ -3166,8 +3258,9 @@ function atualizarCardsResumoSolicitacoes(solicitacoes) {
     };
 
     const totais = solicitacoes.reduce((acc, solicitacao) => {
-        // Status 3 representa cancelamento pelo administrador e nao entra nos totais.
-        if (Number(solicitacao.Status_Inicial ?? solicitacao.status) === 3) return acc;
+        // Status 3 e 5 representam cancelamentos/exclusoes e nao entram nos totais.
+        const status = Number(solicitacao.Status_Inicial ?? solicitacao.status);
+        if (status === 3 || status === 5) return acc;
         acc.subSgtSolicitado += getNumero(solicitacao.solic_subten_sgt);
         acc.subSgtEscalados += getNumero(solicitacao.esc_subten_sgt);
         acc.cbSdSolicitado += getNumero(solicitacao.solic_cb_sd);
@@ -3214,8 +3307,8 @@ function gerarAcoesHTMLMelhorado(solicitacao) {
         return '';
     }
 
-    if (solicitacao.status === 5) {
-        if ((isAdmin || isModerador) && podeAcessarOPM) {
+    if (Number(solicitacao.Status_Inicial ?? solicitacao.status) === 5) {
+        if (isAdmin) {
             return `
                 <button class="btn btn-sm btn-success btn-reativar" data-id="${solicitacao.id}" title="Reativar">
                     <i class="fas fa-undo"></i>
@@ -3865,17 +3958,10 @@ async function excluirSolicitacao(id) {
         const podeAlterar = await validarStatusParaAlteracao(id);
         if (!podeAlterar) return;
 
-        const solicitacaoRef = ref(database, `solicitacoes/${id}`);
-
-        await update(solicitacaoRef, {
-            Status_Inicial: 5
-        });
-
-        const solicitacao = solicitacoesCache.find(s => s.id === id) || {};
-        await registrarPendenciaSolicitacao(id, {
-            ...solicitacao,
-            Status_Inicial: 5
-        });
+        const atualizacoes = {};
+        atualizacoes[`solicitacoes/${id}/Status_Inicial`] = 5;
+        atualizacoes[`SolicPendentes/${id}`] = null;
+        await update(ref(database), atualizacoes);
 
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
         const entradaHistorico = criarEntradaHistorico();
@@ -3895,30 +3981,38 @@ async function excluirSolicitacao(id) {
 // FUNÇÃO: Reativar solicitação
 async function reativarSolicitacao(id) {
     try {
+        if (Number(userDataCache?.nivel) !== 1) {
+            mostrarMensagemFormulario('Somente administradores podem reativar solicitações.', 'danger');
+            return;
+        }
+
         const podeAlterar = await validarStatusParaAlteracao(id);
         if (!podeAlterar) return;
 
-        const solicitacaoRef = ref(database, `solicitacoes/${id}`);
-
-        await update(solicitacaoRef, {
-            Status_Inicial: 4
-        });
-
-        await removerPendenciaSolicitacao(id);
+        const agora = new Date().toISOString();
+        const atualizacoes = {};
+        atualizacoes[`solicitacoes/${id}/Status_Inicial`] = null;
+        atualizacoes[`SolicPendentes/${id}`] = {
+            ID_Firebase: id,
+            atualizado_em: agora
+        };
+        await update(ref(database), atualizacoes);
 
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
         const entradaHistorico = criarEntradaHistorico({
-            observacao: 'Reativada pelo administrador (status 5 → 4)'
+            observacao: 'Reativada pelo administrador e enviada para pendência de importação'
         });
         await update(historicoRef, entradaHistorico);
 
         const index = solicitacoesCache.findIndex(s => s.id === id);
         if (index !== -1) {
-            solicitacoesCache[index].status = 4;
+            solicitacoesCache[index].Status_Inicial = null;
+            solicitacoesCache[index].status = null;
         }
 
+        await carregarSolicitacoesMes();
         atualizarTabelaSolicitacoes();
-        mostrarMensagemFormulario('Solicitação reativada (status 4 - Em edição)', 'success');
+        mostrarMensagemFormulario('Solicitação reativada e enviada para pendência de importação.', 'success');
 
     } catch (error) {
         console.error('❌ Erro ao reativar:', error);

@@ -43,6 +43,7 @@ let currentSearchType = 'RE';
 
 // ==================== CACHE DE ESTAÇÕES ====================
 let stationsCache = {};
+let stationFiltersSpecial = {};
 
 // ==================== TIMEOUT PARA DEBOUNCE ====================
 let filterTimeoutId = null;
@@ -199,6 +200,8 @@ async function populateStationFilter() {
     while (stationFilter.options.length > 1) {
         stationFilter.remove(1);
     }
+    stationFilter.options[0].value = '';
+    stationFilter.options[0].textContent = 'TODAS';
     
     try {
         const localRef = ref(database, 'local');
@@ -207,9 +210,32 @@ async function populateStationFilter() {
         if (snapshot.exists()) {
             stationsCache = snapshot.val();
             
-            const sortedStations = Object.entries(stationsCache)
-                .sort(([, nomeA], [, nomeB]) => nomeA.localeCompare(nomeB));
-            
+            // Mantém a mesma ordem original do nó local usada em solicitacoes.
+            const sortedStations = Object.entries(stationsCache);
+
+            stationFiltersSpecial = {};
+            const groups = new Map();
+            sortedStations.forEach(([codigo, nome]) => {
+                const prefixo = obterPrefixoEstacao(nome);
+                if (!prefixo) return;
+                if (!groups.has(prefixo)) groups.set(prefixo, []);
+                groups.get(prefixo).push(codigo);
+            });
+
+            stationFilter.options[0].value = '';
+            stationFilter.options[0].textContent = 'TODAS';
+
+            groups.forEach((codigos, prefixo) => {
+                if (codigos.length > 1) {
+                    const chave = `__GRUPO__${prefixo}`;
+                    stationFiltersSpecial[chave] = codigos;
+                    const option = document.createElement('option');
+                    option.value = chave;
+                    option.textContent = `${prefixo} - TODAS`;
+                    stationFilter.appendChild(option);
+                }
+            });
+
             sortedStations.forEach(([codigo, nome]) => {
                 const option = document.createElement('option');
                 option.value = nome;
@@ -374,11 +400,19 @@ window.loadPeriod = async function(year, month, day = null) {
             currentYear = year;
             currentMonth = month;
             currentDay = day;
+            currentPage = 1;
+
+            const stationFilter = document.getElementById('filterStation')?.value || '';
+            if (stationFilter) {
+                filteredEscalas = filteredEscalas.filter((escala) => {
+                    const nomeEstacao = stationsCache[escala.Estacao] || escala.Estacao || '';
+                    return estacaoPertenceAoFiltro(escala.Estacao, nomeEstacao, stationFilter);
+                });
+            }
             
             // Carregar confirmações APENAS para as escalas da página atual
             await loadConfirmacoesForCurrentPage();
             
-            currentPage = 1;
             renderTable();
             updateStatistics();
             showMessage('Dia carregado com sucesso!', 'success');
@@ -422,8 +456,6 @@ window.applyTodayFilter = async function() {
     if (monthFilter) monthFilter.value = month;
     if (yearFilter) yearFilter.value = year;
     if (calendarFilter) calendarFilter.value = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    if (stationFilter) stationFilter.value = '';
-    
     await window.loadPeriod(year, month, day);
 };
 
@@ -508,9 +540,10 @@ async function loadConfirmacoesForCurrentPage() {
     confirmacoesCache = {};
     
     // Pegar IDs das escalas da página atual
+    const grupos = getEscalasAgrupadas();
     const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = Math.min(startIndex + itemsPerPage, filteredEscalas.length);
-    const pageEscalas = filteredEscalas.slice(startIndex, endIndex);
+    const endIndex = Math.min(startIndex + itemsPerPage, grupos.length);
+    const pageEscalas = grupos.slice(startIndex, endIndex).flatMap(grupo => grupo.itens);
     
     const escalaIds = new Set();
     pageEscalas.forEach(escala => {
@@ -662,9 +695,6 @@ async function loadEscalasByRange(startDate, endDate) {
     filteredEscalas = [];
     loadedDaysCache.clear();
     currentPage = 1;
-
-    const stationFilter = document.getElementById('filterStation');
-    if (stationFilter) stationFilter.value = '';
 
     let cursor = new Date(startDate.getTime());
 
@@ -886,7 +916,7 @@ function applyFilters() {
         // Filtro de estação
         if (stationFilter && escala.Estacao) {
             const nomeEstacao = stationsCache[escala.Estacao] || escala.Estacao;
-            if (nomeEstacao !== stationFilter) return false;
+            if (!estacaoPertenceAoFiltro(escala.Estacao, nomeEstacao, stationFilter)) return false;
         }
         
         return true;
@@ -1019,6 +1049,42 @@ function getSearchPlaceholder(type) {
 
 // ==================== FUNÇÕES DE TABELA ====================
 
+function getEscalasAgrupadas() {
+    const grupos = new Map();
+    filteredEscalas.forEach((escala, indice) => {
+        const id = escala.Id ? String(escala.Id) : `sem-id-${indice}`;
+        if (!grupos.has(id)) grupos.set(id, { id, itens: [] });
+        grupos.get(id).itens.push(escala);
+    });
+    return [...grupos.values()];
+}
+
+function classeProntidao(data, indiceDoDia) {
+    const partes = String(data || '').split('/').map(Number);
+    if (partes.length !== 3 || partes.some(Number.isNaN)) return '';
+
+    const dataEscala = Date.UTC(partes[2], partes[1] - 1, partes[0]);
+    const dataBase = Date.UTC(2026, 0, 1);
+    const diferencaDias = Math.round((dataEscala - dataBase) / 86400000);
+    const cores = ['prontidao-verde', 'prontidao-amarela', 'prontidao-azul'];
+
+    return indiceDoDia % 2 === 0 ? cores[((diferencaDias % 3) + 3) % 3] : '';
+}
+
+function classesProntidaoPorGrupo(grupos) {
+    const contagemPorData = new Map();
+    const classes = new Map();
+
+    grupos.forEach(grupo => {
+        const data = String(grupo.itens[0]?.Data || '');
+        const indice = contagemPorData.get(data) || 0;
+        classes.set(grupo.id, classeProntidao(data, indice));
+        contagemPorData.set(data, indice + 1);
+    });
+
+    return classes;
+}
+
 function renderTable() {
     const tbody = document.getElementById('escalasBody');
     const noDataDiv = document.getElementById('noData');
@@ -1040,35 +1106,27 @@ function renderTable() {
     
     noDataDiv.classList.add('d-none');
     
-    const totalPages = Math.ceil(filteredEscalas.length / itemsPerPage);
+    const grupos = getEscalasAgrupadas();
+    const classesProntidao = classesProntidaoPorGrupo(grupos);
+    const totalPages = Math.ceil(grupos.length / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = Math.min(startIndex + itemsPerPage, filteredEscalas.length);
-    const pageEscalas = filteredEscalas.slice(startIndex, endIndex);
+    const endIndex = Math.min(startIndex + itemsPerPage, grupos.length);
+    const pageGrupos = grupos.slice(startIndex, endIndex);
     
     let html = '';
     
-    const escalasPorId = {};
-    filteredEscalas.forEach(escala => {
-        if (escala.Id) {
-            if (!escalasPorId[escala.Id]) escalasPorId[escala.Id] = [];
-            escalasPorId[escala.Id].push(escala);
-        }
-    });
-    
-    pageEscalas.forEach((escala, index) => {
-        const isUserEscala = userRE && escala.RE && escala.RE.toString() === userRE;
+    pageGrupos.forEach((grupo) => {
+        const escala = grupo.itens[0];
+        const militares = grupo.itens;
+        const isUserEscala = militares.some(item => userRE && item.RE && item.RE.toString() === userRE);
         
-        const confirmacao = getConfirmacaoStatus(escala.Id, escala.RE);
-        const confirmacaoIcon = getConfirmacaoIcon(confirmacao ? confirmacao.status : null, escala.Id, escala.RE);
+        const militarDoUsuario = militares.find(item => item.RE && item.RE.toString() === userRE);
+        const REParaAcao = militarDoUsuario?.RE || escala.RE;
+        const confirmacao = getConfirmacaoStatus(escala.Id, REParaAcao);
+        const confirmacaoIcon = getConfirmacaoIcon(confirmacao ? confirmacao.status : null, escala.Id, REParaAcao);
         
-        const countSameId = escala.Id ? (escalasPorId[escala.Id] || []).length : 0;
-        
-        let rowClass = '';
-        if (isUserEscala) rowClass += 'table-info ';
-        if (countSameId > 1) {
-            const idNum = parseInt(escala.Id) || 0;
-            rowClass += idNum % 2 === 0 ? 'escala-grupo-par ' : 'escala-grupo-impar ';
-        }
+        let rowClass = classesProntidao.get(grupo.id) || '';
+        if (isUserEscala) rowClass += ' table-info';
         
         const escalaLink = getEscalaLink(escala.Id);
         const temConfirmacao = confirmacao !== null;
@@ -1099,16 +1157,15 @@ function renderTable() {
                         ${escala.Composicao || '-'}
                     </span>
                 </td>
-                <td>${escala.PostoGrad || '-'}</td>
-                <td>${escala.RE || '-'}</td>
+                <td>${militares.map(item => item.PostoGrad || '-').join('<br>')}</td>
+                <td>${militares.map(item => item.RE || '-').join('<br>')}</td>
                 <td>
-                    <div class="fw-bold">${escala.Militar || '-'}</div>
+                    <div class="fw-bold">${militares.map(item => item.Militar || '-').join('<br>')}</div>
                 </td>
                 <td>
                     <a href="${escalaLink}" target="_blank" class="text-primary fw-bold escala-id-link" title="Abrir escala no sistema">
                         ${escala.Id || '-'}
                     </a>
-                    ${countSameId > 1 ? `<span class="badge bg-info ms-1">×${countSameId}</span>` : ''}
                 </td>
                 <td>
                     <div class="d-flex align-items-center">
@@ -1121,7 +1178,7 @@ function renderTable() {
     });
     
     tbody.innerHTML = html;
-    infoText.textContent = `Mostrando ${startIndex + 1} a ${endIndex} de ${filteredEscalas.length} registros`;
+    infoText.textContent = `Mostrando ${startIndex + 1} a ${endIndex} de ${grupos.length} escalas`;
     renderPagination(totalPages);
 }
 
@@ -1178,14 +1235,14 @@ function renderPagination(totalPages) {
     pagination.innerHTML = html;
 }
 
-window.changePage = function(page) {
-    if (page < 1 || page > Math.ceil(filteredEscalas.length / itemsPerPage)) return;
+window.changePage = async function(page) {
+    if (page < 1 || page > Math.ceil(getEscalasAgrupadas().length / itemsPerPage)) return;
     currentPage = page;
-    renderTable();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     
     // Carregar confirmações para a nova página
-    loadConfirmacoesForCurrentPage();
+    await loadConfirmacoesForCurrentPage();
+    renderTable();
 };
 
 // ==================== FUNÇÕES DE ESTATÍSTICAS ====================
@@ -1642,4 +1699,22 @@ async function loadNavbar() {
 
 if (!window.location.pathname.includes('app.html')) {
     document.addEventListener('DOMContentLoaded', initEscalas);
+}
+
+function obterPrefixoEstacao(nome) {
+    const texto = String(nome || '').trim();
+    const indiceTraco = texto.indexOf(' - ');
+    return indiceTraco > 0 ? texto.substring(0, indiceTraco).trim() : '';
+}
+
+function estacaoPertenceAoFiltro(codigoEstacao, nomeEstacao, valorFiltro) {
+    if (!valorFiltro) return true;
+    if (stationFiltersSpecial[valorFiltro]) {
+        return stationFiltersSpecial[valorFiltro].some((codigo) => {
+            const nomeCadastrado = stationsCache[codigo] || '';
+            return String(codigoEstacao) === String(codigo) ||
+                String(nomeEstacao).trim() === String(nomeCadastrado).trim();
+        });
+    }
+    return nomeEstacao === valorFiltro;
 }

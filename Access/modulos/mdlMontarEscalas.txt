@@ -309,7 +309,7 @@ Private Sub InserirMilitarEscalado(ByRef rsEscala As DAO.Recordset, ByVal strRE 
     SetCampoSeExiste rs, "Militar_Posto_Grad", strPosto
     SetCampoSeExiste rs, "Militar_OPM", strOPM
     SetCampoSeExiste rs, "Status", Null
-    SetCampoSeExiste rs, "Firebase_Enviado", "Nao"
+    SetCampoSeExiste rs, "Firebase_Enviado", CStr("Nao")
     SetCampoSeExiste rs, "conferencia", strConferencia
     rs.Update
     
@@ -519,6 +519,7 @@ Public Sub SincronizarEscalasPendentesFirebase()
     Dim strJson As String
     Dim strChave As String
     Dim lngEnviadas As Long
+    Dim lngFalhasEnvio As Long
     Dim lngItensGerados As Long
     Dim lngRegistrosPendentes As Long
     Dim dictAnos As Object
@@ -535,7 +536,7 @@ Public Sub SincronizarEscalasPendentesFirebase()
     strSQL = "SELECT ID_Escala, Data_Esc, Militar_RE, Militar_Nome, Militar_Posto_Grad, Militar_OPM, " & _
              "OPM_Nome, Composicao_Nome, Horario_Inicial, Horario_Final " & _
              "FROM TblMilEsc " & _
-             "WHERE Firebase_Enviado Is Null OR Trim(Firebase_Enviado) = '' OR UCase(Trim(Firebase_Enviado)) <> 'SIM' " & _
+             "WHERE UCase(Trim(Nz(Firebase_Enviado, ''))) IN ('NAO', '-1') " & _
              "ORDER BY Data_Esc, ID_Escala, Militar_RE"
 
     Set db = CurrentDb
@@ -597,7 +598,7 @@ Public Sub SincronizarEscalasPendentesFirebase()
     Loop
 
     If lngItensGerados = 0 Then
-        Debug.Print "Nenhum item valido para envio. Nao alterarei Firebase_Enviado para Sim."
+        Debug.Print "Nenhum item válido para envio. Firebase_Enviado não será alterado para Sim."
         Exit Sub
     End If
 
@@ -620,19 +621,27 @@ Public Sub SincronizarEscalasPendentesFirebase()
                         strKeyDia = CStr(varAno) & "|" & CStr(varMes) & "|" & CStr(varDia)
                         If dictIDsPorDia.Exists(strKeyDia) Then
                             For Each varIDEscala In dictIDsPorDia(strKeyDia).Keys
-                                db.Execute "UPDATE TblMilEsc SET Firebase_Enviado = 'Sim' WHERE ID_Escala = " & SQLTexto(CStr(varIDEscala)), dbFailOnError
+                                db.Execute "UPDATE TblMilEsc SET Firebase_Enviado = " & SQLTexto(CStr("Sim")) & _
+                                           " WHERE ID_Escala = " & SQLTexto(CStr(varIDEscala)) & _
+                                           " AND UCase(Trim(Nz(Firebase_Enviado, ''))) IN ('NAO', '-1')", dbFailOnError
                             Next
                         End If
                         lngEnviadas = lngEnviadas + 1
                     Else
                         Debug.Print "PATCH FALHOU para dia=" & varDia & " node=" & strNodeDia
+                        lngFalhasEnvio = lngFalhasEnvio + 1
                     End If
                 Else
                     Debug.Print "JSON do dia vazio; nao enviarei e nao marco como Sim. node=" & strNodeDia
+                    lngFalhasEnvio = lngFalhasEnvio + 1
                 End If
             Next
         Next
     Next
+
+    If lngFalhasEnvio > 0 Then
+        Debug.Print "Envio incompleto. Dia(s) com falha: " & lngFalhasEnvio
+    End If
 
     Exit Sub
 
@@ -771,13 +780,14 @@ Private Function MesclarJsonDiaFirebase(ByVal strJsonExistente As String, ByVal 
     If Left$(strResultado, 1) <> "{" Then
         strResultado = "{" & strResultado & "}"
     End If
-    If Len(strResultado) > 2 And Right$(strResultado, 1) = "}" Then
-        strResultado = Left$(strResultado, Len(strResultado) - 1)
-    End If
-
-    blnPrimeiro = (Len(strResultado) <= 1)
-    If Len(strResultado) <= 1 Then
+    If strResultado = "{}" Then
         strResultado = "{"
+        blnPrimeiro = True
+    Else
+        If Right$(strResultado, 1) = "}" Then
+            strResultado = Left$(strResultado, Len(strResultado) - 1)
+        End If
+        blnPrimeiro = (Len(strResultado) <= 1)
     End If
 
     For Each varChave In dictEscalasDia.Keys
