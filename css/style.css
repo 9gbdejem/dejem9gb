@@ -1549,18 +1549,38 @@ main.container-fluid {
     color: var(--fire-wine-700);
 }
 
+.dia-calendario-celula.dia-prontidao-verde {
+    background: #edf7eb;
+    border-color: #c7dfc2;
+}
+
+.dia-calendario-celula.dia-prontidao-amarela {
+    background: #fffbe8;
+    border-color: #eadfa8;
+}
+
+.dia-calendario-celula.dia-prontidao-azul {
+    background: #edf5fc;
+    border-color: #c5d9eb;
+}
+
 .dia-calendario-input:checked + .dia-calendario-celula,
 .dia-calendario-selecionado {
-    background: var(--fire-wine-700) !important;
     border-color: var(--fire-wine-700) !important;
-    color: #ffffff !important;
+    color: var(--fire-wine-700) !important;
+    box-shadow: inset 0 0 0 2px var(--fire-wine-700);
 }
 
 .dia-calendario-retroativo {
-    background: #eef1f4 !important;
-    border-color: #d7dde4 !important;
-    color: #98a2b3 !important;
+    color: #667085 !important;
     cursor: not-allowed;
+    opacity: 0.58;
+}
+
+.admin-day-nav .btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
 }
 
 .dias-calendario-info {
@@ -2425,16 +2445,15 @@ main.container-fluid {
 
 .dia-calendario-input:checked + .dia-calendario-celula,
 .dia-calendario-selecionado {
-    background: var(--fire-wine-700) !important;
     border-color: var(--fire-wine-700) !important;
-    color: #ffffff !important;
+    color: var(--fire-wine-700) !important;
+    box-shadow: inset 0 0 0 2px var(--fire-wine-700);
 }
 
 .dia-calendario-retroativo {
-    background: #eef1f4 !important;
-    border-color: #d7dde4 !important;
-    color: #98a2b3 !important;
+    color: #667085 !important;
     cursor: not-allowed;
+    opacity: 0.58;
 }
 
 .dias-calendario-info {
@@ -2553,6 +2572,46 @@ main.container-fluid {
 
 #confirmContent .militar-status .btn-check:checked + .btn i {
     color: #ffffff !important;
+}
+
+/* Status da escala: estas regras prevalecem sobre os estilos globais dos botoes. */
+#escalasBody .confirm-btn.btn-success,
+#escalasBody .confirm-btn.btn-warning {
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+}
+
+#escalasBody .confirm-btn.btn-success {
+    background-color: #198754 !important;
+    border-color: #198754 !important;
+    color: #ffffff !important;
+    border-radius: 0.25rem !important;
+}
+
+#escalasBody .confirm-btn.btn-warning {
+    background-color: #f4c430 !important;
+    border-color: #d9aa16 !important;
+    color: #2f2500 !important;
+    border-radius: 0.25rem !important;
+}
+
+#escalasBody .confirm-btn.btn-success:hover,
+#escalasBody .confirm-btn.btn-success:focus {
+    background-color: #157347 !important;
+    border-color: #146c43 !important;
+    color: #ffffff !important;
+}
+
+#escalasBody .confirm-btn.btn-warning:hover,
+#escalasBody .confirm-btn.btn-warning:focus {
+    background-color: #ffd34d !important;
+    border-color: #c99600 !important;
+    color: #2f2500 !important;
 }
 
 .overlay-atualizando-tabela {

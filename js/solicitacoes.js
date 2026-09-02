@@ -2010,7 +2010,7 @@ function renderInterface() {
                                 </div>
 
                                 <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
-                                    <label class="form-label">Subten/Sgt <span class="text-danger">*</span></label>
+                                    <label class="form-label">Sub/Sgt <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control text-center"
                                            id="inputSolicSubtenSgt" min="0" max="99"
                                            required style="max-width: 80px;">
@@ -2018,16 +2018,16 @@ function renderInterface() {
 
                                 ${userDataCache.nivel === 1 ? `
                                 <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
-                                    <label class="form-label">Superior</label>
-                                    <input type="number" class="form-control text-center" id="inputSolicSuperior" min="0" max="99" value="0" style="max-width: 80px;">
+                                    <label class="form-label">Ten</label>
+                                    <input type="number" class="form-control text-center" id="inputSolicSubalterno" min="0" max="99" value="0" style="max-width: 80px;">
                                 </div>
                                 <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
-                                    <label class="form-label">Intermed</label>
+                                    <label class="form-label">Cap</label>
                                     <input type="number" class="form-control text-center" id="inputSolicIntermed" min="0" max="99" value="0" style="max-width: 80px;">
                                 </div>
                                 <div class="col-xl-1 col-lg-1 col-md-2 col-sm-3">
-                                    <label class="form-label">Subalterno</label>
-                                    <input type="number" class="form-control text-center" id="inputSolicSubalterno" min="0" max="99" value="0" style="max-width: 80px;">
+                                    <label class="form-label">Sup</label>
+                                    <input type="number" class="form-control text-center" id="inputSolicSuperior" min="0" max="99" value="0" style="max-width: 80px;">
                                 </div>
                                 ` : ''}
 
@@ -2155,7 +2155,7 @@ function renderInterface() {
                                         </label>
                                         <div class="dropdown w-100" id="filtroTabelaCodigo">
                                             <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
-                                                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                                    id="filtroTabelaCodigoBotao" aria-expanded="false">
                                                 <span id="filtroTabelaCodigoResumo">Todos</span>
                                             </button>
                                             <div class="dropdown-menu w-100 p-2 shadow-sm" style="max-height: min(60vh, 420px); overflow-y: scroll; min-width: 100%;"
@@ -2225,15 +2225,15 @@ function renderInterface() {
                                         <th></th>
                                         <th></th>
                                         ${userDataCache.nivel === 1
-                                            ? '<th class="col-posto">Sup</th><th class="col-posto">Cap</th><th class="col-posto">Ten</th><th class="col-posto">Sgt</th><th class="col-posto">CbSd</th>'
-                                            : '<th class="col-posto">Sgt</th><th class="col-posto">CbSd</th>'}
+                                            ? '<th class="col-posto">Cb/Sd</th><th class="col-posto">Sub/Sgt</th><th class="col-posto">Ten</th><th class="col-posto">Cap</th><th class="col-posto">Sup</th>'
+                                            : '<th class="col-posto">Cb/Sd</th><th class="col-posto">Sub/Sgt</th>'}
                                         <th></th>
                                         <th></th>
                                         <th></th>
                                         <th></th>
                                         ${userDataCache.nivel === 1
-                                            ? '<th class="col-posto">Sup</th><th class="col-posto">Cap</th><th class="col-posto">Ten</th><th class="col-posto">Sgt</th><th class="col-posto">CbSd</th>'
-                                            : '<th class="col-posto">Sgt</th><th class="col-posto">CbSd</th>'}
+                                            ? '<th class="col-posto">Cb/Sd</th><th class="col-posto">Sub/Sgt</th><th class="col-posto">Ten</th><th class="col-posto">Cap</th><th class="col-posto">Sup</th>'
+                                            : '<th class="col-posto">Cb/Sd</th><th class="col-posto">Sub/Sgt</th>'}
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -2361,13 +2361,21 @@ function atualizarDiasMes() {
 
     if (!diaSelecionado || !mes || !ano) {
         divDias.classList.remove('dias-calendario');
-        divDias.innerHTML = '<div class="text-muted small">Data invalida</div>';
+        divDias.innerHTML = '<div class="text-muted small">Data inválida</div>';
         return;
     }
 
     const ultimoDia = new Date(ano, mes, 0).getDate();
     const primeiroDiaSemana = new Date(ano, mes - 1, 1).getDay();
     const diasSemana = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
+    const classeProntidaoDia = (dia) => {
+        const dataAtual = Date.UTC(ano, mes - 1, dia);
+        const dataBase = Date.UTC(2026, 0, 1);
+        const diferencaDias = Math.round((dataAtual - dataBase) / 86400000);
+        const cores = ['dia-prontidao-verde', 'dia-prontidao-amarela', 'dia-prontidao-azul'];
+        return cores[((diferencaDias % 3) + 3) % 3];
+    };
 
     let html = diasSemana
         .map((dia) => `<div class="dias-calendario-semana">${dia}</div>`)
@@ -2383,6 +2391,7 @@ function atualizarDiasMes() {
         const disabled = isDiaRetroativo || checked;
         const classes = [
             'dia-calendario-celula',
+            classeProntidaoDia(dia),
             isDiaRetroativo ? 'dia-calendario-retroativo' : '',
             checked ? 'dia-calendario-selecionado' : ''
         ].filter(Boolean).join(' ');
@@ -2400,10 +2409,10 @@ function atualizarDiasMes() {
         `;
     }
 
-    html += `<div class="dias-calendario-info"><i class="fas fa-info-circle me-1"></i> O dia ${diaSelecionado} esta automaticamente incluido</div>`;
+    html += `<div class="dias-calendario-info"><i class="fas fa-info-circle me-1"></i> O dia ${diaSelecionado} está automaticamente incluído</div>`;
 
     divDias.classList.add('dias-calendario');
-    divDias.innerHTML = html || '<small class="text-muted">Nenhum dia disponivel neste mes</small>';
+    divDias.innerHTML = html || '<small class="text-muted">Nenhum dia disponível neste mês</small>';
 }
 // FUNÇÃO: Sincronizar filtro de mês com a data selecionada
 async function sincronizarMesFiltroComDataSelecionada() {
@@ -2740,6 +2749,8 @@ function atualizarComposicoesDropdown() {
 // FUNÇÃO: Atualizar tabela de solicitações (LAYOUT ORIGINAL COMPLETO)
 function inicializarFiltrosTabelaSolicitacoes() {
     const filtroCodigo = document.getElementById('filtroTabelaCodigo');
+    const botaoCodigo = document.getElementById('filtroTabelaCodigoBotao');
+    const opcoesCodigo = document.getElementById('filtroTabelaCodigoOpcoes');
     const selectDiaInicial = document.getElementById('filtroTabelaDiaInicial');
     const selectDiaFinal = document.getElementById('filtroTabelaDiaFinal');
     const selectStatus = document.getElementById('filtroTabelaStatus');
@@ -2763,6 +2774,67 @@ function inicializarFiltrosTabelaSolicitacoes() {
             });
             atualizarTabelaSolicitacoes();
         });
+    }
+
+    if (filtroCodigo && botaoCodigo && opcoesCodigo) {
+        const fecharDropdownCodigo = () => {
+            opcoesCodigo.classList.remove('show');
+            botaoCodigo.setAttribute('aria-expanded', 'false');
+            ['position', 'display', 'left', 'top', 'bottom', 'width', 'max-height', 'overflow-y', 'transform', 'z-index']
+                .forEach((propriedade) => opcoesCodigo.style.removeProperty(propriedade));
+        };
+
+        const posicionarDropdownCodigo = () => {
+            const retangulo = botaoCodigo.getBoundingClientRect();
+            const margem = 8;
+            const espacoAbaixo = window.innerHeight - retangulo.bottom - margem;
+            const espacoAcima = retangulo.top - margem;
+            const abrirAcima = espacoAbaixo < 220 && espacoAcima > espacoAbaixo;
+            const alturaDisponivel = Math.max(140, Math.min(420, abrirAcima ? espacoAcima - 4 : espacoAbaixo - 4));
+
+            opcoesCodigo.style.setProperty('position', 'fixed', 'important');
+            opcoesCodigo.style.setProperty('display', 'block', 'important');
+            opcoesCodigo.style.setProperty('left', `${Math.max(margem, retangulo.left)}px`, 'important');
+            opcoesCodigo.style.setProperty('width', `${retangulo.width}px`, 'important');
+            opcoesCodigo.style.setProperty('max-height', `${alturaDisponivel}px`, 'important');
+            opcoesCodigo.style.setProperty('overflow-y', 'auto', 'important');
+            opcoesCodigo.style.setProperty('transform', 'none', 'important');
+            opcoesCodigo.style.setProperty('z-index', '2050', 'important');
+
+            if (abrirAcima) {
+                opcoesCodigo.style.setProperty('top', 'auto', 'important');
+                opcoesCodigo.style.setProperty('bottom', `${window.innerHeight - retangulo.top + 4}px`, 'important');
+            } else {
+                opcoesCodigo.style.setProperty('top', `${retangulo.bottom + 4}px`, 'important');
+                opcoesCodigo.style.setProperty('bottom', 'auto', 'important');
+            }
+        };
+
+        botaoCodigo.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (opcoesCodigo.classList.contains('show')) {
+                fecharDropdownCodigo();
+                return;
+            }
+
+            opcoesCodigo.classList.add('show');
+            botaoCodigo.setAttribute('aria-expanded', 'true');
+            posicionarDropdownCodigo();
+        });
+
+        opcoesCodigo.addEventListener('click', (event) => event.stopPropagation());
+        document.addEventListener('click', (event) => {
+            if (!filtroCodigo.contains(event.target)) fecharDropdownCodigo();
+        });
+        window.addEventListener('resize', () => {
+            if (opcoesCodigo.classList.contains('show')) posicionarDropdownCodigo();
+        });
+        window.addEventListener('scroll', (event) => {
+            if (event.target === opcoesCodigo || opcoesCodigo.contains(event.target)) return;
+            fecharDropdownCodigo();
+        }, true);
     }
 
     if (selectDiaInicial) {
@@ -2798,36 +2870,6 @@ function inicializarFiltrosTabelaSolicitacoes() {
         });
     }
 
-    if (filtroCodigo) {
-        filtroCodigo.addEventListener('shown.bs.dropdown', () => {
-            const menu = document.getElementById('filtroTabelaCodigoOpcoes');
-            if (!menu) return;
-
-            const retangulo = filtroCodigo.getBoundingClientRect();
-            const margem = 8;
-            const alturaMaxima = Math.min(420, window.innerHeight - (margem * 2));
-            const espacoAbaixo = window.innerHeight - retangulo.bottom - margem;
-            const abrirAcima = espacoAbaixo < alturaMaxima;
-
-            menu.style.setProperty('position', 'fixed', 'important');
-            menu.style.setProperty('left', `${retangulo.left}px`, 'important');
-            menu.style.setProperty('top', `${abrirAcima
-                ? Math.max(margem, retangulo.top - alturaMaxima - 4)
-                : retangulo.bottom + 4}px`, 'important');
-            menu.style.setProperty('width', `${retangulo.width}px`, 'important');
-            menu.style.setProperty('max-height', `${alturaMaxima}px`, 'important');
-            menu.style.setProperty('overflow-y', 'scroll', 'important');
-            menu.style.setProperty('transform', 'none', 'important');
-            menu.style.setProperty('z-index', '2000', 'important');
-        });
-
-        filtroCodigo.addEventListener('hidden.bs.dropdown', () => {
-            const menu = document.getElementById('filtroTabelaCodigoOpcoes');
-            if (!menu) return;
-            ['position', 'left', 'top', 'width', 'max-height', 'overflow-y', 'transform', 'z-index']
-                .forEach((propriedade) => menu.style.removeProperty(propriedade));
-        });
-    }
 }
 
 function obterDataSolicitacaoTabela(solicitacao) {
@@ -3156,19 +3198,19 @@ async function atualizarTabelaSolicitacoes() {
                         </span>
                     </td>
 
-                    ${isAdmin ? `
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicSuperior}</td>
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicIntermed}</td>
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicSubalterno}</td>
-                    ` : ''}
+                    <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto" data-vaga="cbsd">
+                        ${vagasCbSd}
+                    </td>
 
                     <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto" data-vaga="sgt">
                         ${vagasSubten}
                     </td>
 
-                    <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto" data-vaga="cbsd">
-                        ${vagasCbSd}
-                    </td>
+                    ${isAdmin ? `
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicSubalterno}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicIntermed}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicSuperior}</td>
+                    ` : ''}
 
                     <td class="px-1 py-2 text-center">
                         <div class="d-flex justify-content-center">
@@ -3204,19 +3246,19 @@ async function atualizarTabelaSolicitacoes() {
                         </small>
                     </td>
 
-                    ${isAdmin ? `
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${escSuperior}</td>
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${escIntermed}</td>
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${escSubalterno}</td>
-                    ` : ''}
+                    <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto ${cbSdClass}">
+                        ${escaladoCbSd}
+                    </td>
 
                     <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto ${subtenClass}">
                         ${escaladoSubten}
                     </td>
 
-                    <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto ${cbSdClass}">
-                        ${escaladoCbSd}
-                    </td>
+                    ${isAdmin ? `
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${escSubalterno}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${escIntermed}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${escSuperior}</td>
+                    ` : ''}
 
                     <td class="px-1 py-2 text-center">
                         <button class="btn btn-sm btn-outline-info btn-detalhes"
@@ -3587,7 +3629,7 @@ async function mostrarDetalhesSolicitacao(id) {
                                 <strong>OPM:</strong> ${solicitacao.opm_nome} (${solicitacao.opm_codigo})<br>
                             </div>
                             <div class="col-md-6">
-                                <strong>Vagas:</strong> ${solicitacao.solic_subten_sgt} Subten/Sgt, ${solicitacao.solic_cb_sd} Cb/Sd<br>
+                                <strong>Vagas:</strong> ${solicitacao.solic_cb_sd} Cb/Sd, ${solicitacao.solic_subten_sgt} Sub/Sgt<br>
                                 <strong>Necessidade:</strong> ${solicitacao.necessidade ?? ''}<br>
                                 <strong>Composição:</strong> ${solicitacao.composicao_nome} (${solicitacao.composicao_cod})
                             </div>

@@ -1119,7 +1119,7 @@ Erro:
     Resume Sair
 End Function
 
-Private Sub btnAtualizarExcelEscal_Click()
+Private Sub btnEscaladosExcel_Click()
     Call ImportarMilitaresEscaladosExcel2026
     Call btnFiltrar_Click
 End Sub

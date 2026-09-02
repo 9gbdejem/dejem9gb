@@ -35,7 +35,7 @@ Private Sub CarregarEscalasNovidade()
     
     Set frmSub = ObterSubformLinhaEscala()
     If frmSub Is Nothing Then
-        MsgBox "Nao foi possivel localizar o sfrmLinhaEscala.", vbExclamation, "Pagar novidades"
+        MsgBox "Não foi possível localizar o sfrmLinhaEscala.", vbExclamation, "Pagar novidades"
         Exit Sub
     End If
     
@@ -84,7 +84,7 @@ Private Sub btnLinkPagar_Click()
     On Error GoTo Erro
     
     If LinkUsuarioLogado() = "" Then
-        MsgBox "Link do usuario logado nao encontrado. Refaca o login.", vbExclamation, "Pagar novidades"
+        MsgBox "Link do usuário logado não encontrado. Refaça o login.", vbExclamation, "Pagar novidades"
         Exit Sub
     End If
     
@@ -121,13 +121,13 @@ Private Sub btnConfirmar_Click()
     End If
     
     resposta = MsgBox("Confirma que as " & lngSelecionadas & " escala(s) selecionada(s) foram confirmadas manualmente na Intranet?" & vbCrLf & vbCrLf & _
-                      "Observacao: este codigo nao verificara a confirmacao na Intranet. A confirmacao das escalas com novidade e totalmente manual.", _
+                      "Observação: este código não verificará a confirmação na Intranet. A confirmação das escalas com novidade é totalmente manual.", _
                       vbQuestion + vbYesNo, "Confirmar pagamento manual")
     If resposta = vbNo Then Exit Sub
     
-    resposta = MsgBox("Esta acao alterara o Status_Adm para 5 e preenchera Pag_Confirm e RE_Pagamento." & vbCrLf & _
+    resposta = MsgBox("Esta ação alterará o Status_Adm para 5 e preencherá Pag_Confirm e RE_Pagamento." & vbCrLf & _
                       "Deseja continuar?", _
-                      vbQuestion + vbYesNo, "Confirmacao final")
+                      vbQuestion + vbYesNo, "Confirmação final")
     If resposta = vbNo Then Exit Sub
     
     DoCmd.Hourglass True

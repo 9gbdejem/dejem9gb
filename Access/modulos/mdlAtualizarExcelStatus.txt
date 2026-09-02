@@ -3,6 +3,7 @@ Option Explicit
 
 Private Const LINHA_INICIAL_EXCEL As Long = 9
 Private Const LINHA_FINAL_EXCEL As Long = 1403
+Private Const QTDE_STATUS_FIREBASE_LOTE As Long = 250
 
 Private Function CaminhoExcelStatus() As String
     CaminhoExcelStatus = "C:\Users\36953268832\Desktop\C" & ChrW(243) & "pia de Escalas de DEJEM 2026.xlsm"
@@ -265,25 +266,28 @@ Public Sub ImportarMilitaresEscaladosExcel2026()
     Dim wsAusencias As Object
     Dim wsExclusoes As Object
     Dim db As DAO.Database
-    Dim dictOPM As Object
-    Dim dictComposicao As Object
+    Dim colLinhasAusencias As Collection
+    Dim colLinhasExclusoes As Collection
+    Dim dictIDEscalasProcessadas As Object
+    Dim vLinhaEvento As Variant
     Dim lngLinha As Long
     Dim lngUltimaLinha As Long
     Dim lngLidas2026 As Long
-    Dim lngInseridas As Long
     Dim lngAtualizadas As Long
+    Dim lngNaoEncontradosTblMilEsc As Long
     Dim lngPuladas As Long
-    Dim lngOPMNaoEncontrada As Long
-    Dim lngComposicaoNaoEncontrada As Long
     Dim lngSemChave As Long
     Dim lngAusentes As Long
     Dim lngExclusoes As Long
+    Dim lngRemovidosTblMilEsc As Long
+    Dim lngExclusoesFirebase As Long
+    Dim lngStatusFirebase As Long
+    Dim lngStatusNaoEnviado As Long
+    Dim lngEscalasStatusAdm As Long
     Dim lngEventosNaoEncontrados As Long
     Dim lngEventosAmbiguos As Long
     Dim strIDEscala As String
     Dim strRE As String
-    Dim strOPM As String
-    Dim strComposicao As String
     Dim blnAusente As Boolean
     Dim blnExclusao As Boolean
     Dim vData As Variant
@@ -291,38 +295,40 @@ Public Sub ImportarMilitaresEscaladosExcel2026()
     
     On Error GoTo Erro
     
-    If MsgBox("Importar militares escalados do Excel historico para a TblMilEsc?" & vbCrLf & vbCrLf & _
-              "Serao importadas somente linhas com Data_Esc no ano de 2026." & vbCrLf & _
+    If MsgBox("Atualizar pelo Excel a situação dos militares já existentes na TblMilEsc?" & vbCrLf & vbCrLf & _
+              "Serão verificadas somente linhas com Data_Esc no ano de 2026." & vbCrLf & _
               "Arquivo: " & CaminhoExcelStatus(), _
-              vbYesNo + vbQuestion, "Importar Escalados Excel") = vbNo Then
+              vbYesNo + vbQuestion, "Atualizar escalados pelo Excel") = vbNo Then
         Exit Sub
     End If
     
     DoCmd.Hourglass True
-    SysCmd acSysCmdSetStatus, "Abrindo Excel historico... aguarde."
+    SysCmd acSysCmdSetStatus, "Abrindo Excel histórico... aguarde."
     
     Set xlApp = ObterExcelAplicacao(blnAbriuExcel)
     Set wb = ObterWorkbookExcel(xlApp, CaminhoExcelStatus())
     
     If wb Is Nothing Then
-        MsgBox "Nao foi possivel localizar ou abrir o arquivo Excel.", vbCritical, "Importar Escalados Excel"
+        MsgBox "Não foi possível localizar ou abrir o arquivo Excel.", vbCritical, "Atualizar escalados pelo Excel"
         GoTo Sair
     End If
     
     Set db = CurrentDb
-    Set dictOPM = DicionarioCampoTabela(db, "TblOPM_Nome", "LOCAL")
-    Set dictComposicao = DicionarioCampoTabela(db, "TblComposicao_Nome", "Composicao_Nome")
+    Set colLinhasAusencias = New Collection
+    Set colLinhasExclusoes = New Collection
+    Set dictIDEscalasProcessadas = CreateObject("Scripting.Dictionary")
+    dictIDEscalasProcessadas.CompareMode = vbTextCompare
     Set wsDbMilEsc = ObterWorksheetPorPrefixo(wb, "DBMILESC")
     Set wsAusencias = ObterWorksheetPorPrefixo(wb, "AUSENC")
     Set wsExclusoes = ObterWorksheetPorPrefixo(wb, "EXCLUS")
     
     If wsDbMilEsc Is Nothing Then
-        MsgBox "Nao foi possivel localizar a guia DbMilEsc no arquivo Excel.", vbCritical, "Importar Escalados Excel"
+        MsgBox "Não foi possível localizar a guia DbMilEsc no arquivo Excel.", vbCritical, "Atualizar escalados pelo Excel"
         GoTo Sair
     End If
     
     Set ws = wsDbMilEsc
-    SysCmd acSysCmdSetStatus, "Importando militares escalados do Excel... Guia: " & ws.Name
+    SysCmd acSysCmdSetStatus, "Atualizando militares escalados pelo Excel... Guia: " & ws.Name
         
     lngUltimaLinha = ws.Cells(ws.Rows.Count, "A").End(-4162).Row
     If lngUltimaLinha < 1 Then lngUltimaLinha = 1
@@ -336,8 +342,6 @@ Public Sub ImportarMilitaresEscaladosExcel2026()
                 
                 strIDEscala = TextoExcel(ws, lngLinha, "F")
                 strRE = TextoExcel(ws, lngLinha, "G")
-                strOPM = TextoExcel(ws, lngLinha, "B")
-                strComposicao = TextoExcel(ws, lngLinha, "C")
                 blnAusente = (UCase$(TextoExcel(ws, lngLinha, "K")) = "X")
                 blnExclusao = (UCase$(TextoExcel(ws, lngLinha, "L")) = "X")
                 
@@ -345,50 +349,90 @@ Public Sub ImportarMilitaresEscaladosExcel2026()
                     lngSemChave = lngSemChave + 1
                     Debug.Print "Militar escalado sem ID_Escala ou RE | Guia=" & ws.Name & _
                                 " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
-                ElseIf Not dictOPM.Exists(NormalizarTexto(strOPM)) Then
-                    lngOPMNaoEncontrada = lngOPMNaoEncontrada + 1
-                    Debug.Print "OPM nao encontrada no Access | Guia=" & ws.Name & _
-                                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
-                                " | RE=" & strRE & " | OPM=" & strOPM
-                ElseIf Not dictComposicao.Exists(NormalizarTexto(strComposicao)) Then
-                    lngComposicaoNaoEncontrada = lngComposicaoNaoEncontrada + 1
-                    Debug.Print "Composicao nao encontrada no Access | Guia=" & ws.Name & _
-                                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
-                                " | RE=" & strRE & " | Composicao=" & strComposicao
-                ElseIf blnAusente And blnExclusao Then
-                    lngEventosAmbiguos = lngEventosAmbiguos + 1
-                    Debug.Print "Linha com ausencia e exclusao marcadas. Nao importada | Guia=" & ws.Name & _
-                                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
-                ElseIf blnAusente Then
-                    Call SalvarAusenciaExcel(db, ws, wsAusencias, lngLinha, lngAusentes, lngEventosNaoEncontrados)
                 ElseIf blnExclusao Then
-                    Call SalvarExclusaoExcel(db, ws, wsExclusoes, lngLinha, lngExclusoes, lngEventosNaoEncontrados)
+                    If blnAusente Then
+                        lngEventosAmbiguos = lngEventosAmbiguos + 1
+                        Debug.Print "Linha com ausência e exclusão marcadas; a exclusão prevaleceu | Guia=" & ws.Name & _
+                                    " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
+                    End If
+
+                    If RemoverMilitarEscaladoExcel(db, strIDEscala, strRE, lngRemovidosTblMilEsc) Then
+                        If Not dictIDEscalasProcessadas.Exists(strIDEscala) Then
+                            dictIDEscalasProcessadas.Add strIDEscala, True
+                        End If
+                    ElseIf IDEscalaExisteTblEscGeral(db, strIDEscala) Then
+                        ' Mantém a reexecução idempotente quando o militar já foi removido anteriormente.
+                        If Not dictIDEscalasProcessadas.Exists(strIDEscala) Then
+                            dictIDEscalasProcessadas.Add strIDEscala, True
+                        End If
+                    End If
+                    colLinhasExclusoes.Add lngLinha
+                ElseIf blnAusente Then
+                    If AtualizarStatusMilitarExcel(db, strIDEscala, strRE, "Novidade", _
+                                                   lngAtualizadas, lngNaoEncontradosTblMilEsc) Then
+                        If Not dictIDEscalasProcessadas.Exists(strIDEscala) Then
+                            dictIDEscalasProcessadas.Add strIDEscala, True
+                        End If
+                    End If
+                    colLinhasAusencias.Add lngLinha
                 Else
-                    Call SalvarMilitarEscaladoExcel(db, ws, lngLinha, lngInseridas, lngAtualizadas)
+                    If AtualizarStatusMilitarExcel(db, strIDEscala, strRE, "Concluida", _
+                                                   lngAtualizadas, lngNaoEncontradosTblMilEsc) Then
+                        If Not dictIDEscalasProcessadas.Exists(strIDEscala) Then
+                            dictIDEscalasProcessadas.Add strIDEscala, True
+                        End If
+                    End If
                 End If
             End If
         ElseIf Trim$(CStr(Nz(vData, ""))) <> "" Then
             lngPuladas = lngPuladas + 1
         End If
     Next lngLinha
+
+    SysCmd acSysCmdSetStatus, "Conferindo militares na guia Ausencias... aguarde."
+    For Each vLinhaEvento In colLinhasAusencias
+        Call SalvarAusenciaExcel(db, wsDbMilEsc, wsAusencias, CLng(vLinhaEvento), _
+                                 lngAusentes, lngEventosNaoEncontrados)
+    Next vLinhaEvento
+
+    SysCmd acSysCmdSetStatus, "Conferindo militares na guia Exclusões... aguarde."
+    For Each vLinhaEvento In colLinhasExclusoes
+        Call SalvarExclusaoExcel(db, wsDbMilEsc, wsExclusoes, CLng(vLinhaEvento), _
+                                 lngExclusoes, lngEventosNaoEncontrados)
+    Next vLinhaEvento
+
+    SysCmd acSysCmdSetStatus, "Atualizando o status das escalas processadas... aguarde."
+    Call AtualizarStatusAdmEscalasProcessadas(db, dictIDEscalasProcessadas, lngEscalasStatusAdm)
+
+    If colLinhasExclusoes.Count > 0 Then
+        SysCmd acSysCmdSetStatus, "Enviando exclusões ao Firebase... aguarde."
+        Call SincronizarExclusoesImportadasFirebase(db, wsDbMilEsc, colLinhasExclusoes, lngExclusoesFirebase)
+    End If
+
+    SysCmd acSysCmdSetStatus, "Atualizando confirmações dos militares no Firebase... aguarde."
+    Call SincronizarStatusMilitaresFirebase(db, lngStatusFirebase, lngStatusNaoEnviado)
     
-    MsgBox "Importacao de militares escalados concluida!" & vbCrLf & vbCrLf & _
+    MsgBox "Atualização dos militares escalados concluída!" & vbCrLf & vbCrLf & _
            "Linhas de 2026 lidas: " & lngLidas2026 & vbCrLf & _
-           "Inseridos na TblMilEsc: " & lngInseridas & vbCrLf & _
-           "Atualizados na TblMilEsc: " & lngAtualizadas & vbCrLf & _
+           "Status atualizados na TblMilEsc: " & lngAtualizadas & vbCrLf & _
+           "Escalas atualizadas para Status_Adm 5: " & lngEscalasStatusAdm & vbCrLf & _
+           "Não encontrados na TblMilEsc: " & lngNaoEncontradosTblMilEsc & vbCrLf & _
+           "Removidos da TblMilEsc por exclusão: " & lngRemovidosTblMilEsc & vbCrLf & _
            "Importados na TblAusentes: " & lngAusentes & vbCrLf & _
            "Importados na TblExclusoes: " & lngExclusoes & vbCrLf & _
+           "Exclusões enviadas ao Firebase: " & lngExclusoesFirebase & vbCrLf & _
+           "Status enviados ao Firebase: " & lngStatusFirebase & vbCrLf & _
+           "Status vazios ou inválidos não enviados: " & lngStatusNaoEnviado & vbCrLf & _
            "Sem ID_Escala ou RE: " & lngSemChave & vbCrLf & _
-           "OPM nao encontrada: " & lngOPMNaoEncontrada & vbCrLf & _
-           "Composicao nao encontrada: " & lngComposicaoNaoEncontrada & vbCrLf & _
-           "Ausencias/Exclusoes nao encontradas no Excel: " & lngEventosNaoEncontrados & vbCrLf & _
-           "Linhas com K e L marcados: " & lngEventosAmbiguos & vbCrLf & _
-           "Linhas com data invalida ignoradas: " & lngPuladas, _
-           vbInformation, "Importar Escalados Excel"
+           "Ausências/Exclusões não encontradas no Excel: " & lngEventosNaoEncontrados & vbCrLf & _
+           "Linhas com K e L marcados (exclusão aplicada): " & lngEventosAmbiguos & vbCrLf & _
+           "Linhas com data inválida ignoradas: " & lngPuladas, _
+           vbInformation, "Atualizar escalados pelo Excel"
 Sair:
     On Error Resume Next
-    Set dictOPM = Nothing
-    Set dictComposicao = Nothing
+    Set colLinhasAusencias = Nothing
+    Set colLinhasExclusoes = Nothing
+    Set dictIDEscalasProcessadas = Nothing
     Set db = Nothing
     If blnAbriuExcel Then
         If Not wb Is Nothing Then wb.Close False
@@ -402,63 +446,319 @@ Sair:
     
 Erro:
     Debug.Print "Erro ImportarMilitaresEscaladosExcel2026: " & Err.Number & " - " & Err.Description
-    MsgBox "Erro ao importar militares escalados pelo Excel: " & Err.Number & " - " & Err.Description, _
-           vbCritical, "Importar Escalados Excel"
+    MsgBox "Erro ao atualizar militares escalados pelo Excel: " & Err.Number & " - " & Err.Description, _
+           vbCritical, "Atualizar escalados pelo Excel"
     Resume Sair
 End Sub
 
-Private Sub SalvarMilitarEscaladoExcel(ByVal db As DAO.Database, ByVal ws As Object, ByVal lngLinha As Long, _
-                                       ByRef lngInseridas As Long, ByRef lngAtualizadas As Long)
-    Dim rs As DAO.Recordset
-    Dim strIDEscala As String
-    Dim strRE As String
+Private Function AtualizarStatusMilitarExcel(ByVal db As DAO.Database, ByVal strIDEscala As String, _
+                                             ByVal strRE As String, ByVal strStatus As String, _
+                                             ByRef lngAtualizadas As Long, _
+                                             ByRef lngNaoEncontrados As Long) As Boolean
     Dim strConferencia As String
+    Dim strSQL As String
     
     On Error GoTo Erro
     
-    strIDEscala = TextoExcel(ws, lngLinha, "F")
-    strRE = TextoExcel(ws, lngLinha, "G")
     strConferencia = strIDEscala & strRE
-    
-    Set rs = db.OpenRecordset("SELECT * FROM TblMilEsc WHERE conferencia = " & SQLTexto(strConferencia), dbOpenDynaset)
-    
-    If rs.EOF Then
-        rs.AddNew
-        lngInseridas = lngInseridas + 1
+
+    strSQL = "UPDATE TblMilEsc SET [Status] = " & SQLTexto(strStatus) & _
+             " WHERE conferencia = " & SQLTexto(strConferencia) & _
+             " OR (ID_Escala = " & SQLTexto(strIDEscala) & _
+             " AND Militar_RE = " & SQLTexto(strRE) & ")"
+
+    db.Execute strSQL, dbFailOnError
+
+    If db.RecordsAffected = 0 Then
+        lngNaoEncontrados = lngNaoEncontrados + 1
+        AtualizarStatusMilitarExcel = False
+        Debug.Print "Militar do Excel não encontrado na TblMilEsc; nenhum registro foi criado | " & _
+                    "ID_Escala=" & strIDEscala & " | RE=" & strRE
     Else
-        rs.Edit
-        lngAtualizadas = lngAtualizadas + 1
+        lngAtualizadas = lngAtualizadas + db.RecordsAffected
+        AtualizarStatusMilitarExcel = True
     End If
+    Exit Function
     
-    SetCampoSeExiste rs, "ID_Cadastro", Null
-    SetCampoSeExiste rs, "ID_Escala", strIDEscala
-    SetCampoSeExiste rs, "Data_Esc", DateValue(CDate(ValorExcel(ws, lngLinha, "A")))
-    SetCampoSeExiste rs, "OPM_Nome", TextoExcel(ws, lngLinha, "B")
-    SetCampoSeExiste rs, "Composicao_Nome", TextoExcel(ws, lngLinha, "C")
-    SetCampoSeExiste rs, "Composicao_Cod", Null
-    SetCampoSeExiste rs, "Horario_Inicial", HoraExcel(ws, lngLinha, "D")
-    SetCampoSeExiste rs, "Horario_Final", HoraExcel(ws, lngLinha, "E")
-    SetCampoSeExiste rs, "Militar_RE", strRE
-    SetCampoSeExiste rs, "Militar_Nome", TextoExcel(ws, lngLinha, "H")
-    SetCampoSeExiste rs, "Militar_Posto_Grad", TextoExcel(ws, lngLinha, "I")
-    SetCampoSeExiste rs, "Militar_OPM", TextoExcel(ws, lngLinha, "J")
-    SetCampoSeExiste rs, "Status", "Concluida"
-    SetCampoSeExiste rs, "conferencia", strConferencia
-    
-    rs.Update
-    
+Erro:
+    Debug.Print "Erro AtualizarStatusMilitarExcel | ID_Escala=" & strIDEscala & _
+                " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    Err.Raise Err.Number, "AtualizarStatusMilitarExcel", Err.Description
+End Function
+
+Private Sub AtualizarStatusAdmEscalasProcessadas(ByVal db As DAO.Database, _
+                                                  ByVal dictIDs As Object, _
+                                                  ByRef lngAtualizadas As Long)
+    Const QTDE_IDS_LOTE As Long = 200
+
+    Dim vID As Variant
+    Dim strListaIDs As String
+    Dim lngNoLote As Long
+    Dim lngErro As Long
+    Dim strErro As String
+
+    On Error GoTo Erro
+
+    If dictIDs Is Nothing Then Exit Sub
+    If dictIDs.Count = 0 Then Exit Sub
+
+    For Each vID In dictIDs.Keys
+        If lngNoLote > 0 Then strListaIDs = strListaIDs & ","
+        strListaIDs = strListaIDs & SQLTexto(CStr(vID))
+        lngNoLote = lngNoLote + 1
+
+        If lngNoLote >= QTDE_IDS_LOTE Then
+            db.Execute "UPDATE TblEscGeral SET Status_Adm = '5' " & _
+                       "WHERE ID_Escala IN (" & strListaIDs & ")", dbFailOnError
+            lngAtualizadas = lngAtualizadas + db.RecordsAffected
+            strListaIDs = ""
+            lngNoLote = 0
+        End If
+    Next vID
+
+    If lngNoLote > 0 Then
+        db.Execute "UPDATE TblEscGeral SET Status_Adm = '5' " & _
+                   "WHERE ID_Escala IN (" & strListaIDs & ")", dbFailOnError
+        lngAtualizadas = lngAtualizadas + db.RecordsAffected
+    End If
+    Exit Sub
+
+Erro:
+    lngErro = Err.Number
+    strErro = Err.Description
+    Debug.Print "Erro AtualizarStatusAdmEscalasProcessadas: " & lngErro & " - " & strErro
+    Err.Raise lngErro, "AtualizarStatusAdmEscalasProcessadas", strErro
+End Sub
+
+Private Sub SincronizarStatusMilitaresFirebase(ByVal db As DAO.Database, _
+                                                ByRef lngEnviados As Long, _
+                                                ByRef lngNaoEnviados As Long)
+    Dim rs As DAO.Recordset
+    Dim strIDEscala As String
+    Dim strRE As String
+    Dim strStatus As String
+    Dim strCaminho As String
+    Dim strBody As String
+    Dim lngItensLote As Long
+    Dim lngErro As Long
+    Dim strErro As String
+
+    On Error GoTo Erro
+
+    Set rs = db.OpenRecordset( _
+        "SELECT DISTINCT ID_Escala, Militar_RE, [Status] FROM TblMilEsc " & _
+        "WHERE Trim(Nz(ID_Escala,'')) <> '' AND Trim(Nz(Militar_RE,'')) <> '' " & _
+        "ORDER BY ID_Escala, Militar_RE", dbOpenSnapshot)
+
+    strBody = "{"
+
+    Do While Not rs.EOF
+        strIDEscala = Trim(Nz(rs!ID_Escala, ""))
+        strRE = Trim(Nz(rs!Militar_RE, ""))
+        strStatus = LCase(Trim(Nz(rs![Status], "")))
+
+        If strStatus = "concluida" Or strStatus = "novidade" Then
+            strCaminho = "confirmacoes/" & strIDEscala & "/RE_" & strRE & "/status"
+
+            If lngItensLote > 0 Then strBody = strBody & ","
+            strBody = strBody & """" & JsonEscapeImportacao(strCaminho) & """:""" & _
+                      JsonEscapeImportacao(strStatus) & """"
+            lngItensLote = lngItensLote + 1
+
+            If lngItensLote >= QTDE_STATUS_FIREBASE_LOTE Then
+                strBody = strBody & "}"
+                If Not PatchDadosFirebase(strBody) Then
+                    Err.Raise vbObjectError + 1241, "SincronizarStatusMilitaresFirebase", _
+                              "O Firebase não confirmou o envio de um lote de status."
+                End If
+
+                lngEnviados = lngEnviados + lngItensLote
+                lngItensLote = 0
+                strBody = "{"
+            End If
+        Else
+            lngNaoEnviados = lngNaoEnviados + 1
+        End If
+
+        rs.MoveNext
+    Loop
+
+    If lngItensLote > 0 Then
+        strBody = strBody & "}"
+        If Not PatchDadosFirebase(strBody) Then
+            Err.Raise vbObjectError + 1242, "SincronizarStatusMilitaresFirebase", _
+                      "O Firebase não confirmou o envio do último lote de status."
+        End If
+        lngEnviados = lngEnviados + lngItensLote
+    End If
+
 Sair:
     On Error Resume Next
     If Not rs Is Nothing Then rs.Close
     Set rs = Nothing
     Exit Sub
-    
+
 Erro:
-    Debug.Print "Erro SalvarMilitarEscaladoExcel | Guia=" & ws.Name & _
-                " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & _
-                " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
-    Resume Sair
+    lngErro = Err.Number
+    strErro = Err.Description
+    Debug.Print "Erro SincronizarStatusMilitaresFirebase: " & lngErro & " - " & strErro
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    On Error GoTo 0
+    Err.Raise lngErro, "SincronizarStatusMilitaresFirebase", strErro
 End Sub
+
+Private Function RemoverMilitarEscaladoExcel(ByVal db As DAO.Database, ByVal strIDEscala As String, _
+                                             ByVal strRE As String, _
+                                             ByRef lngRemovidos As Long) As Boolean
+    Dim strConferencia As String
+    Dim strSQL As String
+
+    On Error GoTo Erro
+
+    strConferencia = Trim(Nz(strIDEscala, "")) & Trim(Nz(strRE, ""))
+    strSQL = "DELETE FROM TblMilEsc WHERE conferencia = " & SQLTexto(strConferencia) & _
+             " OR (ID_Escala = " & SQLTexto(strIDEscala) & _
+             " AND Militar_RE = " & SQLTexto(strRE) & ")"
+
+    db.Execute strSQL, dbFailOnError
+    lngRemovidos = lngRemovidos + db.RecordsAffected
+    RemoverMilitarEscaladoExcel = (db.RecordsAffected > 0)
+    Exit Function
+
+Erro:
+    Debug.Print "Erro RemoverMilitarEscaladoExcel | ID_Escala=" & strIDEscala & _
+                " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    Err.Raise Err.Number, "RemoverMilitarEscaladoExcel", Err.Description
+End Function
+
+Private Sub SincronizarExclusoesImportadasFirebase(ByVal db As DAO.Database, ByVal wsDbMilEsc As Object, _
+                                                    ByVal colLinhas As Collection, ByRef lngEnviadas As Long)
+    Dim rs As DAO.Recordset
+    Dim vLinha As Variant
+    Dim strIDEscala As String
+    Dim strRE As String
+    Dim strNode As String
+    Dim strJson As String
+    Dim strItem As String
+    Dim blnPrimeiro As Boolean
+    Dim lngErro As Long
+    Dim strErro As String
+
+    On Error GoTo Erro
+
+    strJson = "{"
+    blnPrimeiro = True
+
+    For Each vLinha In colLinhas
+        strIDEscala = TextoExcel(wsDbMilEsc, CLng(vLinha), "F")
+        strRE = TextoExcel(wsDbMilEsc, CLng(vLinha), "G")
+
+        Set rs = db.OpenRecordset( _
+            "SELECT TOP 1 * FROM TblExclusoes WHERE ID_Escala = " & SQLTexto(strIDEscala) & _
+            " AND Militar_RE = " & SQLTexto(strRE), dbOpenSnapshot)
+
+        If Not rs.EOF And IsDate(Nz(rs!Data_Esc, Null)) Then
+            strNode = "escalados/" & Format(CDate(rs!Data_Esc), "yyyy/mm/dd") & "/" & _
+                      strIDEscala & strRE
+            strItem = MontarJsonExclusaoFirebase(rs)
+
+            If strItem <> "" Then
+                If Not blnPrimeiro Then strJson = strJson & ","
+                strJson = strJson & """" & JsonEscapeImportacao(strNode) & """:" & strItem
+                blnPrimeiro = False
+                lngEnviadas = lngEnviadas + 1
+            End If
+        Else
+            Debug.Print "Exclusão não enviada ao Firebase por falta de Data_Esc | ID_Escala=" & _
+                        strIDEscala & " | RE=" & strRE
+        End If
+
+        rs.Close
+        Set rs = Nothing
+    Next vLinha
+
+    strJson = strJson & "}"
+
+    If lngEnviadas > 0 Then
+        If Not PatchDadosFirebase(strJson) Then
+            Err.Raise vbObjectError + 1240, "SincronizarExclusoesImportadasFirebase", _
+                      "O Firebase não confirmou o envio das exclusões."
+        End If
+    End If
+    Exit Sub
+
+Erro:
+    lngErro = Err.Number
+    strErro = Err.Description
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    On Error GoTo 0
+    Debug.Print "Erro SincronizarExclusoesImportadasFirebase: " & lngErro & " - " & strErro
+    lngEnviadas = 0
+    Err.Raise lngErro, "SincronizarExclusoesImportadasFirebase", strErro
+End Sub
+
+Private Function MontarJsonExclusaoFirebase(ByRef rs As DAO.Recordset) As String
+    Dim dblHoraInicial As Double
+    Dim dblHoraFinal As Double
+    Dim strIDEscala As String
+    Dim strRE As String
+
+    On Error GoTo Erro
+
+    strIDEscala = Trim(Nz(rs!ID_Escala, ""))
+    strRE = Trim(Nz(rs!Militar_RE, ""))
+    If strIDEscala = "" Or strRE = "" Then Exit Function
+
+    If IsDate(Nz(rs!Horario_Inicial, Null)) Then
+        dblHoraInicial = CDbl(TimeValue(CDate(rs!Horario_Inicial)))
+    End If
+    If IsDate(Nz(rs!Horario_Final, Null)) Then
+        dblHoraFinal = CDbl(TimeValue(CDate(rs!Horario_Final)))
+    End If
+
+    MontarJsonExclusaoFirebase = _
+        "{" & _
+        """Composicao"":""" & JsonEscapeImportacao(Nz(rs!Composicao_Nome, "")) & """," & _
+        """Documento"":""" & JsonEscapeImportacao(Nz(rs!Documento, "")) & """," & _
+        """Estacao"":""" & JsonEscapeImportacao(Nz(rs!OPM_Nome, "")) & """," & _
+        """Exclusao"":""X""," & _
+        """HorarioInic"":" & NumeroJsonImportacao(dblHoraInicial) & "," & _
+        """HorarioTerm"":" & NumeroJsonImportacao(dblHoraFinal) & "," & _
+        """Id"":""" & JsonEscapeImportacao(strIDEscala) & """," & _
+        """Militar"":""" & JsonEscapeImportacao(Nz(rs!Militar_Nome, "")) & """," & _
+        """Motivo"":""" & JsonEscapeImportacao(Nz(rs!Motivo, "")) & """," & _
+        """OPM"":""" & JsonEscapeImportacao(Nz(rs!Militar_OPM, "")) & """," & _
+        """PostoGrad"":""" & JsonEscapeImportacao(Nz(rs!Militar_Posto_Grad, "")) & """," & _
+        """RE"":""" & JsonEscapeImportacao(strRE) & """," & _
+        """conferencia"":""" & JsonEscapeImportacao(strIDEscala & strRE) & """," & _
+        """mês"":" & Month(CDate(rs!Data_Esc)) & _
+        "}"
+    Exit Function
+
+Erro:
+    Debug.Print "Erro MontarJsonExclusaoFirebase | ID_Escala=" & strIDEscala & _
+                " | RE=" & strRE & ": " & Err.Number & " - " & Err.Description
+    MontarJsonExclusaoFirebase = ""
+End Function
+
+Private Function NumeroJsonImportacao(ByVal dblValor As Double) As String
+    NumeroJsonImportacao = Replace(Format(dblValor, "0.##########"), ",", ".")
+End Function
+
+Private Function JsonEscapeImportacao(ByVal vValor As Variant) As String
+    Dim strTexto As String
+
+    strTexto = CStr(Nz(vValor, ""))
+    strTexto = Replace(strTexto, "\", "\\")
+    strTexto = Replace(strTexto, Chr(34), "\" & Chr(34))
+    strTexto = Replace(strTexto, vbCrLf, "\n")
+    strTexto = Replace(strTexto, vbCr, "\n")
+    strTexto = Replace(strTexto, vbLf, "\n")
+    JsonEscapeImportacao = strTexto
+End Function
 
 Private Sub SalvarAusenciaExcel(ByVal db As DAO.Database, ByVal wsDbMilEsc As Object, ByVal wsAusencias As Object, _
                                 ByVal lngLinha As Long, ByRef lngAusentes As Long, _
@@ -475,7 +775,7 @@ Private Sub SalvarAusenciaExcel(ByVal db As DAO.Database, ByVal wsDbMilEsc As Ob
     
     If wsAusencias Is Nothing Then
         lngEventosNaoEncontrados = lngEventosNaoEncontrados + 1
-        Debug.Print "Guia Ausencias nao encontrada. Ausencia nao importada | Guia=" & wsDbMilEsc.Name & _
+        Debug.Print "Guia Ausencias não encontrada. Ausência não importada | Guia=" & wsDbMilEsc.Name & _
                     " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
         Exit Sub
     End If
@@ -484,7 +784,7 @@ Private Sub SalvarAusenciaExcel(ByVal db As DAO.Database, ByVal wsDbMilEsc As Ob
     
     If lngLinhaEvento = 0 Then
         lngEventosNaoEncontrados = lngEventosNaoEncontrados + 1
-        Debug.Print "Ausencia nao encontrada no Excel | Guia=" & wsDbMilEsc.Name & _
+        Debug.Print "Ausência não encontrada no Excel | Guia=" & wsDbMilEsc.Name & _
                     " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
         Exit Sub
     End If
@@ -619,7 +919,7 @@ Private Sub SalvarExclusaoExcel(ByVal db As DAO.Database, ByVal wsDbMilEsc As Ob
     strRE = TextoExcel(wsDbMilEsc, lngLinha, "G")
     
     If wsExclusoes Is Nothing Then
-        Debug.Print "Guia Exclusoes nao encontrada. Exclusao sera importada com dados da DbMilEsc | Guia=" & wsDbMilEsc.Name & _
+        Debug.Print "Guia Exclusões não encontrada. A exclusão será importada com dados da DbMilEsc | Guia=" & wsDbMilEsc.Name & _
                     " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
     End If
     
@@ -640,7 +940,7 @@ Private Sub SalvarExclusaoExcel(ByVal db As DAO.Database, ByVal wsDbMilEsc As Ob
     
     If lngLinhaEvento = 0 Then
         lngEventosNaoEncontrados = lngEventosNaoEncontrados + 1
-        Debug.Print "Exclusao nao encontrada no Excel. Importada na TblExclusoes com dados da DbMilEsc | Guia=" & _
+        Debug.Print "Exclusão não encontrada no Excel. Importada na TblExclusoes com dados da DbMilEsc | Guia=" & _
                     wsDbMilEsc.Name & " | Linha=" & lngLinha & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
         vDataSolicitacao = Null
     Else

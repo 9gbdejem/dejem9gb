@@ -83,7 +83,15 @@
                                     <i class="fas fa-calendar-day"></i>
                                 </button>
                             </div>
-                            <div class="col-md-4 d-flex align-items-center gap-2">
+                            <div id="adminDayNavigation" class="col-md-2 d-none align-items-center gap-1 admin-day-nav" aria-label="Navegação diária">
+                                <button id="previousDayFilter" class="btn btn-outline-primary" type="button" title="Dia anterior" aria-label="Dia anterior">
+                                    <i class="fas fa-arrow-left"></i>
+                                </button>
+                                <button id="nextDayFilter" class="btn btn-outline-primary" type="button" title="Próximo dia" aria-label="Próximo dia">
+                                    <i class="fas fa-arrow-right"></i>
+                                </button>
+                            </div>
+                            <div class="col-md-3 d-flex align-items-center gap-2">
                                 <span class="text-muted fw-bold" aria-hidden="true">|</span>
                                 <div class="btn-group btn-group-sm flex-shrink-0" role="group">
                                     <button id="clearFilters" class="btn btn-outline-secondary">
@@ -122,6 +130,15 @@
                                 <button id="searchRangeBtn" class="btn btn-primary w-100">
                                     <i class="fas fa-search me-1"></i>Pesquisar
                                 </button>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="adminConfirmacaoFilter" class="form-label mb-1">Confirmação das escalas</label>
+                                <select id="adminConfirmacaoFilter" class="form-select">
+                                    <option value="todos">Todas as escalas</option>
+                                    <option value="aguardando">Aguardando confirmação</option>
+                                    <option value="sem_novidade">Sem novidade</option>
+                                    <option value="novidade">Com novidade</option>
+                                </select>
                             </div>
                         </div>
                     </div>

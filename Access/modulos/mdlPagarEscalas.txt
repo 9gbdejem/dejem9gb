@@ -15,7 +15,7 @@ Public Sub PagarEscalasConfirmadasFiltradas()
     Dim frmSub As Form
     Dim rs As DAO.Recordset
     Dim driver As ChromeDriver
-    Dim por As New by
+    Dim por As by
     Dim strLink As String
     Dim strURL As String
     Dim lngElegiveis As Long
@@ -26,18 +26,22 @@ Public Sub PagarEscalasConfirmadasFiltradas()
     Dim lngJaPagas As Long
     Dim blnJaPaga As Boolean
     Dim resposta As VbMsgBoxResult
+    Dim strStatusEscala As String
+    Dim blnNavegadorIniciado As Boolean
     
     On Error GoTo Erro
+
+    Set por = New by
     
     Set frmSub = ObterSubformLinhaEscala()
     If frmSub Is Nothing Then
-        MsgBox "Nao foi possivel localizar o sfrmLinhaEscala.", vbExclamation, "Pagar escalas"
+        MsgBox "Não foi possível localizar o sfrmLinhaEscala.", vbExclamation, "Pagar escalas"
         Exit Sub
     End If
     
     Set rs = frmSub.RecordsetClone
     If rs.BOF And rs.EOF Then
-        MsgBox "Nao ha escalas exibidas para pagar.", vbInformation, "Pagar escalas"
+        MsgBox "Não há escalas exibidas para pagar.", vbInformation, "Pagar escalas"
         GoTo Sair
     End If
     
@@ -48,8 +52,8 @@ Public Sub PagarEscalasConfirmadasFiltradas()
     Loop
     
     If lngElegiveis = 0 Then
-        MsgBox "Nenhuma escala elegivel foi encontrada." & vbCrLf & _
-               "Criterios: exibida no sfrmLinhaEscala e Status_Adm = 4.", _
+        MsgBox "Nenhuma escala elegível foi encontrada." & vbCrLf & _
+               "Critérios: exibida no sfrmLinhaEscala e Status_Adm = 4.", _
                vbInformation, "Pagar escalas"
         GoTo Sair
     End If
@@ -57,79 +61,82 @@ Public Sub PagarEscalasConfirmadasFiltradas()
     resposta = MsgBox("Há " & lngElegiveis & " escala(s) para confirmar no filtro selecionado. Deseja continuar?", _
                       vbQuestion + vbYesNo, "Pagar escalas")
     If resposta = vbNo Then GoTo Sair
-    
-    strLink = LinkUsuarioLogado()
-    If strLink = "" Then
-        MsgBox "Link do usuario logado nao encontrado. Refaca o login.", vbExclamation, "Pagar escalas"
-        GoTo Sair
-    End If
-    
-    strURL = URL_PAGAR_ESCALA & strLink
-    
+
     DoCmd.Hourglass True
-    SysCmd acSysCmdSetStatus, "Verificando confirmacoes no Firebase... aguarde."
-    
-    Set driver = New ChromeDriver
-    With driver
-        .Start
-        .Window.Maximize
-        .Get strURL
-        Pausar 1
-    End With
-    
+    SysCmd acSysCmdSetStatus, "Verificando confirmações no Firebase... aguarde."
+
+    ' Consulta e processa uma escala por vez.
     rs.MoveFirst
     Do While Not rs.EOF
         If EscalaElegivelPagamento(rs) Then
             If EscalaSemMilitar(rs) Then
                 If EscalaJaTerminou(rs) Then
-                    SysCmd acSysCmdSetStatus, "Pagando vaga sem militar " & Nz(rs!ID_Escala, "") & "... aguarde."
-                    blnJaPaga = False
-                    If PagarUmaEscala(driver, por, Nz(rs!ID_Escala, ""), strURL, blnJaPaga) Then
-                        MarcarEscalaPaga Nz(rs!ID_Escala, "")
-                        If blnJaPaga Then
-                            lngJaPagas = lngJaPagas + 1
-                        Else
-                            lngPagasSemMilitar = lngPagasSemMilitar + 1
-                        End If
-                    Else
-                        lngAguardando = lngAguardando + 1
-                    End If
+                    strStatusEscala = "sem_militar_pagavel"
                 Else
-                    lngAguardando = lngAguardando + 1
+                    strStatusEscala = "aguardando"
                 End If
             Else
-                Select Case StatusConfirmacaoEscala(Nz(rs!ID_Escala, ""))
-                    Case "concluida"
-                        SysCmd acSysCmdSetStatus, "Pagando escala " & Nz(rs!ID_Escala, "") & "... aguarde."
-                        blnJaPaga = False
-                        If PagarUmaEscala(driver, por, Nz(rs!ID_Escala, ""), strURL, blnJaPaga) Then
-                            MarcarEscalaPaga Nz(rs!ID_Escala, "")
-                            If blnJaPaga Then
-                                lngJaPagas = lngJaPagas + 1
-                            Else
-                                lngPagas = lngPagas + 1
-                            End If
-                        Else
-                            lngAguardando = lngAguardando + 1
-                        End If
-                    Case "novidade"
-                        MarcarEscalaComNovidade Nz(rs!ID_Escala, "")
-                        lngNovidade = lngNovidade + 1
-                    Case "aguardando"
-                        lngAguardando = lngAguardando + 1
-                End Select
+                strStatusEscala = StatusConfirmacaoEscala(Nz(rs!ID_Escala, ""))
             End If
+
+            Select Case strStatusEscala
+                Case "novidade"
+                    MarcarEscalaComNovidade Nz(rs!ID_Escala, "")
+                    lngNovidade = lngNovidade + 1
+
+                Case "aguardando"
+                    lngAguardando = lngAguardando + 1
+
+                Case "concluida", "sem_militar_pagavel"
+                    If Not blnNavegadorIniciado Then
+                        strLink = LinkUsuarioLogado()
+                        If strLink = "" Then
+                            MsgBox "Link do usuário logado não encontrado. Refaça o login.", _
+                                   vbExclamation, "Pagar escalas"
+                            GoTo Sair
+                        End If
+
+                        strURL = URL_PAGAR_ESCALA & strLink
+                        Set driver = New ChromeDriver
+                        With driver
+                            .Start
+                            .Window.Maximize
+                            .Get strURL
+                            Pausar 1
+                        End With
+                        blnNavegadorIniciado = True
+                    End If
+
+                If strStatusEscala = "sem_militar_pagavel" Then
+                    SysCmd acSysCmdSetStatus, "Pagando vaga sem militar " & Nz(rs!ID_Escala, "") & "... aguarde."
+                Else
+                    SysCmd acSysCmdSetStatus, "Pagando escala " & Nz(rs!ID_Escala, "") & "... aguarde."
+                End If
+
+                blnJaPaga = False
+                If PagarUmaEscala(driver, por, Nz(rs!ID_Escala, ""), strURL, blnJaPaga) Then
+                    MarcarEscalaPaga Nz(rs!ID_Escala, "")
+                    If blnJaPaga Then
+                        lngJaPagas = lngJaPagas + 1
+                    ElseIf strStatusEscala = "sem_militar_pagavel" Then
+                        lngPagasSemMilitar = lngPagasSemMilitar + 1
+                    Else
+                        lngPagas = lngPagas + 1
+                    End If
+                End If
+            End Select
         End If
         rs.MoveNext
     Loop
     
-    MsgBox "Pagamento concluido." & vbCrLf & _
-           "Escala(s) elegivel(is): " & lngElegiveis & vbCrLf & _
+FinalizarResumo:
+    MsgBox "Pagamento concluído." & vbCrLf & _
+           "Escala(s) elegível(is): " & lngElegiveis & vbCrLf & _
            "Paga(s) confirmada(s): " & lngPagas & vbCrLf & _
            "Paga(s) sem militar: " & lngPagasSemMilitar & vbCrLf & _
-           "Ja paga(s) na intranet: " & lngJaPagas & vbCrLf & _
+           "Já paga(s) na Intranet: " & lngJaPagas & vbCrLf & _
            "Com novidade: " & lngNovidade & vbCrLf & _
-           "Aguardando confirmacao: " & lngAguardando, _
+           "Aguardando confirmação: " & lngAguardando, _
            vbInformation, "Pagar escalas"
     
     AtualizarFrmEscalasPagamento
@@ -177,7 +184,7 @@ Private Function StatusConfirmacaoEscala(ByVal strIDEscala As String) As String
     resp = BuscarDadosFirebase("confirmacoes/" & strIDEscala)
     If Not resp.Success Then
         Err.Raise vbObjectError + 980, "StatusConfirmacaoEscala", _
-                  "Erro ao buscar confirmacoes/" & strIDEscala
+                  "Erro ao buscar confirmações/" & strIDEscala
     End If
     
     strJson = Trim(Nz(resp.ResponseText, ""))
@@ -254,7 +261,7 @@ End Function
 Private Sub AtualizarStatusMilitar(ByVal strIDEscala As String, ByVal strRE As String, ByVal strStatus As String)
     If Not CampoExiste("TblMilEsc", "Status") Then
         Err.Raise vbObjectError + 981, "AtualizarStatusMilitar", _
-                  "A coluna Status nao existe na TblMilEsc."
+                  "A coluna Status não existe na TblMilEsc."
     End If
     
     If Trim(Nz(strStatus, "")) = "" Then
@@ -289,18 +296,26 @@ Private Function PagarUmaEscala(ByRef driver As ChromeDriver, ByRef por As by, _
                                 ByRef blnJaPaga As Boolean) As Boolean
     Dim i As Long
     Dim strConfirmado As String
+    Dim strEtapa As String
     
     On Error GoTo Erro
     
+    If driver Is Nothing Then Err.Raise 91, , "driver não foi inicializado"
+    If por Is Nothing Then Set por = New by
+
+    strEtapa = "abrir página de pagamento"
     driver.Get strURL
     Pausar 0.5
     
+    strEtapa = "preencher ID da escala"
     LimparEnviarPorName driver, por, "vESCOPRIDF", strIDEscala
     
     For i = 1 To 30
+        strEtapa = "clicar em pesquisar (tentativa " & i & ")"
         driver.FindElement(por.Name("IMAGE3")).Click
         Pausar 1
         
+        strEtapa = "ler confirmação da escala"
         strConfirmado = TextoElementoPorID(driver, por, "span_vESCOPRIDCPTC")
         If strConfirmado <> "" Then Exit For
     Next
@@ -313,16 +328,22 @@ Private Function PagarUmaEscala(ByRef driver As ChromeDriver, ByRef por As by, _
         Exit Function
     End If
     
+    strEtapa = "clicar em confirmar pagamento"
     driver.FindElement(por.Name("CONFIRMAR")).Click
     Pausar 1
+    strEtapa = "aceitar alerta do pagamento"
     AceitarAlerta driver
     Pausar 1
+
+    ' Pausa temporária para identificar o retorno que confirma o pagamento na Intranet.
+'    Stop
     
     PagarUmaEscala = True
     Exit Function
     
 Erro:
-    Debug.Print "Erro mdlPagarEscalas.PagarUmaEscala ID_Escala=" & strIDEscala & _
+    Debug.Print "Erro mdlPagarEscalas.PagarUmaEscala | Etapa=" & strEtapa & _
+                " | ID_Escala=" & strIDEscala & _
                 ": " & Err.Number & " - " & Err.Description
     PagarUmaEscala = False
 End Function

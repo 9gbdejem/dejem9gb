@@ -12,6 +12,7 @@ let userNivel = 3;
 let userRE = '';
 let perfilUsuario = '';
 let confirmacoesCache = {};
+let filtroConfirmacaoAdministrador = 'todos';
 
 // Cache para dias já carregados
 let loadedDaysCache = new Set(); // Formato: "YYYY-MM-DD"
@@ -459,6 +460,35 @@ window.applyTodayFilter = async function() {
     await window.loadPeriod(year, month, day);
 };
 
+async function navegarDiaAdministrador(delta) {
+    if (userNivel !== 1) return;
+
+    const calendarFilter = document.getElementById('filterDate');
+    const dataBase = calendarFilter?.value
+        ? new Date(`${calendarFilter.value}T00:00:00`)
+        : new Date();
+
+    if (Number.isNaN(dataBase.getTime())) return;
+
+    dataBase.setDate(dataBase.getDate() + delta);
+
+    const ano = dataBase.getFullYear();
+    const mes = dataBase.getMonth() + 1;
+    const dia = dataBase.getDate();
+    const diaFilter = document.getElementById('filterDay');
+    const mesFilter = document.getElementById('filterMonth');
+    const anoFilter = document.getElementById('filterYear');
+
+    if (calendarFilter) {
+        calendarFilter.value = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    }
+    if (diaFilter) diaFilter.value = String(dia);
+    if (mesFilter) mesFilter.value = String(mes);
+    if (anoFilter) anoFilter.value = String(ano);
+
+    await window.loadPeriod(ano, mes, dia);
+}
+
 // ==================== PROCESSAMENTO DE ESCALAS ====================
 
 function processarEscala(escalaData, year, month, day, escalaKey) {
@@ -537,10 +567,15 @@ function sortAllEscalas() {
 
 // ✅ Carrega confirmações APENAS para a página atual
 async function loadConfirmacoesForCurrentPage() {
+    if (userNivel === 1 && filtroConfirmacaoAdministrador !== 'todos') {
+        await loadConfirmacoesParaFiltroAdministrador();
+        return;
+    }
+
     confirmacoesCache = {};
     
     // Pegar IDs das escalas da página atual
-    const grupos = getEscalasAgrupadas();
+    const grupos = getEscalasAgrupadas(false);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = Math.min(startIndex + itemsPerPage, grupos.length);
     const pageEscalas = grupos.slice(startIndex, endIndex).flatMap(grupo => grupo.itens);
@@ -602,6 +637,7 @@ function setupAdminRangeFilter() {
     const startDateInput = document.getElementById('rangeStartDate');
     const endDateInput = document.getElementById('rangeEndDate');
     const searchRangeBtn = document.getElementById('searchRangeBtn');
+    const confirmacaoFilter = document.getElementById('adminConfirmacaoFilter');
 
     if (!adminRangeFilter || !startDateInput || !endDateInput || !searchRangeBtn) return;
 
@@ -630,6 +666,21 @@ function setupAdminRangeFilter() {
         await applyAdminRangeFilter();
     });
 
+    if (confirmacaoFilter) {
+        confirmacaoFilter.addEventListener('change', async function() {
+            filtroConfirmacaoAdministrador = this.value;
+            currentPage = 1;
+            showLoading(true);
+            try {
+                await loadConfirmacoesParaFiltroAdministrador();
+                renderTable();
+                updateStatistics();
+            } finally {
+                showLoading(false);
+            }
+        });
+    }
+
     [startDateInput, endDateInput].forEach(input => {
         input.addEventListener('keypress', async function(e) {
             if (e.key === 'Enter') {
@@ -638,6 +689,23 @@ function setupAdminRangeFilter() {
             }
         });
     });
+}
+
+async function loadConfirmacoesParaFiltroAdministrador() {
+    if (userNivel !== 1 || filtroConfirmacaoAdministrador === 'todos') {
+        await loadConfirmacoesForCurrentPage();
+        return;
+    }
+
+    confirmacoesCache = {};
+    const grupos = getEscalasAgrupadas(false);
+    const escalaIds = new Set();
+
+    grupos.forEach((grupo) => {
+        if (grupo.id && !grupo.id.startsWith('sem-id-')) escalaIds.add(grupo.id);
+    });
+
+    await Promise.all(Array.from(escalaIds).map((id) => loadConfirmacaoById(id)));
 }
 
 async function applyAdminRangeFilter() {
@@ -777,6 +845,17 @@ function setupEventListeners() {
     const todayBtn = document.getElementById('todayFilter');
     if (todayBtn) {
         todayBtn.addEventListener('click', window.applyTodayFilter);
+    }
+
+    const adminDayNavigation = document.getElementById('adminDayNavigation');
+    if (adminDayNavigation && userNivel === 1) {
+        adminDayNavigation.classList.remove('d-none');
+        adminDayNavigation.classList.add('d-flex');
+
+        const previousDayBtn = document.getElementById('previousDayFilter');
+        const nextDayBtn = document.getElementById('nextDayFilter');
+        if (previousDayBtn) previousDayBtn.addEventListener('click', () => navegarDiaAdministrador(-1));
+        if (nextDayBtn) nextDayBtn.addEventListener('click', () => navegarDiaAdministrador(1));
     }
     
     const tutorialBtn = document.getElementById('tutorialBtn');
@@ -927,7 +1006,12 @@ function applyFilters() {
     updateStatistics();
     
     // Recarregar confirmações para a nova página
-    loadConfirmacoesForCurrentPage();
+    loadConfirmacoesForCurrentPage().then(() => {
+        if (userNivel === 1 && filtroConfirmacaoAdministrador !== 'todos') {
+            renderTable();
+            updateStatistics();
+        }
+    });
 }
 
 function clearFilters() {
@@ -1016,6 +1100,19 @@ function getConfirmacaoStatus(escalaId, re) {
     return confirmacoesCache[escalaId].militares[re] || null;
 }
 
+function getConfirmacaoStatusGrupo(escalaId, militares) {
+    if (!escalaId || !Array.isArray(militares) || militares.length === 0) return null;
+
+    const statusMilitares = militares.map((militar) => {
+        const confirmacao = getConfirmacaoStatus(escalaId, militar.RE);
+        return confirmacao?.status || null;
+    });
+
+    if (statusMilitares.some((status) => status === 'novidade')) return 'novidade';
+    if (statusMilitares.every((status) => status === 'concluida')) return 'concluida';
+    return null;
+}
+
 function getConfirmacaoIcon(status, escalaId, re) {
     const baseClass = 'btn btn-sm confirm-btn';
     const dataAttrs = `data-escala-id="${escalaId}" data-re="${re}"`;
@@ -1026,8 +1123,8 @@ function getConfirmacaoIcon(status, escalaId, re) {
                       <i class="fas fa-check"></i>
                     </button>`;
         case 'novidade':
-            return `<button class="${baseClass} btn-danger" title="Novidade" ${dataAttrs}>
-                      <i class="fas fa-times"></i>
+            return `<button class="${baseClass} btn-warning text-dark" title="Novidade" ${dataAttrs}>
+                      <i class="fas fa-exclamation"></i>
                     </button>`;
         default:
             return `<button class="${baseClass} btn-outline-secondary" title="Confirmar escala" ${dataAttrs}>
@@ -1049,14 +1146,25 @@ function getSearchPlaceholder(type) {
 
 // ==================== FUNÇÕES DE TABELA ====================
 
-function getEscalasAgrupadas() {
+function grupoAtendeFiltroConfirmacao(grupo) {
+    if (userNivel !== 1 || filtroConfirmacaoAdministrador === 'todos') return true;
+
+    const status = getConfirmacaoStatusGrupo(grupo.id, grupo.itens);
+    if (filtroConfirmacaoAdministrador === 'novidade') return status === 'novidade';
+    if (filtroConfirmacaoAdministrador === 'sem_novidade') return status === 'concluida';
+    if (filtroConfirmacaoAdministrador === 'aguardando') return status === null;
+    return true;
+}
+
+function getEscalasAgrupadas(aplicarFiltro = true) {
     const grupos = new Map();
     filteredEscalas.forEach((escala, indice) => {
         const id = escala.Id ? String(escala.Id) : `sem-id-${indice}`;
         if (!grupos.has(id)) grupos.set(id, { id, itens: [] });
         grupos.get(id).itens.push(escala);
     });
-    return [...grupos.values()];
+    const gruposArray = [...grupos.values()];
+    return aplicarFiltro ? gruposArray.filter(grupoAtendeFiltroConfirmacao) : gruposArray;
 }
 
 function classeProntidao(data, indiceDoDia) {
@@ -1096,7 +1204,9 @@ function renderTable() {
         return;
     }
     
-    if (filteredEscalas.length === 0) {
+    const grupos = getEscalasAgrupadas();
+
+    if (filteredEscalas.length === 0 || grupos.length === 0) {
         tbody.innerHTML = '';
         noDataDiv.classList.remove('d-none');
         infoText.textContent = 'Mostrando 0 de 0 registros';
@@ -1106,7 +1216,6 @@ function renderTable() {
     
     noDataDiv.classList.add('d-none');
     
-    const grupos = getEscalasAgrupadas();
     const classesProntidao = classesProntidaoPorGrupo(grupos);
     const totalPages = Math.ceil(grupos.length / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -1122,14 +1231,14 @@ function renderTable() {
         
         const militarDoUsuario = militares.find(item => item.RE && item.RE.toString() === userRE);
         const REParaAcao = militarDoUsuario?.RE || escala.RE;
-        const confirmacao = getConfirmacaoStatus(escala.Id, REParaAcao);
-        const confirmacaoIcon = getConfirmacaoIcon(confirmacao ? confirmacao.status : null, escala.Id, REParaAcao);
+        const statusConfirmacaoGrupo = getConfirmacaoStatusGrupo(escala.Id, militares);
+        const confirmacaoIcon = getConfirmacaoIcon(statusConfirmacaoGrupo, escala.Id, REParaAcao);
         
         let rowClass = classesProntidao.get(grupo.id) || '';
         if (isUserEscala) rowClass += ' table-info';
         
         const escalaLink = getEscalaLink(escala.Id);
-        const temConfirmacao = confirmacao !== null;
+        const temConfirmacao = militares.some((militar) => getConfirmacaoStatus(escala.Id, militar.RE) !== null);
         const temLinkSEI = temConfirmacao && confirmacoesCache[escala.Id]?.dadosGerais?.sei_link;
 
         const adminLinkIcon = (userNivel === 1 && escala.Id && temConfirmacao && temLinkSEI) ? 
