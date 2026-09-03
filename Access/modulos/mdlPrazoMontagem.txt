@@ -1,0 +1,89 @@
+Option Compare Database
+Option Explicit
+
+Public gFechamentoSistemaAutorizado As Boolean
+
+Public Function SQLEscalasPrazoMontagem() As String
+    SQLEscalasPrazoMontagem = _
+        "SELECT TblEscGeral.Prazo_Inscricao, TblEscGeral.Data_Esc, " & _
+        "TblEscGeral.Horario_Inicial, TblEscGeral.OPM_Codigo, " & _
+        "TblEscGeral.OPM_Nome, TblEscGeral.Composicao_Nome, " & _
+        "TblEscGeral.Composicao_Cod, TblEscGeral.ID_Escala, " & _
+        "TblEscGeral.Status_Adm " & _
+        "FROM TblEscGeral LEFT JOIN TblComposicao " & _
+        "ON TblEscGeral.Composicao_Cod = TblComposicao.CODIGO " & _
+        "WHERE TblEscGeral.Prazo_Inscricao Is Not Null " & _
+        "AND Trim(Nz(TblEscGeral.ID_Escala,'')) <> '' " & _
+        "AND Trim(Nz(TblEscGeral.ID_Escala,'')) <> '0' " & _
+        "AND Trim(Nz(TblEscGeral.Status_Adm,'')) IN ('3','8') " & _
+        "ORDER BY TblEscGeral.Prazo_Inscricao ASC, " & _
+        "TblEscGeral.Data_Esc ASC, TblEscGeral.Horario_Inicial ASC, " & _
+        "TblComposicao.ID ASC, TblEscGeral.OPM_Codigo ASC"
+End Function
+
+Public Function HaPrazoMontagemHoje() As Boolean
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    
+    On Error GoTo Erro
+    
+    strSQL = "SELECT TOP 1 ID_Escala FROM TblEscGeral " & _
+             "WHERE Prazo_Inscricao >= Date() " & _
+             "AND Prazo_Inscricao < DateAdd('d',1,Date()) " & _
+             "AND Trim(Nz(ID_Escala,'')) <> '' " & _
+             "AND Trim(Nz(ID_Escala,'')) <> '0' " & _
+             "AND Trim(Nz(Status_Adm,'')) IN ('3','8')"
+    
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    HaPrazoMontagemHoje = Not rs.EOF
+    rs.Close
+    Set rs = Nothing
+    Exit Function
+    
+Erro:
+    Debug.Print "Erro mdlPrazoMontagem.HaPrazoMontagemHoje: " & Err.Number & " - " & Err.Description
+    HaPrazoMontagemHoje = False
+End Function
+
+Public Sub AtualizarIndicadoresPrazo(ByVal frm As Form)
+    Dim urgente As Boolean
+    Dim alerta As Boolean
+    Dim strSQL As String
+    Dim rs As DAO.Recordset
+    
+    On Error GoTo Erro
+    
+    urgente = HaPrazoMontagemHoje()
+    alerta = False
+    
+    strSQL = "SELECT TOP 1 ID_Escala FROM TblEscGeral " & _
+             "WHERE Prazo_Inscricao >= DateAdd('d',1,Date()) " & _
+             "AND Prazo_Inscricao < DateAdd('d',4,Date()) " & _
+             "AND Trim(Nz(ID_Escala,'')) <> '' " & _
+             "AND Trim(Nz(ID_Escala,'')) <> '0' " & _
+             "AND Trim(Nz(Status_Adm,'')) IN ('3','8')"
+    Set rs = CurrentDb.OpenRecordset(strSQL, dbOpenSnapshot)
+    alerta = Not rs.EOF
+    rs.Close
+    Set rs = Nothing
+    
+    frm!imgPrazoUrgente.Visible = urgente
+    frm!imgPrazoAlerta.Visible = (Not urgente And alerta)
+    frm!imgPrazoTranquilo.Visible = (Not urgente And Not alerta)
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro mdlPrazoMontagem.AtualizarIndicadoresPrazo: " & Err.Number & " - " & Err.Description
+End Sub
+
+Public Function ConfirmarFechamentoSemMontar() As Boolean
+    If Not HaPrazoMontagemHoje() Then
+        ConfirmarFechamentoSemMontar = True
+        Exit Function
+    End If
+    
+    ConfirmarFechamentoSemMontar = (MsgBox( _
+        "Existem escalas com prazo para montagem hoje." & vbCrLf & _
+        "Deseja realmente fechar o sistema sem montá-las?", _
+        vbQuestion + vbYesNo + vbDefaultButton2, "Fechar sistema") = vbYes)
+End Function

@@ -38,6 +38,15 @@ Private Sub Form_Resize()
     Me.frmNavegar.Height = Me.InsideHeight - Me.frmNavegar.Top
 End Sub
 
+Private Sub Form_Unload(Cancel As Integer)
+    On Error GoTo Erro
+    If gFechamentoSistemaAutorizado Then Exit Sub
+    If Not ConfirmarFechamentoSemMontar() Then Cancel = True
+    Exit Sub
+Erro:
+    Debug.Print "Erro frmApp.Form_Unload: " & Err.Number & " - " & Err.Description
+End Sub
+
 'Private Sub Form_Resize()
 '    Dim lngCentro As Long
 '

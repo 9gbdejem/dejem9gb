@@ -43,7 +43,15 @@ Private Sub btnSuperiores_Click()
 End Sub
 
 Private Sub btnSair_Click()
-    If MsgBox("Tem certeza que deseja sair?", vbQuestion + vbYesNo, "Sair") = vbYes Then
-        DoCmd.Quit
-    End If
+    On Error GoTo Erro
+    
+    If MsgBox("Tem certeza que deseja sair?", vbQuestion + vbYesNo, "Sair") = vbNo Then Exit Sub
+    If Not ConfirmarFechamentoSemMontar() Then Exit Sub
+    
+    gFechamentoSistemaAutorizado = True
+    DoCmd.Quit
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmNavbar.btnSair_Click: " & Err.Number & " - " & Err.Description
 End Sub

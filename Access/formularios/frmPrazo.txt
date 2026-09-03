@@ -1,0 +1,19 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Form_Load()
+    On Error GoTo Erro
+    
+    With Me.lstPrazo
+        .RowSourceType = "Table/Query"
+        .RowSource = SQLEscalasPrazoMontagem()
+        .ColumnCount = 9
+        .ColumnHeads = True
+        .ColumnWidths = "2.8cm;2.4cm;1.7cm;2.2cm;4cm;5cm;2.2cm;2.2cm;1.3cm"
+        .Requery
+    End With
+    Exit Sub
+    
+Erro:
+    Debug.Print "Erro frmPrazo.Form_Load: " & Err.Number & " - " & Err.Description
+End Sub

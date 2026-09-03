@@ -39,7 +39,7 @@ let filtrosTabelaSolicitacoes = {
     composicaoCodigos: [],
     diaInicial: '',
     diaFinal: '',
-    status: ''
+    status: []
 };
 
 // ✅ Constantes do sistema
@@ -303,8 +303,7 @@ async function carregarSolicitacoesMes() {
                         if (dataInfo) {
                             const dadosNormalizados = normalizarSolicitacaoFirebase(dados);
                             const nomeComposicao = String(dadosNormalizados.composicao_nome || '').toLowerCase();
-                            const nomeLocal = String(opmsNomes[opmCodigo] || '').toLowerCase();
-                            if (filtroOficiais && !nomeComposicao.includes('oficial') && !nomeLocal.includes('oficial')) return;
+                            if (filtroOficiais && !nomeComposicao.includes('oficial')) return;
 
                             const idCompleto = `${anoStr}/${mesStr}/${opmCodigo}/${composicaoCod}/${idSolicitacao}`;
 
@@ -398,6 +397,9 @@ function prepararOpcoesEspeciaisOpm() {
 }
 
 function obterOpmsDaSelecao() {
+    if (opmSelecionada === '__OFICIAIS__' && userDataCache?.nivel === 1) {
+        return opmsPermitidas;
+    }
     if (opmFiltrosEspeciais[opmSelecionada]) return opmFiltrosEspeciais[opmSelecionada];
     return opmsPermitidas.includes(opmSelecionada) ? [opmSelecionada] : [];
 }
@@ -2181,12 +2183,16 @@ function renderInterface() {
                                         </select>
                                     </div>
                                     <div class="col-6 col-xl-1">
-                                        <label class="form-label small fw-bold mb-1" for="filtroTabelaStatus">
+                                        <label class="form-label small fw-bold mb-1" for="filtroTabelaStatusBotao">
                                             Status
                                         </label>
-                                        <select class="form-select form-select-sm" id="filtroTabelaStatus">
-                                            <option value="">Todos</option>
-                                        </select>
+                                        <div class="dropdown" id="filtroTabelaStatus">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-truncate"
+                                                    id="filtroTabelaStatusBotao" data-bs-toggle="dropdown" aria-expanded="false">
+                                                <span id="filtroTabelaStatusResumo">Todos</span>
+                                            </button>
+                                            <div class="dropdown-menu p-2" id="filtroTabelaStatusOpcoes" aria-labelledby="filtroTabelaStatusBotao"></div>
+                                        </div>
                                     </div>
                                     <div class="col-12 col-xl-1 d-grid">
                                         <button type="button" class="btn btn-sm btn-outline-secondary" id="btnResetarFiltrosTabela">
@@ -2479,7 +2485,7 @@ function limparDadosAoAlterarFiltros() {
         composicaoCodigos: [],
         diaInicial: '',
         diaFinal: '',
-        status: ''
+        status: []
     };
     anexosExistentesCache = {};
     usarAnexoExistente = false;
@@ -2753,7 +2759,8 @@ function inicializarFiltrosTabelaSolicitacoes() {
     const opcoesCodigo = document.getElementById('filtroTabelaCodigoOpcoes');
     const selectDiaInicial = document.getElementById('filtroTabelaDiaInicial');
     const selectDiaFinal = document.getElementById('filtroTabelaDiaFinal');
-    const selectStatus = document.getElementById('filtroTabelaStatus');
+    const statusBotao = document.getElementById('filtroTabelaStatusBotao');
+    const statusOpcoes = document.getElementById('filtroTabelaStatusOpcoes');
     const btnResetar = document.getElementById('btnResetarFiltrosTabela');
 
     if (filtroCodigo) {
@@ -2851,9 +2858,11 @@ function inicializarFiltrosTabelaSolicitacoes() {
         });
     }
 
-    if (selectStatus) {
-        selectStatus.addEventListener('change', () => {
-            filtrosTabelaSolicitacoes.status = selectStatus.value;
+    if (statusOpcoes) {
+        statusOpcoes.addEventListener('change', (event) => {
+            if (!event.target.classList.contains('filtro-tabela-status-check')) return;
+            filtrosTabelaSolicitacoes.status = [...statusOpcoes.querySelectorAll('.filtro-tabela-status-check:checked')]
+                .map((checkbox) => checkbox.value);
             atualizarTabelaSolicitacoes();
         });
     }
@@ -2864,7 +2873,7 @@ function inicializarFiltrosTabelaSolicitacoes() {
                 composicaoCodigos: [],
                 diaInicial: '',
                 diaFinal: '',
-                status: ''
+                status: []
             };
             atualizarTabelaSolicitacoes();
         });
@@ -2913,9 +2922,10 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
     const resumoCodigo = document.getElementById('filtroTabelaCodigoResumo');
     const selectDiaInicial = document.getElementById('filtroTabelaDiaInicial');
     const selectDiaFinal = document.getElementById('filtroTabelaDiaFinal');
-    const selectStatus = document.getElementById('filtroTabelaStatus');
+    const statusOpcoes = document.getElementById('filtroTabelaStatusOpcoes');
+    const resumoStatus = document.getElementById('filtroTabelaStatusResumo');
 
-    if (!filtroCodigo || !opcoesCodigo || !resumoCodigo || !selectDiaInicial || !selectDiaFinal || !selectStatus) return;
+    if (!filtroCodigo || !opcoesCodigo || !resumoCodigo || !selectDiaInicial || !selectDiaFinal || !statusOpcoes || !resumoStatus) return;
 
     const composicoes = new Map();
     const dias = new Set();
@@ -2963,9 +2973,10 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
         filtrosTabelaSolicitacoes.diaFinal = '';
     }
 
-    if (filtrosTabelaSolicitacoes.status && !statusDisponiveis.has(filtrosTabelaSolicitacoes.status)) {
-        filtrosTabelaSolicitacoes.status = '';
-    }
+    const statusSelecionados = Array.isArray(filtrosTabelaSolicitacoes.status)
+        ? filtrosTabelaSolicitacoes.status
+        : (filtrosTabelaSolicitacoes.status ? [filtrosTabelaSolicitacoes.status] : []);
+    filtrosTabelaSolicitacoes.status = statusSelecionados.filter((status) => statusDisponiveis.has(status));
 
     if (composicoesOrdenadas.length === 0) {
         opcoesCodigo.innerHTML = '<div class="text-muted small px-2 py-1">Nenhum código disponível</div>';
@@ -2998,10 +3009,16 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
     selectDiaInicial.innerHTML = opcoesDias;
     selectDiaFinal.innerHTML = opcoesDias;
 
-    selectStatus.innerHTML = '<option value="">Todos</option>' +
-        statusOrdenados.map((status) =>
-            `<option value="${status}">${rotuloStatusFiltro(status)}</option>`
-        ).join('');
+    statusOpcoes.innerHTML = `
+        <div class="small fw-bold px-2 pb-2 border-bottom mb-2">Selecionar status</div>
+        ${statusOrdenados.map((status) => `
+            <label class="dropdown-item-text d-flex align-items-center gap-2 px-2 py-1 mb-0">
+                <input class="form-check-input filtro-tabela-status-check m-0" type="checkbox"
+                       value="${status}" ${statusSelecionados.includes(status) ? 'checked' : ''}>
+                <span class="small">${rotuloStatusFiltro(status)}</span>
+            </label>
+        `).join('')}
+    `;
 
     if (filtrosTabelaSolicitacoes.composicaoCodigos.length === 0) {
         resumoCodigo.textContent = 'Todos';
@@ -3014,7 +3031,13 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
 
     selectDiaInicial.value = filtrosTabelaSolicitacoes.diaInicial;
     selectDiaFinal.value = filtrosTabelaSolicitacoes.diaFinal;
-    selectStatus.value = filtrosTabelaSolicitacoes.status;
+    if (statusSelecionados.length === 0) {
+        resumoStatus.textContent = 'Todos';
+    } else if (statusSelecionados.length === 1) {
+        resumoStatus.textContent = rotuloStatusFiltro(statusSelecionados[0]);
+    } else {
+        resumoStatus.textContent = `${statusSelecionados.length} status selecionados`;
+    }
 }
 
 function aplicarFiltrosTabelaSolicitacoes(solicitacoesValidas) {
@@ -3033,8 +3056,11 @@ function aplicarFiltrosTabelaSolicitacoes(solicitacoesValidas) {
             return false;
         }
 
-        if (filtrosTabelaSolicitacoes.status &&
-            valorStatusFiltroSolicitacao(solicitacao) !== filtrosTabelaSolicitacoes.status) {
+        const statusSelecionados = Array.isArray(filtrosTabelaSolicitacoes.status)
+            ? filtrosTabelaSolicitacoes.status
+            : (filtrosTabelaSolicitacoes.status ? [filtrosTabelaSolicitacoes.status] : []);
+        if (statusSelecionados.length > 0 &&
+            !statusSelecionados.includes(valorStatusFiltroSolicitacao(solicitacao))) {
             return false;
         }
 
@@ -4364,6 +4390,8 @@ function setupNotificacoesSolicitacoes() {
         }
 
         if (window.aplicarFiltrosSolicitacoes) {
+            // As notificações representam solicitações aguardando processamento ou em edição.
+            filtrosTabelaSolicitacoes.status = ['sem_status', '4'];
             window.aplicarFiltrosSolicitacoes(opmCodigo, mes, ano);
         } else {
             const selectOpm = document.getElementById('selectOpm');
@@ -4378,6 +4406,8 @@ function setupNotificacoesSolicitacoes() {
                 if (selectAno) selectAno.value = ano;
                 if (selectMes) selectMes.value = mes;
             }
+            filtrosTabelaSolicitacoes.status = ['sem_status', '4'];
+            atualizarTabelaSolicitacoes();
         }
 
         setTimeout(() => {

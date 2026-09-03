@@ -41,6 +41,7 @@ Private Sub Form_Load()
     Call AjustarAlturaSubformLinhaEscala
     Call btnFiltrar_Click
     Call VerificarFirebase
+    Call AtualizarIndicadoresPrazo(Me)
     
     Exit Sub
     
@@ -694,8 +695,10 @@ Public Sub btnFiltrar_Click()
         Set frm = Me.sfrmLinhaEscala.Form
         frm.AplicarFiltro strFiltro, ""
         Call AtualizarTotaisFiltroAtual
+        Call AtualizarIndicadoresPrazo(Me)
     Else
         Call LimparTotaisFiltroAtual
+        Call AtualizarIndicadoresPrazo(Me)
     End If
     
     Exit Sub
@@ -1122,6 +1125,30 @@ End Function
 Private Sub btnEscaladosExcel_Click()
     Call ImportarMilitaresEscaladosExcel2026
     Call btnFiltrar_Click
+End Sub
+
+Private Sub imgPrazoUrgente_Click()
+    On Error GoTo Erro
+    DoCmd.OpenForm "frmPrazo", , , , , acDialog
+    Exit Sub
+Erro:
+    Debug.Print "Erro frmEscalas.imgPrazoUrgente_Click: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub imgPrazoAlerta_Click()
+    On Error GoTo Erro
+    DoCmd.OpenForm "frmPrazo", , , , , acDialog
+    Exit Sub
+Erro:
+    Debug.Print "Erro frmEscalas.imgPrazoAlerta_Click: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Sub imgPrazoTranquilo_Click()
+    On Error GoTo Erro
+    DoCmd.OpenForm "frmPrazo", , , , , acDialog
+    Exit Sub
+Erro:
+    Debug.Print "Erro frmEscalas.imgPrazoTranquilo_Click: " & Err.Number & " - " & Err.Description
 End Sub
 
 Private Sub btnAtualizarExcelAusent_Click()

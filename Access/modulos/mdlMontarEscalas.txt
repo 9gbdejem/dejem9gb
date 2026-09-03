@@ -36,8 +36,8 @@ Public Sub MontarEscalasFiltradasIntranet()
     Loop
     
     If lngElegiveis = 0 Then
-        MsgBox "Nenhuma escala elegivel foi encontrada." & vbCrLf & _
-               "Criterios: exibida no sfrmLinhaEscala, Status_Adm = 3 e ID_Escala preenchido.", _
+        MsgBox "Nenhuma escala elegível foi encontrada." & vbCrLf & _
+               "Critérios: Status_Adm = 3, ID_Escala preenchido, prazo liberado há pelo menos 1 minuto e início da escala ainda não alcançado.", _
                vbInformation, "Montar escalas"
         GoTo Sair
     End If
@@ -1011,9 +1011,42 @@ Private Sub SomarPosto(ByVal strPosto As String, ByRef lngSup As Long, ByRef lng
 End Sub
 
 Private Function EscalaElegivelMontagem(ByRef rs As DAO.Recordset) As Boolean
-    EscalaElegivelMontagem = (Trim(Nz(rs!Status_Adm, "")) = "3" And _
-                              Trim(Nz(rs!ID_Escala, "")) <> "" And _
-                              Trim(Nz(rs!ID_Escala, "")) <> "0")
+    Dim dtPrazo As Date
+    Dim dtInicioEscala As Date
+    Dim vPrazo As Variant
+    Dim vData As Variant
+    Dim vHora As Variant
+    
+    On Error GoTo NaoElegivel
+    
+    If Trim(Nz(rs!Status_Adm, "")) <> "3" Then Exit Function
+    If Trim(Nz(rs!ID_Escala, "")) = "" Then Exit Function
+    If Trim(Nz(rs!ID_Escala, "")) = "0" Then Exit Function
+    
+    vPrazo = rs!Prazo_Inscricao
+    If IsNull(vPrazo) Or Trim(CStr(vPrazo)) = "" Then Exit Function
+    If Not IsDate(vPrazo) Then Exit Function
+    dtPrazo = CDate(vPrazo)
+    
+    ' O prazo libera a montagem somente um minuto depois do horário informado.
+    If Now < DateAdd("n", 1, dtPrazo) Then Exit Function
+    
+    vData = rs!Data_Esc
+    vHora = rs!Horario_Inicial
+    If IsNull(vData) Or Not IsDate(vData) Then Exit Function
+    If IsNull(vHora) Or Trim(CStr(vHora)) = "" Then Exit Function
+    If Not IsDate(vHora) Then Exit Function
+    
+    dtInicioEscala = DateValue(CDate(vData)) + TimeValue(CDate(vHora))
+    
+    ' Depois do início da escala, ela não pode mais ser montada.
+    If Now >= dtInicioEscala Then Exit Function
+    
+    EscalaElegivelMontagem = True
+    Exit Function
+    
+NaoElegivel:
+    EscalaElegivelMontagem = False
 End Function
 
 Private Function ObterSubformLinhaEscala() As Form
