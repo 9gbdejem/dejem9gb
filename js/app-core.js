@@ -23,8 +23,10 @@ class AppCore {
             
             sessionStorage.setItem('userRE', re);
             sessionStorage.setItem('userName', userData.nome);
+            sessionStorage.setItem('userLevel', userData.nivel);
             
             await loadNavbar();
+            await this.inicializarAcoesGlobaisSolicitacoes(userData.nivel);
             
             this.setupNavbar();
             await this.loadPage('dashboard.html');
@@ -47,6 +49,30 @@ class AppCore {
         
         this.setupUserGreeting();
         this.setupDropdown();
+    }
+
+    async inicializarAcoesGlobaisSolicitacoes(nivel) {
+        const destino = document.getElementById('navbarSolicitacoesTesteAcoes');
+        if (!destino) return;
+
+        if (Number(nivel) !== 1) {
+            destino.style.display = 'none';
+            return;
+        }
+
+        try {
+            const notificacoes = await import('./solicitacoes-test.js');
+            destino.style.display = 'flex';
+            notificacoes.setupNotificacoesSolicitacoes();
+            notificacoes.setupSireneLiberacoes();
+            await Promise.all([
+                notificacoes.carregarNotificacoesAdmin(),
+                notificacoes.carregarLiberacoesPendentes()
+            ]);
+        } catch (error) {
+            console.error('Erro ao iniciar notificações globais de solicitações:', error);
+            destino.style.display = 'none';
+        }
     }
     
     setupUserGreeting() {
@@ -172,7 +198,7 @@ class AppCore {
         
         const contentDiv = document.getElementById('app-content');
         if (!contentDiv) return;
-        
+
         try {
             contentDiv.innerHTML = this.getLoadingHTML(pageUrl);
             
@@ -181,7 +207,7 @@ class AppCore {
             
             const html = await response.text();
             
-            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html') {
+            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html' || pageUrl === 'solicitacoes_test.html') {
                 await this.loadSpecialPage(html, pageUrl);
             } else {
                 const pageContent = this.extractContent(html, pageUrl);
@@ -222,6 +248,8 @@ class AppCore {
                 await this.loadPerfilScript();
             } else if (pageUrl === 'solicitacoes.html') {
                 await this.loadSolicitacoesScript();
+            } else if (pageUrl === 'solicitacoes_test.html') {
+                await this.loadSolicitacoesTestScript();
             }
         } else {
             contentDiv.innerHTML = '<div class="alert alert-danger">Erro: Conteúdo não encontrado</div>';
@@ -311,6 +339,26 @@ class AppCore {
             
         } catch (error) {
             console.error('❌ Erro ao carregar solicitações:', error);
+            this.showError(error);
+        }
+    }
+
+    async loadSolicitacoesTestScript() {
+        try {
+            await this.loadExternalScripts();
+            await this.loadDatepicker();
+            await this.loadGoogleDriveAPI();
+
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            const solicitacoesModule = await import('./solicitacoes-test.js');
+            if (solicitacoesModule?.initSolicitacoes) {
+                await solicitacoesModule.initSolicitacoes();
+            }
+
+            this.addSolicitacoesStyles();
+        } catch (error) {
+            console.error('Erro ao carregar solicitações teste:', error);
             this.showError(error);
         }
     }

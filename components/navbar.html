@@ -30,7 +30,14 @@
                         <i class="fas fa-clipboard-list me-1"></i>Solicitações
                     </a>
                 </li>
-                
+
+                <!-- Versão de teste: disponível somente para administradores nível 1. -->
+                <li class="nav-item" id="navSolicitacoesTesteItem" style="display: none;">
+                    <a class="nav-link" href="solicitacoes_test.html" id="navSolicitacoesTeste">
+                        <i class="fas fa-flask me-1"></i>Solicitações teste
+                    </a>
+                </li>
+
                 <!-- Escalas -->
                 <li class="nav-item">
                     <a class="nav-link" href="escalas.html" id="navEscalas">
@@ -61,6 +68,50 @@
                 </li> -->
             </ul>
             
+            <!-- PONTO DE SEGURANÇA: ações globais de solicitações para administradores. -->
+            <div id="navbarSolicitacoesTesteAcoes" class="d-flex align-items-center gap-2 me-2" style="display: none;">
+                <div class="dropdown" id="notificacoes-dropdown">
+                    <button class="btn btn-warning btn-sm position-relative" data-bs-toggle="dropdown"
+                            style="min-width: 45px; padding: 5px 10px;" title="Solicitações pendentes">
+                        <i class="fas fa-bell"></i>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                              id="badge-notificacoes" style="font-size: 0.55em; padding: 1px 4px;">0</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-0" style="width: 350px;">
+                        <div class="dropdown-header bg-warning text-dark py-2">
+                            <i class="fas fa-exclamation-circle me-2"></i>Solicitações pendentes
+                        </div>
+                        <div id="lista-notificacoes" style="max-height: 400px; overflow-y: auto;"></div>
+                        <div class="dropdown-divider m-0"></div>
+                        <div class="px-3 py-2">
+                            <button class="btn btn-sm btn-outline-warning w-100" id="btn-atualizar-notificacoes">
+                                <i class="fas fa-sync-alt me-1"></i>Atualizar lista
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="dropdown" id="liberacoes-dropdown">
+                    <button class="btn btn-danger btn-sm position-relative sirene-liberacao" data-bs-toggle="dropdown"
+                            style="min-width: 45px; padding: 5px 10px; background-color: #ff1f1f; border-color: #ff1f1f;" title="Solicitações de liberação">
+                        <i class="fas fa-bullhorn"></i>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-light text-danger"
+                              id="badge-liberacoes" style="font-size: 0.55em; padding: 1px 4px;">0</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-0" style="width: 350px;">
+                        <div class="dropdown-header text-white py-2" style="background-color: #ff1f1f;">
+                            <i class="fas fa-bullhorn me-2"></i>Solicitações de liberação
+                        </div>
+                        <div id="lista-liberacoes" style="max-height: 400px; overflow-y: auto;"></div>
+                        <div class="dropdown-divider m-0"></div>
+                        <div class="px-3 py-2">
+                            <button class="btn btn-sm btn-outline-danger w-100" id="btn-atualizar-liberacoes">
+                                <i class="fas fa-sync-alt me-1"></i>Atualizar lista
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- User Dropdown Unificado -->
             <div class="dropdown">
                 <button class="btn btn-outline-light dropdown-toggle d-flex align-items-center" 

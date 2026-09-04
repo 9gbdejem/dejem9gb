@@ -102,6 +102,8 @@ function atualizarFiltros() {
 function atualizarResumosFiltros() {
     const resumoCodigo = document.getElementById('filtroDashboardCodigoResumo');
     const resumoOPM = document.getElementById('filtroDashboardOpmResumo');
+    const limparCodigo = document.getElementById('btnLimparFiltroDashboardCodigo');
+    const limparOPM = document.getElementById('btnLimparFiltroDashboardOpm');
 
     if (resumoCodigo) {
         resumoCodigo.textContent = filtrosDashboard.codigos.length === 0
@@ -118,6 +120,9 @@ function atualizarResumosFiltros() {
                 ? filtrosDashboard.opms[0]
                 : `${filtrosDashboard.opms.length} OPMs selecionadas`;
     }
+
+    if (limparCodigo) limparCodigo.classList.toggle('d-none', filtrosDashboard.codigos.length === 0);
+    if (limparOPM) limparOPM.classList.toggle('d-none', filtrosDashboard.opms.length === 0);
 }
 
 function configurarFiltrosDashboard() {

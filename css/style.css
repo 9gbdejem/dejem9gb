@@ -2507,6 +2507,16 @@ main.container-fluid {
     white-space: nowrap;
 }
 
+/* Mantém os títulos Cb/Sd, Sub/Sgt, Ten, Cap e Sup legíveis no teste. */
+#tabelaSolicitacoes thead tr:last-child .col-posto {
+    width: 4.8ch !important;
+    min-width: 4.8ch !important;
+    max-width: 4.8ch !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+    font-size: 0.62rem !important;
+}
+
 /* Largura padronizada das colunas de postos no dashboard. */
 #dashboard-content .col-posto-dashboard {
     width: 4ch !important;

@@ -68,15 +68,93 @@ function normalizarSolicitacaoFirebase(dados = {}) {
         solic_superior: Number(dados.Solic_Superior ?? dados.solic_superior ?? 0),
         solic_intermed: Number(dados.Solic_Intermed ?? dados.solic_intermed ?? 0),
         solic_subalterno: Number(dados.Solic_Subalterno ?? dados.solic_subalterno ?? 0),
+        atz_superior: dados.Atz_Superior ?? dados.atz_superior ?? null,
+        atz_intermed: dados.Atz_Intermed ?? dados.atz_intermed ?? null,
+        atz_subalterno: dados.Atz_Subalterno ?? dados.atz_subalterno ?? null,
+        atz_subten_sgt: dados.Atz_Subten_Sgt ?? dados.atz_subten_sgt ?? null,
+        atz_cb_sd: dados.Atz_Cb_Sd ?? dados.atz_cb_sd ?? null,
         ID_Firebase: dados.ID_Firebase || dados.id_firebase || '',
         ID_Escala: dados.ID_Escala || dados.id_sistema_local || '',
         Prazo_Inscricao: dados.Prazo_Inscricao || dados.prazo_inscricao || '',
         necessidade: dados.necessidade ?? '',
+        pedido_liberacao_edicao: dados.pedido_liberacao_edicao || null,
+        liberacao_quantidade: dados.liberacao_quantidade || null,
         esc_superior: Number(dados.Esc_Superior ?? dados.esc_superior ?? 0),
         esc_intermed: Number(dados.Esc_Intermed ?? dados.esc_intermed ?? 0),
         esc_subalterno: Number(dados.Esc_Subalterno ?? dados.esc_subalterno ?? 0),
         esc_subten_sgt: Number(dados.Esc_Subten_Sgt ?? dados.escalado_subten_sgt ?? 0),
         esc_cb_sd: Number(dados.Esc_Cb_Sd ?? dados.escalado_cb_sd ?? 0)
+    };
+}
+
+function quantidadeAutorizadaOuSolicitada(solicitacao, campoAutorizado, campoSolicitado) {
+    const autorizada = solicitacao[campoAutorizado];
+    if (autorizada === null || autorizada === undefined || autorizada === '') {
+        return Number(solicitacao[campoSolicitado] || 0);
+    }
+    return Number(autorizada || 0);
+}
+
+function exibirQuantidadeSolicitadaAutorizada(solicitacao, campoSolicitado, campoAutorizado) {
+    const solicitada = Number(solicitacao[campoSolicitado] || 0);
+    const autorizada = solicitacao[campoAutorizado];
+
+    if (autorizada === null || autorizada === undefined || autorizada === '') {
+        return String(solicitada);
+    }
+
+    const autorizadaNumero = Number(autorizada || 0);
+    return solicitada === autorizadaNumero
+        ? String(solicitada)
+        : `<span class="quantidade-autorizada" title="Solicitada: ${solicitada} | Autorizada: ${autorizadaNumero}">${solicitada}(${autorizadaNumero})</span>`;
+}
+
+function dataEscalaAindaNaoPassou(solicitacao) {
+    const dataEscala = obterDataSolicitacaoTabela(solicitacao);
+    if (!dataEscala) return false;
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    dataEscala.setHours(0, 0, 0, 0);
+    return dataEscala >= hoje;
+}
+
+function podeSolicitarLiberacaoQuantidade(solicitacao) {
+    const nivel = Number(userDataCache?.nivel || 0);
+    const statusAdm = Number(solicitacao.Status_Adm || 0);
+    const statusInicial = Number(solicitacao.Status_Inicial ?? solicitacao.status ?? 0);
+    const temPermissaoOpm = nivel === 1 || (nivel === 2 && opmsPermitidas.includes(solicitacao.opm_codigo));
+
+    return (nivel === 1 || nivel === 2) && temPermissaoOpm &&
+        [1, 2, 3, 4, 8].includes(statusAdm) &&
+        statusInicial !== 5 &&
+        dataEscalaAindaNaoPassou(solicitacao) &&
+        !solicitacao.pedido_liberacao_edicao &&
+        !solicitacao.liberacao_quantidade;
+}
+
+function chavePedidoLiberacao(idFirebase) {
+    return String(idFirebase || '').replaceAll('/', '_');
+}
+
+function obterAnoMesSolicitacao(solicitacao) {
+    const partes = String(solicitacao?.id || solicitacao?.ID_Firebase || '')
+        .replace(/^\/?solicitacoes\//, '')
+        .split('/');
+
+    if (/^\d{4}$/.test(partes[0] || '') && /^\d{1,2}$/.test(partes[1] || '')) {
+        return {
+            ano: partes[0],
+            mes: String(partes[1]).padStart(2, '0')
+        };
+    }
+
+    const dataEscala = obterDataSolicitacaoTabela(solicitacao);
+    if (!dataEscala) return null;
+
+    return {
+        ano: String(dataEscala.getFullYear()),
+        mes: String(dataEscala.getMonth() + 1).padStart(2, '0')
     };
 }
 
@@ -166,6 +244,7 @@ export async function initSolicitacoes() {
         userRE = re;
 
         let opmParam = null, mesParam = null, anoParam = null;
+        let statusFiltroNavbar = [];
 
         if (window.app && window.app.spaParams) {
             opmParam = window.app.spaParams.opm;
@@ -176,6 +255,21 @@ export async function initSolicitacoes() {
             opmParam = urlParams.get('opm');
             mesParam = urlParams.get('mes');
             anoParam = urlParams.get('ano');
+        }
+
+        const filtroNavbar = sessionStorage.getItem('filtroSolicitacoesTeste');
+        if (filtroNavbar) {
+            try {
+                const filtro = JSON.parse(filtroNavbar);
+                opmParam = filtro.opm || opmParam;
+                mesParam = filtro.mes || mesParam;
+                anoParam = filtro.ano || anoParam;
+                statusFiltroNavbar = Array.isArray(filtro.status) ? filtro.status : [];
+                filtrosTabelaSolicitacoes.status = statusFiltroNavbar;
+            } catch (error) {
+                console.warn('Não foi possível recuperar o filtro do navbar:', error);
+            }
+            sessionStorage.removeItem('filtroSolicitacoesTeste');
         }
 
         if (opmParam) opmSelecionada = opmParam;
@@ -192,6 +286,21 @@ export async function initSolicitacoes() {
         await carregarDadosIniciais();
 
         renderInterface();
+
+        if (statusFiltroNavbar.length > 0) {
+            filtrosTabelaSolicitacoes.status = statusFiltroNavbar;
+        }
+
+        // Quando a navegação vem do navbar, a página já recebe OPM, mês e ano definidos.
+        if (opmSelecionada) {
+            await carregarSolicitacoesMes();
+            await atualizarTabelaSolicitacoes();
+            atualizarComposicoesDropdown();
+            document.getElementById('tabelaSolicitacoes')?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
 
         console.log('✅ Sistema de Solicitações carregado');
 
@@ -1942,6 +2051,29 @@ function renderInterface() {
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div class="dropdown" id="liberacoes-dropdown">
+                                        <button class="btn btn-danger btn-sm position-relative sirene-liberacao" data-bs-toggle="dropdown"
+                                                style="min-width: 45px; padding: 5px 10px;" title="Solicitações de liberação">
+                                            <i class="fas fa-bullhorn"></i>
+                                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-light text-danger"
+                                                id="badge-liberacoes" style="font-size: 0.55em; padding: 1px 4px;">0</span>
+                                        </button>
+                                        <div class="dropdown-menu dropdown-menu-end p-0" style="width: 350px;">
+                                            <div class="dropdown-header bg-danger text-white py-2">
+                                                <i class="fas fa-bullhorn me-2"></i>Solicitações de liberação
+                                            </div>
+                                            <div id="lista-liberacoes" style="max-height: 400px; overflow-y: auto;">
+                                                <div class="text-center py-4 text-muted small">Nenhuma solicitação pendente</div>
+                                            </div>
+                                            <div class="dropdown-divider m-0"></div>
+                                            <div class="px-3 py-2">
+                                                <button class="btn btn-sm btn-outline-danger w-100" id="btn-atualizar-liberacoes">
+                                                    <i class="fas fa-sync-alt me-1"></i>Atualizar lista
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             ` : ''}
@@ -2263,6 +2395,7 @@ function renderInterface() {
         </div>
     `;
 
+    posicionarAcoesTesteNoNavbar();
     inicializarDatepicker();
     inicializarEventListeners();
     atualizarTabelaSolicitacoes();
@@ -2289,6 +2422,8 @@ function renderInterface() {
     if (userDataCache && userDataCache.nivel === 1) {
         setTimeout(() => {
             setupNotificacoesSolicitacoes();
+            setupSireneLiberacoes();
+            carregarLiberacoesPendentes();
             setTimeout(() => {
                 if (window.carregarNotificacoesAdmin) {
                     window.carregarNotificacoesAdmin();
@@ -2647,6 +2782,8 @@ function inicializarEventListeners() {
     if (userDataCache && userDataCache.nivel === 1) {
         setTimeout(() => {
             setupNotificacoesSolicitacoes();
+            setupSireneLiberacoes();
+            carregarLiberacoesPendentes();
             setTimeout(() => {
                 if (window.carregarNotificacoesAdmin) {
                     window.carregarNotificacoesAdmin();
@@ -2941,6 +3078,7 @@ function valorStatusFiltroSolicitacao(solicitacao) {
 
 function rotuloStatusFiltro(valor) {
     switch (String(valor)) {
+        case 'pedido_liberacao': return 'Solicitação de liberação';
         case 'sem_status': return 'Aguardando';
         case '1': return 'Aprovada';
         case '2': return 'Exportada';
@@ -2980,6 +3118,9 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
         }
 
         statusDisponiveis.add(valorStatusFiltroSolicitacao(solicitacao));
+        if (Number(userDataCache?.nivel) === 1 && solicitacao.pedido_liberacao_edicao) {
+            statusDisponiveis.add('pedido_liberacao');
+        }
     });
 
     obterOpmsDaSelecao().forEach((opmCodigo) => {
@@ -2996,6 +3137,8 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
     const statusOrdenados = [...statusDisponiveis].sort((a, b) => {
         if (a === 'sem_status') return -1;
         if (b === 'sem_status') return 1;
+        if (a === 'pedido_liberacao') return -1;
+        if (b === 'pedido_liberacao') return 1;
         return Number(a) - Number(b);
     });
 
@@ -3103,8 +3246,15 @@ function aplicarFiltrosTabelaSolicitacoes(solicitacoesValidas) {
         const statusSelecionados = Array.isArray(filtrosTabelaSolicitacoes.status)
             ? filtrosTabelaSolicitacoes.status
             : (filtrosTabelaSolicitacoes.status ? [filtrosTabelaSolicitacoes.status] : []);
-        if (statusSelecionados.length > 0 &&
-            !statusSelecionados.includes(valorStatusFiltroSolicitacao(solicitacao))) {
+        const filtrarPedidosLiberacao = statusSelecionados.includes('pedido_liberacao');
+        const statusReais = statusSelecionados.filter((status) => status !== 'pedido_liberacao');
+
+        if (filtrarPedidosLiberacao && !solicitacao.pedido_liberacao_edicao) {
+            return false;
+        }
+
+        if (statusReais.length > 0 &&
+            !statusReais.includes(valorStatusFiltroSolicitacao(solicitacao))) {
             return false;
         }
 
@@ -3190,17 +3340,23 @@ async function atualizarTabelaSolicitacoes() {
             const solicIntermed = solicitacao.solic_intermed || 0;
             const solicSubalterno = solicitacao.solic_subalterno || 0;
 
+            const atzSubten = quantidadeAutorizadaOuSolicitada(solicitacao, 'atz_subten_sgt', 'solic_subten_sgt');
+            const atzCbSd = quantidadeAutorizadaOuSolicitada(solicitacao, 'atz_cb_sd', 'solic_cb_sd');
+            const atzSuperior = quantidadeAutorizadaOuSolicitada(solicitacao, 'atz_superior', 'solic_superior');
+            const atzIntermed = quantidadeAutorizadaOuSolicitada(solicitacao, 'atz_intermed', 'solic_intermed');
+            const atzSubalterno = quantidadeAutorizadaOuSolicitada(solicitacao, 'atz_subalterno', 'solic_subalterno');
+
             const escaladoSubten = solicitacao.esc_subten_sgt || 0;
             const escaladoCbSd = solicitacao.esc_cb_sd || 0;
             const escSuperior = solicitacao.esc_superior || 0;
             const escIntermed = solicitacao.esc_intermed || 0;
             const escSubalterno = solicitacao.esc_subalterno || 0;
 
-            const subtenClass = (escaladoSubten < vagasSubten) ? 'text-danger fw-bold' : '';
-            const cbSdClass = (escaladoCbSd < vagasCbSd) ? 'text-danger fw-bold' : '';
-            const subalternoClass = (escSubalterno < solicSubalterno) ? 'text-danger fw-bold' : '';
-            const intermedClass = (escIntermed < solicIntermed) ? 'text-danger fw-bold' : '';
-            const superiorClass = (escSuperior < solicSuperior) ? 'text-danger fw-bold' : '';
+            const subtenClass = (escaladoSubten < atzSubten) ? 'text-danger fw-bold' : '';
+            const cbSdClass = (escaladoCbSd < atzCbSd) ? 'text-danger fw-bold' : '';
+            const subalternoClass = (escSubalterno < atzSubalterno) ? 'text-danger fw-bold' : '';
+            const intermedClass = (escIntermed < atzIntermed) ? 'text-danger fw-bold' : '';
+            const superiorClass = (escSuperior < atzSuperior) ? 'text-danger fw-bold' : '';
 
             let prazoHTML = '-';
             if (solicitacao.Prazo_Inscricao) {
@@ -3272,17 +3428,17 @@ async function atualizarTabelaSolicitacoes() {
                     </td>
 
                     <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto" data-vaga="cbsd">
-                        ${vagasCbSd}
+                        ${exibirQuantidadeSolicitadaAutorizada(solicitacao, 'solic_cb_sd', 'atz_cb_sd')}
                     </td>
 
                     <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto" data-vaga="sgt">
-                        ${vagasSubten}
+                        ${exibirQuantidadeSolicitadaAutorizada(solicitacao, 'solic_subten_sgt', 'atz_subten_sgt')}
                     </td>
 
                     ${isAdmin ? `
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicSubalterno}</td>
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicIntermed}</td>
-                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${solicSuperior}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${exibirQuantidadeSolicitadaAutorizada(solicitacao, 'solic_subalterno', 'atz_subalterno')}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${exibirQuantidadeSolicitadaAutorizada(solicitacao, 'solic_intermed', 'atz_intermed')}</td>
+                        <td class="px-1 py-2 text-center fw-bold vagas-cell col-posto">${exibirQuantidadeSolicitadaAutorizada(solicitacao, 'solic_superior', 'atz_superior')}</td>
                     ` : ''}
 
                     <td class="px-1 py-2 text-center">
@@ -3366,6 +3522,18 @@ async function atualizarTabelaSolicitacoes() {
     }
 }
 
+function posicionarAcoesTesteNoNavbar() {
+    const destino = document.getElementById('navbarSolicitacoesTesteAcoes');
+    if (!destino) return;
+
+    // Remove somente as cópias do conteúdo da página; os controles do navbar permanecem.
+    document.querySelectorAll('#notificacoes-dropdown, #liberacoes-dropdown').forEach((controle) => {
+        if (!destino.contains(controle)) controle.remove();
+    });
+
+    if (Number(userDataCache?.nivel) === 1) destino.style.display = 'flex';
+}
+
 function atualizarCardsResumoSolicitacoes(solicitacoes) {
     const getNumero = (valor) => {
         const numero = parseInt(valor, 10);
@@ -3417,6 +3585,35 @@ function gerarAcoesHTMLMelhorado(solicitacao) {
     const isAdmin = userDataCache.nivel === 1;
     const isModerador = userDataCache.nivel === 2;
     const podeAcessarOPM = opmsPermitidas.includes(solicitacao.opm_codigo);
+
+    if (isAdmin && solicitacao.pedido_liberacao_edicao) {
+        return `
+            <div class="d-flex gap-1 justify-content-center">
+                <button class="btn btn-sm btn-success btn-aprovar-liberacao" data-id="${solicitacao.id}" title="Aprovar liberação">
+                    <i class="fas fa-check"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger btn-cancelar-pedido-liberacao" data-id="${solicitacao.id}" title="Cancelar solicitação de liberação">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    if (isAdmin && solicitacao.liberacao_quantidade) {
+        return `
+            <button class="btn btn-sm btn-outline-warning btn-cancelar-liberacao" data-id="${solicitacao.id}" title="Cancelar liberação e restaurar status">
+                <i class="fas fa-lock"></i>
+            </button>
+        `;
+    }
+
+    if (podeSolicitarLiberacaoQuantidade(solicitacao)) {
+        return `
+            <button class="btn btn-sm btn-outline-warning btn-solicitar-liberacao" data-id="${solicitacao.id}" title="Solicitar liberação para editar quantidade">
+                <i class="fas fa-bullhorn"></i>
+            </button>
+        `;
+    }
 
     if ([1, 2, 3].includes(solicitacao.Status_Inicial)) {
         return '';
@@ -3513,6 +3710,22 @@ function adicionarEventListenersTabela() {
                 const id = e.currentTarget.dataset.id;
                 reativarSolicitacao(id);
             });
+        });
+    }
+
+    document.querySelectorAll('.btn-solicitar-liberacao').forEach(btn => {
+        btn.addEventListener('click', (e) => solicitarLiberacaoQuantidade(e.currentTarget.dataset.id));
+    });
+
+    if (userDataCache.nivel === 1) {
+        document.querySelectorAll('.btn-aprovar-liberacao').forEach(btn => {
+            btn.addEventListener('click', (e) => aprovarPedidoLiberacao(e.currentTarget.dataset.id));
+        });
+        document.querySelectorAll('.btn-cancelar-pedido-liberacao').forEach(btn => {
+            btn.addEventListener('click', (e) => cancelarPedidoLiberacao(e.currentTarget.dataset.id));
+        });
+        document.querySelectorAll('.btn-cancelar-liberacao').forEach(btn => {
+            btn.addEventListener('click', (e) => cancelarLiberacaoQuantidade(e.currentTarget.dataset.id));
         });
     }
 
@@ -3856,7 +4069,8 @@ async function salvarDetalhesSolicitacao(id, modalContainer, modalId) {
             await update(solicitacaoRef, {
                 Status_Inicial: 4,
                 motivo: motivo,
-                observacoes: observacoes
+                observacoes: observacoes,
+                liberacao_quantidade: null
             });
 
             mostrarMensagemFormulario('Detalhes atualizados. Solicitação em modo de edição.', 'info');
@@ -4058,7 +4272,8 @@ async function confirmarEdicao(id) {
         await update(solicitacaoRef, {
             Solic_Subten_Sgt: novasVagasSubten,
             Solic_Cb_Sd: novasVagasCbSd,
-            Status_Inicial: 4
+            Status_Inicial: 4,
+            liberacao_quantidade: null
         });
 
         await registrarPendenciaSolicitacao(id, {
@@ -4088,6 +4303,155 @@ async function confirmarEdicao(id) {
 }
 
 // FUNÇÃO: Cancelar edição
+async function atualizarTelaAposLiberacao() {
+    await carregarSolicitacoesMes();
+    await atualizarTabelaSolicitacoes();
+    await carregarLiberacoesPendentes();
+}
+
+async function solicitarLiberacaoQuantidade(id) {
+    const solicitacao = solicitacoesCache.find((item) => item.id === id);
+    if (!solicitacao || !podeSolicitarLiberacaoQuantidade(solicitacao)) {
+        mostrarMensagemFormulario('Esta escala não pode mais solicitar liberação para alteração de quantidade.', 'warning');
+        return;
+    }
+
+    if (!confirm('Solicitar ao administrador a liberação desta escala para alterar somente as quantidades?')) return;
+
+    try {
+        const anoMes = obterAnoMesSolicitacao(solicitacao);
+        if (!anoMes) throw new Error('Não foi possível identificar o mês da solicitação.');
+
+        const agora = new Date().toISOString();
+        const pedido = {
+            id_firebase: id,
+            opm_codigo: solicitacao.opm_codigo || '',
+            opm_nome: solicitacao.opm_nome || '',
+            composicao_cod: solicitacao.composicao_cod || '',
+            composicao_nome: solicitacao.composicao_nome || '',
+            data: solicitacao.data || '',
+            horario_inicial: solicitacao.horario_inicial || '',
+            status_inicial_anterior: solicitacao.Status_Inicial ?? null,
+            solicitado_por_re: userRE || '',
+            solicitado_por_nome: userDataCache?.nome || '',
+            solicitado_em: agora
+        };
+
+        const atualizacoes = {};
+        atualizacoes[`solicitacoes/${id}/pedido_liberacao_edicao`] = pedido;
+        atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = pedido;
+        await update(ref(database), atualizacoes);
+        await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
+            observacao: 'Solicitada liberação para alteração de quantidade',
+            solicitado_por_re: pedido.solicitado_por_re,
+            solicitado_por_nome: pedido.solicitado_por_nome
+        }));
+
+        mostrarMensagemFormulario('Solicitação de liberação enviada ao administrador.', 'success');
+        await atualizarTelaAposLiberacao();
+    } catch (error) {
+        console.error('Erro ao solicitar liberação:', error);
+        mostrarMensagemFormulario('Não foi possível solicitar a liberação.', 'danger');
+    }
+}
+
+async function cancelarPedidoLiberacao(id) {
+    if (!confirm('Cancelar esta solicitação de liberação? A escala permanecerá com o status atual.')) return;
+
+    try {
+        const snapshot = await get(ref(database, `solicitacoes/${id}`));
+        const dados = snapshot.val() || {};
+        const pedido = dados.pedido_liberacao_edicao;
+        if (!pedido) {
+            mostrarMensagemFormulario('A solicitação de liberação já não está pendente.', 'info');
+            await atualizarTelaAposLiberacao();
+            return;
+        }
+
+        const anoMes = obterAnoMesSolicitacao({ ...dados, id });
+        const atualizacoes = { [`solicitacoes/${id}/pedido_liberacao_edicao`]: null };
+        if (anoMes && pedido.opm_codigo) {
+            atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = null;
+        }
+        await update(ref(database), atualizacoes);
+        await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
+            observacao: 'Solicitação de liberação cancelada pelo administrador'
+        }));
+
+        mostrarMensagemFormulario('Solicitação de liberação cancelada.', 'info');
+        await atualizarTelaAposLiberacao();
+    } catch (error) {
+        console.error('Erro ao cancelar solicitação de liberação:', error);
+        mostrarMensagemFormulario('Não foi possível cancelar a solicitação de liberação.', 'danger');
+    }
+}
+
+function aprovarPedidoLiberacao(id) {
+    const solicitacao = solicitacoesCache.find((item) => item.id === id);
+    if (!solicitacao?.pedido_liberacao_edicao) return;
+
+    const statusAtual = String(solicitacao.Status_Inicial ?? solicitacao.status ?? '');
+    if (['1', '2', '3'].includes(statusAtual)) {
+        liberarParaEdicaoAdmin(id, statusAtual);
+    } else {
+        liberarParaEdicao(id);
+    }
+}
+
+async function concluirLiberacaoQuantidade(id, observacao) {
+    const snapshot = await get(ref(database, `solicitacoes/${id}`));
+    const dados = snapshot.val() || {};
+    const pedido = dados.pedido_liberacao_edicao || null;
+    const statusAnterior = dados.Status_Inicial ?? dados.status ?? null;
+    const atualizacoes = { [`solicitacoes/${id}/Status_Inicial`]: null };
+
+    if (pedido) {
+        atualizacoes[`solicitacoes/${id}/pedido_liberacao_edicao`] = null;
+        atualizacoes[`solicitacoes/${id}/liberacao_quantidade`] = {
+            status_inicial_anterior: pedido.status_inicial_anterior ?? statusAnterior,
+            liberado_por_re: userRE || '',
+            liberado_por_nome: userDataCache?.nome || '',
+            liberado_em: new Date().toISOString()
+        };
+
+        const anoMes = obterAnoMesSolicitacao({ ...dados, id });
+        if (anoMes && pedido.opm_codigo) {
+            atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = null;
+        }
+    }
+
+    await update(ref(database), atualizacoes);
+    await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({ observacao }));
+}
+
+async function cancelarLiberacaoQuantidade(id) {
+    if (!confirm('Cancelar a liberação e restaurar o status anterior da solicitação?')) return;
+
+    try {
+        const snapshot = await get(ref(database, `solicitacoes/${id}`));
+        const dados = snapshot.val() || {};
+        const liberacao = dados.liberacao_quantidade;
+        if (!liberacao) {
+            mostrarMensagemFormulario('Esta escala não possui uma liberação ativa para cancelar.', 'info');
+            return;
+        }
+
+        await update(ref(database), {
+            [`solicitacoes/${id}/Status_Inicial`]: liberacao.status_inicial_anterior ?? null,
+            [`solicitacoes/${id}/liberacao_quantidade`]: null
+        });
+        await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
+            observacao: 'Liberação para alteração de quantidade cancelada; status anterior restaurado'
+        }));
+
+        mostrarMensagemFormulario('Liberação cancelada e status anterior restaurado.', 'success');
+        await atualizarTelaAposLiberacao();
+    } catch (error) {
+        console.error('Erro ao cancelar liberação:', error);
+        mostrarMensagemFormulario('Não foi possível cancelar a liberação.', 'danger');
+    }
+}
+
 async function cancelarEdicao(id) {
     try {
         await carregarSolicitacoesMes();
@@ -4282,27 +4646,11 @@ function liberarParaEdicaoAdmin(id, statusAtual) {
 // FUNÇÃO: Confirmar liberação admin
 async function confirmarLiberacaoAdmin(id, modalContainer, modalId) {
     try {
-        const solicitacaoRef = ref(database, `solicitacoes/${id}`);
+        await concluirLiberacaoQuantidade(id, 'Liberado pelo administrador para edição');
+        await atualizarTelaAposLiberacao();
 
-        await update(solicitacaoRef, {
-            Status_Inicial: null
-        });
-
-        const historicoRef = ref(database, `solicitacoes/${id}/historico`);
-        const entradaHistorico = criarEntradaHistorico({
-            observacao: 'Liberado pelo administrador (status 1,2,3 → vazio)'
-        });
-        await update(historicoRef, entradaHistorico);
-
-        const index = solicitacoesCache.findIndex(s => s.id === id);
-        if (index !== -1) {
-            solicitacoesCache[index].status = null;
-        }
-
-        await carregarSolicitacoesMes();
-        atualizarTabelaSolicitacoes();
-
-        bootstrap.Modal.getInstance(document.getElementById(modalId)).hide();
+        const modal = bootstrap.Modal.getInstance(document.getElementById(modalId));
+        if (modal) modal.hide();
 
         mostrarMensagemFormulario('Solicitação liberada para edição', 'success');
 
@@ -4315,22 +4663,11 @@ async function confirmarLiberacaoAdmin(id, modalContainer, modalId) {
 // FUNÇÃO: Confirmar liberação
 async function confirmarLiberacao(id, modalContainer, modalId) {
     try {
-        const solicitacaoRef = ref(database, `solicitacoes/${id}`);
+        await concluirLiberacaoQuantidade(id, 'Liberado pelo administrador para edição');
+        await atualizarTelaAposLiberacao();
 
-        await update(solicitacaoRef, {
-            Status_Inicial: null
-        });
-
-        const historicoRef = ref(database, `solicitacoes/${id}/historico`);
-        const entradaHistorico = criarEntradaHistorico({
-            observacao: 'Liberado pelo administrador para edição'
-        });
-        await update(historicoRef, entradaHistorico);
-
-        await carregarSolicitacoesMes();
-        atualizarTabelaSolicitacoes();
-
-        bootstrap.Modal.getInstance(document.getElementById(modalId)).hide();
+        const modal = bootstrap.Modal.getInstance(document.getElementById(modalId));
+        if (modal) modal.hide();
 
         mostrarMensagemFormulario('Solicitação liberada para edição', 'success');
 
@@ -4413,7 +4750,96 @@ async function exportarCSV() {
 }
 
 // FUNÇÃO: Setup notificações
-function setupNotificacoesSolicitacoes() {
+export async function carregarLiberacoesPendentes() {
+    const lista = document.getElementById('lista-liberacoes');
+    const badge = document.getElementById('badge-liberacoes');
+    const botao = document.querySelector('#liberacoes-dropdown .sirene-liberacao');
+    const nivel = Number(userDataCache?.nivel || sessionStorage.getItem('userLevel') || 0);
+    if (!lista || nivel !== 1) return;
+
+    try {
+        const snapshot = await get(ref(database, 'SolicLiberacaoPendentes'));
+        const agrupadoPorOpm = snapshot.val() || {};
+        const pedidos = [];
+
+        Object.values(agrupadoPorOpm).forEach((porMes) => {
+            Object.values(porMes || {}).forEach((itens) => {
+                Object.values(itens || {}).forEach((pedido) => {
+                    if (pedido?.id_firebase) pedidos.push(pedido);
+                });
+            });
+        });
+
+        pedidos.sort((a, b) => String(a.solicitado_em || '').localeCompare(String(b.solicitado_em || '')));
+        if (badge) badge.textContent = pedidos.length > 99 ? '99+' : String(pedidos.length);
+        if (botao) botao.classList.toggle('ativa', pedidos.length > 0);
+
+        if (pedidos.length === 0) {
+            lista.innerHTML = '<div class="text-center py-4 text-muted small">Nenhuma solicitação pendente</div>';
+            return;
+        }
+
+        lista.innerHTML = pedidos.map((pedido) => {
+            const data = obterDataSolicitacaoTabela(pedido);
+            const dataFormatada = data ? data.toLocaleDateString('pt-BR') : '-';
+            return `
+                <button type="button" class="dropdown-item liberacao-item border-bottom py-2"
+                    data-id="${escaparHTML(pedido.id_firebase)}" data-opm="${escaparHTML(pedido.opm_codigo || '')}">
+                    <div class="fw-semibold small">${escaparHTML(pedido.composicao_cod || '')} - ${escaparHTML(pedido.composicao_nome || '')}</div>
+                    <div class="small text-muted">${dataFormatada} | ${escaparHTML(pedido.opm_nome || pedido.opm_codigo || '')}</div>
+                    <div class="small text-danger">Solicitado por: ${escaparHTML(pedido.solicitado_por_nome || pedido.solicitado_por_re || '-')}</div>
+                </button>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Erro ao carregar solicitações de liberação:', error);
+        lista.innerHTML = '<div class="text-center py-4 text-danger small">Erro ao carregar solicitações</div>';
+    }
+}
+
+export function setupSireneLiberacoes() {
+    const dropdown = document.getElementById('liberacoes-dropdown');
+    if (!dropdown) return;
+
+    const nivel = Number(userDataCache?.nivel || sessionStorage.getItem('userLevel') || 0);
+    if (nivel !== 1) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    const btnAtualizar = document.getElementById('btn-atualizar-liberacoes');
+    if (btnAtualizar && !btnAtualizar.dataset.configurado) {
+        btnAtualizar.dataset.configurado = '1';
+        btnAtualizar.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            await carregarLiberacoesPendentes();
+        });
+    }
+
+    const lista = document.getElementById('lista-liberacoes');
+    if (lista && !lista.dataset.configurado) {
+        lista.dataset.configurado = '1';
+        lista.addEventListener('click', async (event) => {
+            const item = event.target.closest('.liberacao-item');
+            if (!item) return;
+
+            filtrosTabelaSolicitacoes.status = ['pedido_liberacao'];
+            const partes = String(item.dataset.id || '').split('/');
+            if (partes.length >= 2 && item.dataset.opm && window.aplicarFiltrosSolicitacoes) {
+                window.aplicarFiltrosSolicitacoes(item.dataset.opm, partes[1], partes[0]);
+            } else {
+                atualizarTabelaSolicitacoes();
+            }
+            const toggle = dropdown.querySelector('[data-bs-toggle="dropdown"]');
+            if (toggle && typeof bootstrap !== 'undefined') {
+                bootstrap.Dropdown.getOrCreateInstance(toggle).hide();
+            }
+        });
+    }
+}
+
+export function setupNotificacoesSolicitacoes() {
     const userLevel = sessionStorage.getItem('userLevel');
     const notificacoesDropdown = document.getElementById('notificacoes-dropdown');
 
@@ -4423,6 +4849,9 @@ function setupNotificacoesSolicitacoes() {
     }
 
     notificacoesDropdown.style.display = 'block';
+
+    if (notificacoesDropdown.dataset.configurado) return;
+    notificacoesDropdown.dataset.configurado = '1';
 
     document.addEventListener('click', async (e) => {
         const btnAtualizar = e.target.closest('#btn-atualizar-notificacoes');
@@ -4491,10 +4920,6 @@ function setupNotificacoesSolicitacoes() {
             atualizarTabelaSolicitacoes();
         }
 
-        setTimeout(() => {
-            const tabela = document.querySelector('#tabelaSolicitacoes');
-            if (tabela) tabela.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 300);
     });
 
     const badge = document.getElementById('badge-notificacoes');
@@ -4568,6 +4993,17 @@ window.aplicarFiltroOPM = function(opmCodigo) {
 window.aplicarFiltrosSolicitacoes = function(opm, mes, ano) {
     console.log('🎯 Aplicando filtros:', { opm, mes, ano });
 
+    if (!document.getElementById('solicitacoes-content') && window.app?.loadPage) {
+        sessionStorage.setItem('filtroSolicitacoesTeste', JSON.stringify({
+            opm: opm || '',
+            mes: mes || '',
+            ano: ano || '',
+            status: filtrosTabelaSolicitacoes.status || []
+        }));
+        window.app.loadPage('solicitacoes_test.html');
+        return;
+    }
+
     if (opm) opmSelecionada = opm;
     if (mes) mesFiltro = parseInt(mes);
     if (ano) anoFiltro = parseInt(ano);
@@ -4625,6 +5061,27 @@ style.textContent = `
 
     #notificacoes-dropdown .dropdown-menu {
         border: 1px solid #ffc107;
+    }
+
+    @keyframes piscarSireneLiberacao {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.55); }
+        50% { opacity: 0.45; box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+    }
+
+    .sirene-liberacao.ativa {
+        animation: piscarSireneLiberacao 1.1s infinite;
+    }
+
+    #liberacoes-dropdown .dropdown-menu {
+        border: 1px solid #dc3545;
+    }
+
+    .liberacao-item:hover {
+        background-color: rgba(220, 53, 69, 0.08) !important;
+    }
+
+    .quantidade-autorizada {
+        color: #0d6efd;
     }
 
     .excluir-pendencia {
