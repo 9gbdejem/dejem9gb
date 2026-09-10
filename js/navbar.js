@@ -192,11 +192,6 @@ function styleDropdownToggle() {
 
 // 7. ✅ FUNÇÃO CORRIGIDA: Atualizar navbar baseado no nível do usuário
 export function updateNavbarByLevel(userLevel) {
-    const solicitacoesTesteItem = document.getElementById('navSolicitacoesTesteItem');
-    if (solicitacoesTesteItem) {
-        solicitacoesTesteItem.style.display = Number(userLevel) === 1 ? '' : 'none';
-    }
-
     console.log(`🎯 Atualizando navbar para nível ${userLevel}...`);
 
     // Ocultar Exclusões para nível 3

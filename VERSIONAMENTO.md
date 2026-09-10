@@ -47,10 +47,10 @@ Marco inicial formal de versionamento do Sistema de Gestão de Escalas.
 - Dashboard de escalas abertas e filtros operacionais.
 - Confirmação, montagem, pagamento e tratamento de novidades de escalas.
 - Perfis, permissões, moderadores e acessos temporários.
-- Página `solicitacoes_test` para validar alterações sem afetar a página oficial.
+- A página oficial de solicitações concentra o fluxo validado durante a fase de testes.
 - Notificações globais no navbar para pendências de importação e solicitações de liberação.
 
 ## Em andamento
 
-- Validação operacional do fluxo de solicitação de liberação na `solicitacoes_test`.
+- Encerramento da fase de testes da página de solicitações e transporte para a página oficial.
 - Ajustes pendentes no Access devem ser versionados em um fechamento próprio, após testes.

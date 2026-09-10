@@ -201,14 +201,6 @@ async function hideNavbarItemsByLevel() {
         // Aguardar um pouco mais para garantir que elementos foram renderizados
         await new Promise(resolve => setTimeout(resolve, 300));
 
-        if (parseInt(userLevel, 10) !== 1) {
-            hideElement('#navSolicitacoesTeste');
-        } else {
-            const linkTeste = document.getElementById('navSolicitacoesTeste');
-            const itemTeste = linkTeste?.closest('li.nav-item');
-            if (itemTeste) itemTeste.style.display = '';
-        }
-
         // Nível 3 (usuário normal) - só vê Dashboard e Escalas
         if (parseInt(userLevel) >= 3) {
             hideElement('#navExclusoes');
