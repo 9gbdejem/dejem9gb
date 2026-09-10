@@ -15,6 +15,7 @@ Public Function SQLEscalasPrazoMontagem() As String
         "WHERE TblEscGeral.Prazo_Inscricao Is Not Null " & _
         "AND Trim(Nz(TblEscGeral.ID_Escala,'')) <> '' " & _
         "AND Trim(Nz(TblEscGeral.ID_Escala,'')) <> '0' " & _
+        "AND DateValue(TblEscGeral.Data_Esc) + TimeValue(TblEscGeral.Horario_Inicial) > Now() " & _
         "AND Trim(Nz(TblEscGeral.Status_Adm,'')) IN ('3','8') " & _
         "ORDER BY TblEscGeral.Prazo_Inscricao ASC, " & _
         "TblEscGeral.Data_Esc ASC, TblEscGeral.Horario_Inicial ASC, " & _

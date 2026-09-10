@@ -53,7 +53,7 @@ Public Sub PagarEscalasConfirmadasFiltradas()
     
     If lngElegiveis = 0 Then
         MsgBox "Nenhuma escala elegível foi encontrada." & vbCrLf & _
-               "Critérios: exibida no sfrmLinhaEscala e Status_Adm = 4.", _
+               "Critérios: exibida no sfrmLinhaEscala e Status_Adm = 3 ou 4.", _
                vbInformation, "Pagar escalas"
         GoTo Sair
     End If
@@ -390,7 +390,8 @@ Sair:
 End Function
 
 Private Function EscalaElegivelPagamento(ByRef rs As DAO.Recordset) As Boolean
-    EscalaElegivelPagamento = (Trim(Nz(rs!Status_Adm, "")) = "4" And _
+    EscalaElegivelPagamento = ((Trim(Nz(rs!Status_Adm, "")) = "3" Or _
+                                Trim(Nz(rs!Status_Adm, "")) = "4") And _
                                Trim(Nz(rs!ID_Escala, "")) <> "" And _
                                Trim(Nz(rs!ID_Escala, "")) <> "0")
 End Function

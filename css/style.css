@@ -2543,6 +2543,35 @@ main.container-fluid {
 #dashboard-filtros .dropdown-menu.show {
     z-index: 1060;
 }
+
+/* O navbar e seus menus devem permanecer acima dos filtros do Dashboard. */
+#navbar > .navbar {
+    z-index: 1100 !important;
+}
+
+#navbarSolicitacoesTesteAcoes,
+#mainNavbar > .dropdown {
+    position: relative;
+    z-index: 1110 !important;
+}
+
+#navbarSolicitacoesTesteAcoes .dropdown-menu,
+#mainNavbar > .dropdown .dropdown-menu {
+    z-index: 1120 !important;
+}
+
+#dashboard-filtros {
+    position: relative;
+    z-index: 1 !important;
+}
+
+#dashboard-filtros .dropdown {
+    z-index: 2 !important;
+}
+
+#dashboard-filtros .dropdown-menu.show {
+    z-index: 1000 !important;
+}
 /* Remove setas dos inputs numericos das quantidades na tabela de solicitacoes. */
 #tabelaSolicitacoes .vagas-cell input[type="number"] {
     appearance: textfield;
