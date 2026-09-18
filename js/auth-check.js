@@ -208,6 +208,13 @@ async function hideNavbarItemsByLevel() {
             hideElement('#navSolicitacoes');
         }
 
+        // Sino e sirene são exclusivos do nível 1, inclusive nas páginas
+        // carregadas fora do app.html.
+        const acoesSolicitacoes = document.getElementById('navbarSolicitacoesTesteAcoes');
+        if (acoesSolicitacoes) {
+            acoesSolicitacoes.style.display = parseInt(userLevel) === 1 ? 'flex' : 'none';
+        }
+
         
         // Nível 2 e 1 - vê tudo
         

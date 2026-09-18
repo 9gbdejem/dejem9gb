@@ -2678,3 +2678,52 @@ main.container-fluid {
     text-align: center;
     box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
 }
+
+/* Filtros da tela de escalas: em celular cada controle ocupa uma linha útil. */
+@media (max-width: 767.98px) {
+    #filtrosEscalas > [class*="col-"] {
+        flex: 0 0 100%;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    #filtrosEscalas .input-group,
+    #filtrosEscalas .form-select,
+    #filtrosEscalas .form-control,
+    #filtrosEscalas .btn-group,
+    #filtrosEscalas .btn {
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    #filtrosEscalas .input-group {
+        flex-wrap: nowrap;
+    }
+
+    #filtrosEscalas #searchType {
+        max-width: 122px !important;
+        flex: 0 0 122px;
+    }
+
+    #filtrosEscalas .admin-day-nav:not(.d-none) {
+        display: flex !important;
+        justify-content: stretch;
+    }
+
+    #filtrosEscalas .admin-day-nav:not(.d-none) .btn {
+        flex: 1 1 0;
+    }
+
+    #filtrosEscalas > .d-flex {
+        flex-wrap: wrap;
+    }
+
+    #filtrosEscalas > .d-flex .btn-group {
+        display: flex;
+    }
+
+    #filtrosEscalas > .d-flex .btn-group .btn {
+        flex: 1 1 0;
+        white-space: nowrap;
+    }
+}

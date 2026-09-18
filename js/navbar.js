@@ -194,6 +194,20 @@ function styleDropdownToggle() {
 export function updateNavbarByLevel(userLevel) {
     console.log(`🎯 Atualizando navbar para nível ${userLevel}...`);
 
+    // As notificações e as solicitações de liberação são ações exclusivas
+    // do administrador. Mantém a regra também fora do fluxo do app.html.
+    const acoesSolicitacoes = document.getElementById('navbarSolicitacoesTesteAcoes');
+    if (acoesSolicitacoes) {
+        acoesSolicitacoes.style.display = Number(userLevel) === 1 ? 'flex' : 'none';
+    }
+
+    ['notificacoes-dropdown', 'liberacoes-dropdown'].forEach((id) => {
+        const controle = document.getElementById(id);
+        if (controle && Number(userLevel) !== 1) {
+            controle.style.display = 'none';
+        }
+    });
+
     // Ocultar Exclusões para nível 3
     if (userLevel >= 3) {
         const exclusoesItem = document.getElementById('navExclusoes');
@@ -240,7 +254,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Verificar nível do usuário e atualizar navbar
-    const userNivel = sessionStorage.getItem('userNivel');
+    const userNivel = sessionStorage.getItem('userLevel') || sessionStorage.getItem('userNivel');
     if (userNivel) {
         updateNavbarByLevel(parseInt(userNivel));
     }

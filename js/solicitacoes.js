@@ -44,6 +44,7 @@ let solicitacoesCache = [];
 let opmSelecionada = null;
 let mesFiltro = null;
 let anoFiltro = null;
+let filtrosCarregados = false;
 let filtrosTabelaSolicitacoes = {
     composicaoCodigos: [],
     diaInicial: '',
@@ -241,6 +242,7 @@ export async function initSolicitacoes() {
         const { userData, re } = await checkAuth(2);
         userDataCache = userData;
         userRE = re;
+        filtrosCarregados = false;
 
         let opmParam = null, mesParam = null, anoParam = null;
         let statusFiltroNavbar = [];
@@ -271,7 +273,13 @@ export async function initSolicitacoes() {
             sessionStorage.removeItem('filtroSolicitacoesTeste');
         }
 
-        if (opmParam) opmSelecionada = opmParam;
+        // Ao abrir normalmente, não reaproveita a OPM de uma visita anterior:
+        // o usuário deve confirmar os filtros pelo botão Carregar.
+        if (opmParam) {
+            opmSelecionada = opmParam;
+        } else {
+            opmSelecionada = null;
+        }
         if (mesParam) mesFiltro = parseInt(mesParam);
         if (anoParam) anoFiltro = parseInt(anoParam);
 
@@ -290,9 +298,11 @@ export async function initSolicitacoes() {
             filtrosTabelaSolicitacoes.status = statusFiltroNavbar;
         }
 
-        // Quando a navegação vem do navbar, a página já recebe OPM, mês e ano definidos.
-        if (opmSelecionada) {
+        // A navegação pelo sino/sirene fornece filtros explícitos e mantém o
+        // carregamento automático desse atalho administrativo.
+        if (opmParam && opmSelecionada) {
             await carregarSolicitacoesMes();
+            filtrosCarregados = true;
             await atualizarTabelaSolicitacoes();
             atualizarComposicoesDropdown();
             document.getElementById('tabelaSolicitacoes')?.scrollIntoView({
@@ -2614,6 +2624,7 @@ function setFormularioSolicitacaoBloqueado(bloqueado) {
 }
 
 function bloquearFormularioAoAlterarFiltros() {
+    filtrosCarregados = false;
     setFormularioSolicitacaoBloqueado(true);
 }
 
@@ -2638,11 +2649,65 @@ function atualizarBloqueioFormularioPorTabela() {
     const selecaoOpm = document.getElementById('selectOpm')?.value || '';
     const opmVirtual = Boolean(opmFiltrosEspeciais[selecaoOpm]);
 
-    setFormularioSolicitacaoBloqueado(!(filtrosObrigatoriosPreenchidos() && tabelaCarregada && !opmVirtual));
+    setFormularioSolicitacaoBloqueado(!(filtrosObrigatoriosPreenchidos() && filtrosCarregados && tabelaCarregada && !opmVirtual));
+}
+
+function campoObrigatorioVisivel(campo) {
+    if (campo.disabled || !campo.required) return false;
+
+    const anexo = campo.closest('#divAnexo');
+    return !(anexo && anexo.style.display === 'none');
+}
+
+function atualizarEstadoCampoObrigatorio(campo) {
+    if (!campoObrigatorioVisivel(campo)) {
+        campo.classList.remove('is-invalid');
+        campo.removeAttribute('aria-invalid');
+        return true;
+    }
+
+    const valido = campo.checkValidity();
+    campo.classList.toggle('is-invalid', !valido);
+    campo.toggleAttribute('aria-invalid', !valido);
+    return valido;
+}
+
+function validarCamposObrigatoriosFormulario() {
+    const form = document.getElementById('formNovaSolicitacao');
+    if (!form) return true;
+
+    const campos = [...form.querySelectorAll('input, select, textarea')]
+        .filter(campoObrigatorioVisivel);
+    const todosValidos = campos.map(atualizarEstadoCampoObrigatorio).every(Boolean);
+
+    if (!todosValidos) {
+        const primeiroInvalido = campos.find((campo) => !campo.checkValidity());
+        primeiroInvalido?.focus();
+    }
+
+    return todosValidos;
+}
+
+function configurarValidacaoVisualFormulario() {
+    const form = document.getElementById('formNovaSolicitacao');
+    if (!form || form.dataset.validacaoConfigurada) return;
+
+    form.dataset.validacaoConfigurada = '1';
+    form.addEventListener('invalid', (event) => {
+        const campo = event.target;
+        if (campoObrigatorioVisivel(campo)) {
+            campo.classList.add('is-invalid');
+            campo.setAttribute('aria-invalid', 'true');
+        }
+    }, true);
+
+    form.addEventListener('input', (event) => atualizarEstadoCampoObrigatorio(event.target));
+    form.addEventListener('change', (event) => atualizarEstadoCampoObrigatorio(event.target));
 }
 
 function inicializarEventListeners() {
     setFormularioSolicitacaoBloqueado(true);
+    configurarValidacaoVisualFormulario();
 
     const selectOpm = document.getElementById('selectOpm');
     if (selectOpm) {
@@ -2658,7 +2723,7 @@ function inicializarEventListeners() {
             opmSelecionada = valorSelecionado;
             limparDadosAoAlterarFiltros();
             atualizarComposicoesDropdown();
-            mostrarMensagemFormulario('Filtros alterados. Clique em "Atualizar" para carregar as solicitações.', 'info');
+            mostrarMensagemFormulario('Filtros alterados. Clique em "Carregar" para consultar as solicitações.', 'info');
         });
     }
 
@@ -2668,7 +2733,7 @@ function inicializarEventListeners() {
             bloquearFormularioAoAlterarFiltros();
             mesFiltro = parseInt(e.target.value);
             limparDadosAoAlterarFiltros();
-            mostrarMensagemFormulario('Filtros alterados. Clique em "Atualizar" para carregar as solicitações.', 'info');
+            mostrarMensagemFormulario('Filtros alterados. Clique em "Carregar" para consultar as solicitações.', 'info');
         });
     }
 
@@ -2678,7 +2743,7 @@ function inicializarEventListeners() {
             bloquearFormularioAoAlterarFiltros();
             anoFiltro = parseInt(e.target.value);
             limparDadosAoAlterarFiltros();
-            mostrarMensagemFormulario('Filtros alterados. Clique em "Atualizar" para carregar as solicitações.', 'info');
+            mostrarMensagemFormulario('Filtros alterados. Clique em "Carregar" para consultar as solicitações.', 'info');
         });
     }
 
@@ -2694,6 +2759,7 @@ function inicializarEventListeners() {
             mostrarOverlayAtualizandoTabela();
             try {
                 await carregarSolicitacoesMes();
+                filtrosCarregados = true;
                 atualizarTabelaSolicitacoes();
                 atualizarComposicoesDropdown();
             } finally {
@@ -2713,6 +2779,10 @@ function inicializarEventListeners() {
     if (formNovaSolicitacao) {
         formNovaSolicitacao.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (!validarCamposObrigatoriosFormulario()) {
+                mostrarMensagemFormulario('Preencha todos os campos obrigatórios destacados em vermelho.', 'danger');
+                return;
+            }
             await cadastrarSolicitacao();
         });
     }
@@ -3598,11 +3668,21 @@ function gerarAcoesHTMLMelhorado(solicitacao) {
         `;
     }
 
-    if (isAdmin && solicitacao.liberacao_quantidade) {
+    if (solicitacao.liberacao_quantidade) {
+        const podeEditarQuantidade = isAdmin || (isModerador && podeAcessarOPM);
+        if (!podeEditarQuantidade) return '';
+
         return `
-            <button class="btn btn-sm btn-outline-warning btn-cancelar-liberacao" data-id="${solicitacao.id}" title="Cancelar liberação e restaurar status">
-                <i class="fas fa-lock"></i>
-            </button>
+            <div class="d-flex gap-1 justify-content-center">
+                <button class="btn btn-sm btn-outline-primary btn-editar" data-id="${solicitacao.id}" title="Editar quantidade de vagas">
+                    <i class="fas fa-edit"></i>
+                </button>
+                ${isAdmin ? `
+                    <button class="btn btn-sm btn-outline-warning btn-cancelar-liberacao" data-id="${solicitacao.id}" title="Bloquear novamente e restaurar o status anterior">
+                        <i class="fas fa-lock"></i>
+                    </button>
+                ` : ''}
+            </div>
         `;
     }
 
