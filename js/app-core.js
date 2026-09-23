@@ -56,9 +56,15 @@ class AppCore {
         if (!destino) return;
 
         if (Number(nivel) !== 1) {
-            destino.style.display = 'none';
+            destino.classList.add('d-none');
+            destino.classList.remove('d-flex');
+            destino.style.setProperty('display', 'none', 'important');
             return;
         }
+
+        destino.classList.remove('d-none');
+        destino.classList.add('d-flex');
+        destino.style.setProperty('display', 'flex', 'important');
 
         try {
             const notificacoes = await import('./solicitacoes.js');
@@ -207,7 +213,7 @@ class AppCore {
             
             const html = await response.text();
             
-            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html') {
+            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html' || pageUrl === 'proximas-escalas.html') {
                 await this.loadSpecialPage(html, pageUrl);
             } else {
                 const pageContent = this.extractContent(html, pageUrl);
@@ -248,6 +254,8 @@ class AppCore {
                 await this.loadPerfilScript();
             } else if (pageUrl === 'solicitacoes.html') {
                 await this.loadSolicitacoesScript();
+            } else if (pageUrl === 'proximas-escalas.html') {
+                await this.loadProximasEscalasScript();
             }
         } else {
             contentDiv.innerHTML = '<div class="alert alert-danger">Erro: Conteúdo não encontrado</div>';
@@ -337,6 +345,18 @@ class AppCore {
             
         } catch (error) {
             console.error('❌ Erro ao carregar solicitações:', error);
+            this.showError(error);
+        }
+    }
+
+    async loadProximasEscalasScript() {
+        try {
+            const proximasModule = await import('./proximas-escalas.js');
+            if (proximasModule && proximasModule.initProximasEscalas) {
+                await proximasModule.initProximasEscalas();
+            }
+        } catch (error) {
+            console.error('Erro ao carregar próximas escalas:', error);
             this.showError(error);
         }
     }

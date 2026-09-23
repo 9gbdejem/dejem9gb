@@ -121,6 +121,7 @@ export async function loadNavbar() {
     const existingNavbar = document.getElementById('navbar');
     if (existingNavbar && existingNavbar.innerHTML.trim() !== '') {
         console.log('✅ Navbar já carregada, ignorando nova carga');
+        configurarFechamentoDropdownsNavbar();
         return true;
     }
     
@@ -150,6 +151,8 @@ export async function loadNavbar() {
         } else {
             // console.log('✅ Navbar já tinha conteúdo, mantendo');
         }
+
+        configurarFechamentoDropdownsNavbar();
         
         // ✅ CORRIGIDO: Ocultar itens por nível DEPOIS de garantir que navbar carregou
         setTimeout(() => {
@@ -167,6 +170,8 @@ export async function loadNavbar() {
             navbarElement.innerHTML = createFallbackNavbar();
             console.log('✅ Navbar fallback criado');
         }
+
+        configurarFechamentoDropdownsNavbar();
         
         return false;
     }
@@ -208,11 +213,16 @@ async function hideNavbarItemsByLevel() {
             hideElement('#navSolicitacoes');
         }
 
+        configurarFechamentoDropdownsNavbar();
+
         // Sino e sirene são exclusivos do nível 1, inclusive nas páginas
         // carregadas fora do app.html.
         const acoesSolicitacoes = document.getElementById('navbarSolicitacoesTesteAcoes');
         if (acoesSolicitacoes) {
-            acoesSolicitacoes.style.display = parseInt(userLevel) === 1 ? 'flex' : 'none';
+            const mostrarAcoes = parseInt(userLevel) === 1;
+            acoesSolicitacoes.classList.toggle('d-none', !mostrarAcoes);
+            acoesSolicitacoes.classList.toggle('d-flex', mostrarAcoes);
+            acoesSolicitacoes.style.setProperty('display', mostrarAcoes ? 'flex' : 'none', 'important');
         }
 
         
@@ -344,4 +354,50 @@ export function safeRedirectToDashboard() {
         console.log('📍 Navegando para dashboard (página independente)');
         window.location.href = 'dashboard.html';
     }
+}
+
+function configurarFechamentoDropdownsNavbar() {
+    if (window.dejemFechamentoDropdownsNavbarConfigurado) return;
+
+    window.dejemFechamentoDropdownsNavbarConfigurado = true;
+
+    document.addEventListener('click', (event) => {
+        const navbar = document.getElementById('navbar');
+        if (!navbar) return;
+
+        const toggle = event.target.closest('#navbar [data-bs-toggle="dropdown"]');
+        if (toggle) {
+            fecharDropdownsNavbar(toggle);
+            return;
+        }
+
+        const itemMenu = event.target.closest('#navbar .dropdown-menu a[href], #navbar .dropdown-menu button.dropdown-item');
+        if (itemMenu) {
+            fecharDropdownsNavbar();
+            return;
+        }
+
+        if (!event.target.closest('#navbar .dropdown')) {
+            fecharDropdownsNavbar();
+        }
+    });
+}
+
+function fecharDropdownsNavbar(toggleMantido = null) {
+    document.querySelectorAll('#navbar [data-bs-toggle="dropdown"]').forEach((toggle) => {
+        if (toggle === toggleMantido) return;
+
+        if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
+            bootstrap.Dropdown.getOrCreateInstance(toggle).hide();
+        } else {
+            toggle.setAttribute('aria-expanded', 'false');
+            const menu = toggle.parentElement?.querySelector('.dropdown-menu');
+            if (menu) menu.classList.remove('show');
+        }
+
+        if (toggle.id === 'userGreetingDropdown') {
+            toggle.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+            toggle.style.backgroundColor = 'transparent';
+        }
+    });
 }

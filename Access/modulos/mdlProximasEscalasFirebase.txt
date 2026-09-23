@@ -1,0 +1,265 @@
+Option Compare Database
+Option Explicit
+
+' Altere para False para desativar somente este indice, sem mexer na montagem.
+Private Const ATIVAR_INDICE_PROXIMAS_ESCALAS As Boolean = True
+
+Public Function AtualizarProximasEscalasFirebase() As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strJson As String
+    Dim strREAtual As String
+    Dim strIDAtual As String
+    Dim blnPrimeiroRE As Boolean
+    Dim blnPrimeiroID As Boolean
+    Dim lngRegistros As Long
+
+    On Error GoTo Erro
+
+    If Not ATIVAR_INDICE_PROXIMAS_ESCALAS Then
+        AtualizarProximasEscalasFirebase = True
+        Exit Function
+    End If
+
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset( _
+        "SELECT Militar_RE, ID_Escala, Data_Esc, Horario_Inicial, Horario_Final, " & _
+        "OPM_Nome, Composicao_Nome, Militar_Nome, Militar_Posto_Grad, Militar_OPM, [Status] " & _
+        "FROM TblMilEsc " & _
+        "WHERE Trim(Nz(Militar_RE,'')) <> '' " & _
+        "AND Trim(Nz(ID_Escala,'')) <> '' " & _
+        "AND Trim(Nz(ID_Escala,'')) <> '0' " & _
+        "AND Data_Esc >= Date() " & _
+        "ORDER BY Militar_RE, Data_Esc, Horario_Inicial, ID_Escala", dbOpenSnapshot)
+
+    strJson = "{"
+    strREAtual = ""
+    strIDAtual = ""
+    blnPrimeiroRE = True
+
+    Do While Not rs.EOF
+        If CStr(Nz(rs!Militar_RE, "")) <> strREAtual Then
+            If Not blnPrimeiroRE Then strJson = strJson & "}"
+            If Not blnPrimeiroRE Then strJson = strJson & ","
+
+            strREAtual = CStr(Nz(rs!Militar_RE, ""))
+            strJson = strJson & JsonTexto(strREAtual) & ":{"
+            blnPrimeiroRE = False
+            blnPrimeiroID = True
+        End If
+
+        If Not blnPrimeiroID Then strJson = strJson & ","
+        strIDAtual = CStr(Nz(rs!ID_Escala, ""))
+        strJson = strJson & JsonTexto(strIDAtual) & ":{" & _
+                  """ID_Escala"":" & JsonTexto(strIDAtual) & "," & _
+                  """Data_Esc"":" & JsonTexto(DataTexto(rs!Data_Esc)) & "," & _
+                  """Horario_Inicial"":" & JsonTexto(HoraTexto(rs!Horario_Inicial)) & "," & _
+                  """Horario_Final"":" & JsonTexto(HoraTexto(rs!Horario_Final)) & "," & _
+                  """OPM_Nome"":" & JsonTexto(CStr(Nz(rs!OPM_Nome, ""))) & "," & _
+                  """Composicao_Nome"":" & JsonTexto(CStr(Nz(rs!Composicao_Nome, ""))) & "," & _
+                  """Militar_Nome"":" & JsonTexto(CStr(Nz(rs!Militar_Nome, ""))) & "," & _
+                  """Militar_Posto_Grad"":" & JsonTexto(CStr(Nz(rs!Militar_Posto_Grad, ""))) & "," & _
+                  """Militar_OPM"":" & JsonTexto(CStr(Nz(rs!Militar_OPM, ""))) & "," & _
+                  """Status"":" & JsonTexto(CStr(Nz(rs!Status, ""))) & "}"
+
+        blnPrimeiroID = False
+        lngRegistros = lngRegistros + 1
+        rs.MoveNext
+    Loop
+
+    If lngRegistros = 0 Then
+        strJson = "null"
+    Else
+        'Fecha o ultimo RE e tambem o objeto raiz proximasEscalas.
+        strJson = strJson & "}}"
+    End If
+
+    rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+
+    AtualizarProximasEscalasFirebase = EnviarIndiceProximasEscalas(strJson)
+    If Not AtualizarProximasEscalasFirebase Then
+        DiagnosticarJsonProximasEscalas strJson
+        Debug.Print "Erro AtualizarProximasEscalasFirebase: falha ao enviar o indice ao Firebase." & _
+                    " | Registros=" & lngRegistros & _
+                    " | Bytes aproximados=" & Len(strJson)
+    End If
+    Exit Function
+
+Erro:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Debug.Print "Erro AtualizarProximasEscalasFirebase: " & Err.Number & " - " & Err.Description
+    AtualizarProximasEscalasFirebase = False
+End Function
+
+Private Sub DiagnosticarJsonProximasEscalas(ByVal strJson As String)
+    Dim i As Long
+    Dim nivelObjeto As Long
+    Dim nivelArray As Long
+    Dim blnDentroTexto As Boolean
+    Dim blnEscape As Boolean
+    Dim caractere As String
+    Dim codigo As Long
+    Dim caminhoArquivo As String
+    Dim objStream As Object
+
+    On Error GoTo Erro
+
+    For i = 1 To Len(strJson)
+        caractere = Mid$(strJson, i, 1)
+        codigo = AscW(caractere)
+
+        If blnDentroTexto Then
+            If blnEscape Then
+                blnEscape = False
+            ElseIf caractere = "\" Then
+                blnEscape = True
+            ElseIf caractere = Chr$(34) Then
+                blnDentroTexto = False
+            ElseIf codigo < 32 Then
+                Debug.Print "JSON invalido: caractere de controle na posicao=" & i & _
+                            " | codigo=" & codigo
+            End If
+        Else
+            Select Case caractere
+                Case Chr$(34)
+                    blnDentroTexto = True
+                Case "{"
+                    nivelObjeto = nivelObjeto + 1
+                Case "}"
+                    nivelObjeto = nivelObjeto - 1
+                Case "["
+                    nivelArray = nivelArray + 1
+                Case "]"
+                    nivelArray = nivelArray - 1
+            End Select
+        End If
+    Next i
+
+    Debug.Print "Diagnostico JSON: tamanho=" & Len(strJson) & _
+                " | objetos_abertos=" & nivelObjeto & _
+                " | arrays_abertos=" & nivelArray & _
+                " | dentro_texto=" & blnDentroTexto & _
+                " | escape_pendente=" & blnEscape
+    Debug.Print "Diagnostico JSON inicio: " & Left$(strJson, 600)
+    Debug.Print "Diagnostico JSON final: " & Right$(strJson, 600)
+
+    caminhoArquivo = CurrentProject.Path & "\..\Firebase\proximasEscalas-debug.json"
+    Set objStream = CreateObject("ADODB.Stream")
+    objStream.Type = 2
+    objStream.Charset = "utf-8"
+    objStream.Open
+    objStream.WriteText strJson
+    objStream.SaveToFile caminhoArquivo, 2
+    objStream.Close
+    Set objStream = Nothing
+    Debug.Print "Diagnostico JSON salvo em: " & caminhoArquivo
+    Exit Sub
+
+Erro:
+    Debug.Print "Erro DiagnosticarJsonProximasEscalas: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Function EnviarIndiceProximasEscalas(ByVal strJson As String) As Boolean
+    Const URL_FIREBASE As String = "https://dejem-9gb-default-rtdb.firebaseio.com/"
+    Dim strURL As String
+    Dim objHTTP As Object
+    Dim objStream As Object
+    Dim dados As Variant
+
+    On Error GoTo Erro
+
+    strURL = URL_FIREBASE & "proximasEscalas.json"
+
+    'Converte o JSON para UTF-8 antes do envio, preservando acentos e nomes.
+    Set objStream = CreateObject("ADODB.Stream")
+    objStream.Type = 2
+    objStream.Charset = "utf-8"
+    objStream.Open
+    objStream.WriteText strJson
+    objStream.Position = 0
+    objStream.Type = 1
+
+    'Remove o BOM UTF-8, que nao faz parte do JSON enviado ao Firebase.
+    If objStream.Size >= 3 Then objStream.Position = 3
+    dados = objStream.Read
+
+    Set objHTTP = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    objHTTP.Open "PUT", strURL, False
+    objHTTP.setRequestHeader "Content-Type", "application/json; charset=utf-8"
+    objHTTP.Send dados
+
+    EnviarIndiceProximasEscalas = (objHTTP.status = 200)
+    If Not EnviarIndiceProximasEscalas Then
+        Debug.Print "Falha EnviarIndiceProximasEscalas: HTTP=" & objHTTP.status & _
+                    " | resposta=" & Left$(objHTTP.ResponseText, 1000)
+    End If
+
+    objStream.Close
+    Set objStream = Nothing
+    Set objHTTP = Nothing
+    Exit Function
+
+Erro:
+    On Error Resume Next
+    If Not objStream Is Nothing Then objStream.Close
+    Debug.Print "Erro EnviarIndiceProximasEscalas: " & Err.Number & " - " & Err.Description
+    EnviarIndiceProximasEscalas = False
+End Function
+
+Private Function JsonTexto(ByVal valor As String) As String
+    Dim strAspas As String
+    Dim strResultado As String
+    Dim i As Long
+    Dim codigo As Long
+    Dim caractere As String
+
+    strAspas = Chr$(34)
+    strResultado = ""
+
+    For i = 1 To Len(valor)
+        caractere = Mid$(valor, i, 1)
+        codigo = AscW(caractere)
+
+        Select Case caractere
+            Case "\"
+                strResultado = strResultado & "\\"
+            Case strAspas
+                strResultado = strResultado & "\" & strAspas
+            Case vbCr
+                strResultado = strResultado & "\r"
+            Case vbLf
+                strResultado = strResultado & "\n"
+            Case vbTab
+                strResultado = strResultado & "\t"
+            Case Chr$(8)
+                strResultado = strResultado & "\b"
+            Case Chr$(12)
+                strResultado = strResultado & "\f"
+            Case Else
+                If codigo >= 32 Then
+                    strResultado = strResultado & caractere
+                End If
+        End Select
+    Next i
+
+    JsonTexto = strAspas & strResultado & strAspas
+End Function
+
+Private Function DataTexto(ByVal valor As Variant) As String
+    If IsDate(valor) Then
+        DataTexto = Format(CDate(valor), "dd/mm/yyyy")
+    Else
+        DataTexto = ""
+    End If
+End Function
+
+Private Function HoraTexto(ByVal valor As Variant) As String
+    If IsDate(valor) Then
+        HoraTexto = Format(CDate(valor), "hh:nn")
+    Else
+        HoraTexto = ""
+    End If
+End Function

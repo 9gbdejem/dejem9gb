@@ -51,6 +51,11 @@ Public Function EnviarDadosFirebase(strNode As String, strDados As String) As Bo
     objXML.Send strDados
     
     EnviarDadosFirebase = (objXML.status = 200)
+    If Not EnviarDadosFirebase Then
+        Debug.Print "Falha EnviarDadosFirebase: nó=" & strNode & _
+                    " | HTTP=" & objXML.status & _
+                    " | resposta=" & Left$(objXML.ResponseText, 1000)
+    End If
     Exit Function
     
 Erro:
@@ -529,6 +534,7 @@ Private Function SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic
     Dim strStatusInicial As String
     Dim strStatusAdmFinal As String
     Dim strStatusAdmFirebase As String
+    Dim strAlteracaoSql As String
     Dim slcCbSd As Long
     Dim slcIntermed As Long
     Dim slcSubalterno As Long
@@ -588,10 +594,15 @@ Private Function SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic
         db.Execute strSQL, dbFailOnError
         importados = importados + 1
     Else
-        If strStatusInicial = "4" And _
-           Trim(Nz(rsCheck!ID_Escala, "")) <> "" And _
-           Trim(Nz(rsCheck!Status_Adm, "")) = "3" Then
+        ' Solicitação alterada no site após liberação administrativa.
+        ' As quantidades atualizadas devem retornar ao fluxo de montagem.
+        If strStatusAdmFirebase = "8" Then
+            'Liberacao aprovada no site: aguarda tratamento no Access/Intranet.
             strStatusAdmFinal = "8"
+            strAlteracaoSql = ", Alteracao = 1"
+        ElseIf strStatusInicial = "4" Then
+            strStatusAdmFinal = "3"
+            strAlteracaoSql = ", Alteracao = 1"
         ElseIf Trim(Nz(rsCheck!Status_Adm, "")) = "" Then
             strStatusAdmFinal = "1"
         Else
@@ -616,7 +627,8 @@ Private Function SalvarSolicitacaoLocal(ByVal db As DAO.Database, ByVal objSolic
                  "Observacoes_Slc = " & SQLTexto(DictVal(objSolic, "observacoes", "")) & ", " & _
                  "OPM_Codigo = " & SQLTexto(DictVal(objSolic, "opm_codigo", "")) & ", " & _
                  "OPM_Nome = " & SQLTexto(DictVal(objSolic, "opm_nome", "")) & ", " & _
-                 "Necessidade = " & SQLTexto(DictVal(objSolic, "necessidade", "")) & " " & _
+                 "Necessidade = " & SQLTexto(DictVal(objSolic, "necessidade", "")) & _
+                 strAlteracaoSql & " " & _
                  "WHERE ID_Cadastro = " & SQLTexto(strIDCadastro)
         
         db.Execute strSQL, dbFailOnError

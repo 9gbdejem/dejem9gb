@@ -1210,10 +1210,11 @@ End Sub
 Private Sub btnMontar_Click()
     On Error GoTo Erro
 
-    Call MontarEscalasFiltradasIntranet
-    Call AtualizarEscalasAbertasResumoFirebase(False)
-    Call SincronizarEscalasPendentesFirebase
-    Call btnFiltrar_Click
+      Call MontarEscalasFiltradasIntranet
+      Call AtualizarEscalasAbertasResumoFirebase(False)
+      Call SincronizarEscalasPendentesFirebase
+      Call AtualizarProximasEscalasFirebase
+      Call btnFiltrar_Click
 
     MsgBox "Montagem das escalas concluida e envio pendente ao Firebase finalizado.", _
            vbInformation, "Montar escalas"
@@ -1324,6 +1325,8 @@ Private Sub btnImportarSolicitacoes_Click()
     
     ' Executa a importação
     If ImportarSolicitacoesFirebase() Then
+        ' Envia ao site as quantidades importadas e o retorno ao Status_Adm 3.
+        Call AtualizarEscalasAbertasResumoFirebase(False)
         
         ' ============================================
         ' ATUALIZAR O SUBFORMULÁRIO sfrmLinhaEscala

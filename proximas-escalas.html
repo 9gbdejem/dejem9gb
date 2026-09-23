@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Próximas escalas - DEJEM 9GB</title>
+    <link rel="icon" type="image/png" href="img/logo.png">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #proximasEscalasPage .search-panel {
+            border: 1px solid rgba(34, 60, 108, 0.16);
+            border-radius: 10px;
+            background: #f8fafc;
+        }
+
+        #proximasEscalasPage .table thead th {
+            white-space: nowrap;
+            background: #223c6c;
+            color: #fff;
+            font-size: 0.88rem;
+        }
+
+        #proximasEscalasPage .table tbody td {
+            vertical-align: middle;
+        }
+
+        #proximasEscalasPage .status-badge {
+            color: #1f5130;
+            background: #e5f4e9;
+            border: 1px solid #b8dfc1;
+        }
+
+        #proximasEscalasPage .btn-ciencia {
+            color: #fff;
+            background: #9b5364;
+            border-color: #874456;
+            animation: pulsarCiencia 0.8s ease-in-out infinite;
+        }
+
+        #proximasEscalasPage .btn-ciencia:hover,
+        #proximasEscalasPage .btn-ciencia:focus {
+            color: #fff;
+            background: #874456;
+            border-color: #713648;
+        }
+
+        #proximasEscalasPage .btn-ciencia.ciente {
+            color: #fff;
+            background: #198754;
+            border-color: #157347;
+            animation: none;
+        }
+
+        @keyframes pulsarCiencia {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.48; }
+        }
+
+        @media (max-width: 768px) {
+            #proximasEscalasPage .table {
+                min-width: 850px;
+            }
+
+            #proximasEscalasPage .table-wrap {
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar"></div>
+
+    <main class="container-fluid mt-4">
+        <div id="proximasEscalasPage">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between gap-2">
+                <h1 class="h5 mb-0">
+                    <i class="fas fa-person-walking-arrow-right me-2"></i>Próximas escalas
+                </h1>
+                <span class="small opacity-75">Consulta por RE</span>
+            </div>
+
+            <div class="card-body">
+                <div class="alert alert-danger border-danger fw-semibold mb-3" role="alert">
+                    <div class="mb-2">NI nº CoordOpCB-001-821-17 - Regulamentação da DEJEM</div>
+                    <div class="mb-2">Item 5. b. 5) b)</div>
+                    <strong>Atenção:</strong> para que comprove a efetividade da escala a que concorreu, bem como de eventual desistência solicitada, acompanhe na intranet PM, na aba procedimentos, SIRH, no campo consulta de escalas por RE, as datas, horários e locais onde ocorrerá a escala <strong>até 12 (doze) horas antes do dia para o qual se voluntariou</strong>, sendo este o único procedimento que deverá ser adotado para a consulta de escalas futuras. As mensagens eletrônicas via e-mail, oriundas do CPD, informando que o policial militar foi escalado automaticamente não substituem a responsabilidade de verificação no SIRH.
+                </div>
+
+                <div class="search-panel p-3 mb-3">
+                    <form id="formPesquisarProximas" class="row g-2 align-items-end">
+                        <div class="col-12 col-sm-7 col-md-4">
+                            <label for="inputREProximas" class="form-label fw-semibold mb-1">RE do militar</label>
+                            <input type="text" id="inputREProximas" class="form-control"
+                                   inputmode="numeric" maxlength="6" autocomplete="off"
+                                   placeholder="Digite os 6 dígitos do RE" aria-describedby="ajudaREProximas">
+                            <div id="ajudaREProximas" class="form-text">É possível consultar qualquer RE.</div>
+                        </div>
+                        <div class="col-12 col-sm-auto">
+                            <button type="button" class="btn btn-primary w-100" id="btnPesquisarProximas">
+                                <i class="fas fa-search me-1"></i>Pesquisar
+                            </button>
+                        </div>
+                        <div class="col-12 col-sm-auto">
+                            <button type="button" class="btn btn-outline-secondary w-100" id="btnLimparProximas">
+                                <i class="fas fa-eraser me-1"></i>Limpar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="mensagemProximas" class="alert d-none" role="status"></div>
+
+                <div id="resumoProximas" class="d-none mb-3"></div>
+
+                <div class="table-wrap">
+                    <table class="table table-hover table-bordered mb-0" id="tabelaProximas">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Horário</th>
+                                <th>Estação</th>
+                                <th>Composição</th>
+                                <th>ID</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="proximasEscalasBody">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    Informe o RE para consultar as próximas escalas.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="js/proximas-escalas.js"></script>
+</body>
+</html>

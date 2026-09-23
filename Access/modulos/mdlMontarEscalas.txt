@@ -131,11 +131,26 @@ Private Function MontarUmaEscala(ByRef driver As ChromeDriver, ByRef por As by, 
     Pausar 0.5
     AguardarAjax driver, por, 30
     
-    lngQtdEscalados = CLng(Val(TextoElementoPorID(driver, por, "span_vTOTESC")))
-    
+    If Not ObterTotalEscaladosSeguro(driver, por, lngQtdEscalados) Then
+        Err.Raise vbObjectError + 926, "MontarUmaEscala", _
+                  "O site nao retornou a quantidade de escalados da escala " & strIDEscala & "."
+    End If
+
     If lngQtdEscalados = 0 Then
-        RegistrarSemInscritos rsEscala
-        Exit Function
+        'Um zero pode ser uma resposta incompleta do site. Refaz a consulta
+        'inteira antes de registrar a escala como sem inscritos.
+        lngQtdEscalados = -1
+        ReconsultarEscalaParaMontagem driver, por, strURL, strIDEscala
+
+        If Not ObterTotalEscaladosSeguro(driver, por, lngQtdEscalados) Then
+            Err.Raise vbObjectError + 926, "MontarUmaEscala", _
+                      "O site nao retornou a quantidade de escalados na segunda consulta da escala " & strIDEscala & "."
+        End If
+
+        If lngQtdEscalados = 0 Then
+            RegistrarSemInscritos rsEscala
+            Exit Function
+        End If
     End If
     
     driver.FindElement(por.Name("BUTTON1")).Click
@@ -163,6 +178,64 @@ Private Function MontarUmaEscala(ByRef driver As ChromeDriver, ByRef por As by, 
 Erro:
     Debug.Print "Erro mdlMontarEscalas.MontarUmaEscala ID_Escala=" & strIDEscala & ": " & Err.Number & " - " & Err.Description
     Err.Raise Err.Number, "MontarUmaEscala", Err.Description
+End Function
+
+Private Sub ReconsultarEscalaParaMontagem(ByRef driver As ChromeDriver, ByRef por As by, _
+                                          ByVal strURL As String, ByVal strIDEscala As String)
+    On Error GoTo Erro
+
+    driver.Refresh
+    Pausar 1
+    AguardarAjax driver, por, 30
+
+    LimparEnviarPorName driver, por, "vESCOPRIDF", strIDEscala
+    driver.FindElement(por.Name("IMAGE2")).Click
+    Pausar 0.5
+    AguardarAjax driver, por, 30
+
+    If Trim(TextoElementoPorID(driver, por, "gxErrorViewer")) <> "" Then
+        Err.Raise vbObjectError + 927, "ReconsultarEscalaParaMontagem", _
+                  "O site retornou uma mensagem ao consultar novamente a escala " & strIDEscala & "."
+    End If
+
+    driver.FindElement(por.Name("MONESCAUT1")).Click
+    Pausar 0.5
+    AguardarAjax driver, por, 30
+    Exit Sub
+
+Erro:
+    Err.Raise Err.Number, "ReconsultarEscalaParaMontagem", Err.Description
+End Sub
+
+Private Function ObterTotalEscaladosSeguro(ByRef driver As ChromeDriver, ByRef por As by, _
+                                            ByRef lngTotal As Long) As Boolean
+    Dim strTexto As String
+
+    lngTotal = -1
+
+    If Not ElementoExistePorID(driver, por, "span_vTOTESC") Then
+        Err.Raise vbObjectError + 928, "ObterTotalEscaladosSeguro", _
+                  "O elemento span_vTOTESC nao existe. O site pode ter expirado ou nao terminou de carregar."
+    End If
+
+    strTexto = Trim(TextoElementoPorID(driver, por, "span_vTOTESC"))
+    If strTexto = "" Or Not IsNumeric(strTexto) Then
+        Err.Raise vbObjectError + 929, "ObterTotalEscaladosSeguro", _
+                  "O elemento span_vTOTESC existe, mas nao possui uma quantidade valida."
+    End If
+
+    lngTotal = CLng(Val(strTexto))
+    ObterTotalEscaladosSeguro = True
+End Function
+
+Private Function ElementoExistePorID(ByRef driver As ChromeDriver, ByRef por As by, _
+                                     ByVal strID As String) As Boolean
+    On Error GoTo Ausente
+    ElementoExistePorID = driver.IsElementPresent(por.id(strID))
+    Exit Function
+
+Ausente:
+    ElementoExistePorID = False
 End Function
 
 Private Function CapturarMilitaresEscaladosComTentativas(ByRef driver As ChromeDriver, ByRef por As by, _

@@ -2727,3 +2727,39 @@ main.container-fluid {
         white-space: nowrap;
     }
 }
+/* Próximas escalas: ciência do militar */
+#proximasEscalasPage .btn-ciencia {
+    color: #fff !important;
+    background-color: #9b5364 !important;
+    border-color: #874456 !important;
+    animation: pulsarCiencia 0.8s ease-in-out infinite;
+    white-space: nowrap;
+}
+
+#proximasEscalasPage .btn-ciencia:hover,
+#proximasEscalasPage .btn-ciencia:focus {
+    color: #fff !important;
+    background-color: #874456 !important;
+    border-color: #713648 !important;
+}
+
+#proximasEscalasPage .btn-ciencia.ciente {
+    color: #fff !important;
+    background-color: #198754 !important;
+    border-color: #157347 !important;
+    animation: none;
+}
+
+#proximasEscalasPage .btn-ciencia.bloqueado {
+    color: #fff !important;
+    background-color: #6c757d !important;
+    border-color: #5c636a !important;
+    animation: none;
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
+@keyframes pulsarCiencia {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.48; }
+}

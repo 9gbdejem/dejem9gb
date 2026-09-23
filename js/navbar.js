@@ -198,7 +198,10 @@ export function updateNavbarByLevel(userLevel) {
     // do administrador. Mantém a regra também fora do fluxo do app.html.
     const acoesSolicitacoes = document.getElementById('navbarSolicitacoesTesteAcoes');
     if (acoesSolicitacoes) {
-        acoesSolicitacoes.style.display = Number(userLevel) === 1 ? 'flex' : 'none';
+        const mostrarAcoes = Number(userLevel) === 1;
+        acoesSolicitacoes.classList.toggle('d-none', !mostrarAcoes);
+        acoesSolicitacoes.classList.toggle('d-flex', mostrarAcoes);
+        acoesSolicitacoes.style.setProperty('display', mostrarAcoes ? 'flex' : 'none', 'important');
     }
 
     ['notificacoes-dropdown', 'liberacoes-dropdown'].forEach((id) => {

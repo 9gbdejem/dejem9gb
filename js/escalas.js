@@ -12,6 +12,7 @@ let userNivel = 3;
 let userRE = '';
 let perfilUsuario = '';
 let confirmacoesCache = {};
+let confirmacoesLoadVersion = 0;
 let filtroConfirmacaoAdministrador = 'todos';
 
 // Cache para dias já carregados
@@ -572,8 +573,6 @@ async function loadConfirmacoesForCurrentPage() {
         return;
     }
 
-    confirmacoesCache = {};
-    
     // Pegar IDs das escalas da página atual
     const grupos = getEscalasAgrupadas(false);
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -591,7 +590,11 @@ async function loadConfirmacoesForCurrentPage() {
     
     console.log(`🔍 Carregando confirmações para ${escalaIds.size} IDs da página ${currentPage}`);
     
-    const promises = Array.from(escalaIds).map(id => 
+    const idsPendentes = Array.from(escalaIds).filter((id) =>
+        !Object.prototype.hasOwnProperty.call(confirmacoesCache, normalizarChaveConfirmacao(id))
+    );
+
+    const promises = idsPendentes.map(id =>
         loadConfirmacaoById(id).catch(err => {
             console.warn(`⚠️ Erro ao carregar confirmação ${id}:`, err);
             return null;
@@ -603,12 +606,18 @@ async function loadConfirmacoesForCurrentPage() {
 
 // ✅ Carrega UMA confirmação específica
 async function loadConfirmacaoById(escalaId) {
+    const chaveEscala = normalizarChaveConfirmacao(escalaId);
+    if (!chaveEscala) return false;
+
+    // Reserva a chave antes da consulta para evitar novas consultas durante a digitação.
+    confirmacoesCache[chaveEscala] = { dadosGerais: {}, militares: {} };
+
     try {
-        const confirmacaoRef = ref(database, `confirmacoes/${escalaId}`);
+        const confirmacaoRef = ref(database, `confirmacoes/${chaveEscala}`);
         const snapshot = await get(confirmacaoRef);
         
         if (snapshot.exists()) {
-            confirmacoesCache[escalaId] = {
+            const confirmacaoAtual = {
                 dadosGerais: snapshot.child('dados_gerais').val() || {},
                 militares: {}
             };
@@ -616,9 +625,11 @@ async function loadConfirmacaoById(escalaId) {
             snapshot.forEach((militarSnapshot) => {
                 if (militarSnapshot.key !== 'dados_gerais') {
                     const re = militarSnapshot.key.replace('RE_', '');
-                    confirmacoesCache[escalaId].militares[re] = militarSnapshot.val();
+                    confirmacaoAtual.militares[normalizarChaveConfirmacao(re)] = militarSnapshot.val();
                 }
             });
+
+            confirmacoesCache[chaveEscala] = confirmacaoAtual;
         }
         
         return true;
@@ -697,7 +708,6 @@ async function loadConfirmacoesParaFiltroAdministrador() {
         return;
     }
 
-    confirmacoesCache = {};
     const grupos = getEscalasAgrupadas(false);
     const escalaIds = new Set();
 
@@ -861,7 +871,7 @@ function setupEventListeners() {
     const tutorialBtn = document.getElementById('tutorialBtn');
     if (tutorialBtn) {
         tutorialBtn.addEventListener('click', function() { 
-            window.open('https://www.youtube.com/', '_blank'); 
+            window.open('https://www.youtube.com/playlist?list=PL-_9SSH-2eArJx7k8AZDLrd8e8UbTAl5Q', '_blank'); 
         });
     }
     
@@ -1006,11 +1016,11 @@ function applyFilters() {
     updateStatistics();
     
     // Recarregar confirmações para a nova página
+    const versaoDaBusca = ++confirmacoesLoadVersion;
     loadConfirmacoesForCurrentPage().then(() => {
-        if (userNivel === 1 && filtroConfirmacaoAdministrador !== 'todos') {
-            renderTable();
-            updateStatistics();
-        }
+        if (versaoDaBusca !== confirmacoesLoadVersion) return;
+        renderTable();
+        updateStatistics();
     });
 }
 
@@ -1096,8 +1106,10 @@ function isValidSEILink(link) {
 }
 
 function getConfirmacaoStatus(escalaId, re) {
-    if (!escalaId || !re || !confirmacoesCache[escalaId]) return null;
-    return confirmacoesCache[escalaId].militares[re] || null;
+    const chaveEscala = normalizarChaveConfirmacao(escalaId);
+    const chaveRE = normalizarChaveConfirmacao(re);
+    if (!chaveEscala || !chaveRE || !confirmacoesCache[chaveEscala]) return null;
+    return confirmacoesCache[chaveEscala].militares[chaveRE] || null;
 }
 
 function getConfirmacaoStatusGrupo(escalaId, militares) {
@@ -1105,12 +1117,16 @@ function getConfirmacaoStatusGrupo(escalaId, militares) {
 
     const statusMilitares = militares.map((militar) => {
         const confirmacao = getConfirmacaoStatus(escalaId, militar.RE);
-        return confirmacao?.status || null;
+        return String(confirmacao?.status || '').toLowerCase() || null;
     });
 
     if (statusMilitares.some((status) => status === 'novidade')) return 'novidade';
     if (statusMilitares.every((status) => status === 'concluida')) return 'concluida';
     return null;
+}
+
+function normalizarChaveConfirmacao(valor) {
+    return String(valor ?? '').trim();
 }
 
 function getConfirmacaoIcon(status, escalaId, re) {

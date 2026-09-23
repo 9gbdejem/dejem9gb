@@ -3600,7 +3600,10 @@ function posicionarAcoesTesteNoNavbar() {
         if (!destino.contains(controle)) controle.remove();
     });
 
-    if (Number(userDataCache?.nivel) === 1) destino.style.display = 'flex';
+    const mostrarAcoes = Number(userDataCache?.nivel) === 1;
+    destino.classList.toggle('d-none', !mostrarAcoes);
+    destino.classList.toggle('d-flex', mostrarAcoes);
+    destino.style.setProperty('display', mostrarAcoes ? 'flex' : 'none', 'important');
 }
 
 function atualizarCardsResumoSolicitacoes(solicitacoes) {
@@ -3656,6 +3659,14 @@ function gerarAcoesHTMLMelhorado(solicitacao) {
     const podeAcessarOPM = opmsPermitidas.includes(solicitacao.opm_codigo);
 
     if (isAdmin && solicitacao.pedido_liberacao_edicao) {
+        return `
+            <button class="btn btn-sm btn-warning btn-analisar-liberacao" data-id="${solicitacao.id}" title="Analisar solicitacao de liberacao">
+                <i class="fas fa-clipboard-check"></i>
+            </button>
+        `;
+    }
+
+    if (false && isAdmin && solicitacao.pedido_liberacao_edicao) {
         return `
             <div class="d-flex gap-1 justify-content-center">
                 <button class="btn btn-sm btn-success btn-aprovar-liberacao" data-id="${solicitacao.id}" title="Aprovar liberação">
@@ -3793,15 +3804,12 @@ function adicionarEventListenersTabela() {
     }
 
     document.querySelectorAll('.btn-solicitar-liberacao').forEach(btn => {
-        btn.addEventListener('click', (e) => solicitarLiberacaoQuantidade(e.currentTarget.dataset.id));
+        btn.addEventListener('click', (e) => abrirModalSolicitarLiberacao(e.currentTarget.dataset.id));
     });
 
     if (userDataCache.nivel === 1) {
-        document.querySelectorAll('.btn-aprovar-liberacao').forEach(btn => {
-            btn.addEventListener('click', (e) => aprovarPedidoLiberacao(e.currentTarget.dataset.id));
-        });
-        document.querySelectorAll('.btn-cancelar-pedido-liberacao').forEach(btn => {
-            btn.addEventListener('click', (e) => cancelarPedidoLiberacao(e.currentTarget.dataset.id));
+        document.querySelectorAll('.btn-analisar-liberacao').forEach(btn => {
+            btn.addEventListener('click', (e) => abrirModalAnaliseLiberacao(e.currentTarget.dataset.id));
         });
         document.querySelectorAll('.btn-cancelar-liberacao').forEach(btn => {
             btn.addEventListener('click', (e) => cancelarLiberacaoQuantidade(e.currentTarget.dataset.id));
@@ -4388,6 +4396,185 @@ async function atualizarTelaAposLiberacao() {
     await carregarLiberacoesPendentes();
 }
 
+function formatarPrazoLiberacao(data, hora, minuto) {
+    if (!data && !hora && !minuto) return '';
+    if (!data || hora === '' || minuto === '') return null;
+    const partes = String(data).split('-');
+    if (partes.length !== 3) return null;
+    return `${partes[2]}/${partes[1]}/${partes[0]} ${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}`;
+}
+
+function opcoesNumericas(inicio, fim) {
+    let html = '<option value="">--</option>';
+    for (let valor = inicio; valor <= fim; valor++) {
+        const texto = String(valor).padStart(2, '0');
+        html += `<option value="${texto}">${texto}</option>`;
+    }
+    return html;
+}
+
+function fecharModalLiberacao(container, modalId) {
+    const elemento = document.getElementById(modalId);
+    const modal = elemento ? bootstrap.Modal.getInstance(elemento) : null;
+    if (modal) modal.hide();
+    setTimeout(() => container?.remove(), 250);
+}
+
+function abrirModalSolicitarLiberacao(id) {
+    const solicitacao = solicitacoesCache.find((item) => item.id === id);
+    if (!solicitacao || !podeSolicitarLiberacaoQuantidade(solicitacao)) {
+        mostrarMensagemFormulario('Esta escala não pode mais solicitar liberação.', 'warning');
+        return;
+    }
+
+    const modalId = `modalSolicitarLiberacao-${Date.now()}`;
+    const container = document.createElement('div');
+    container.innerHTML = `
+        <div class="modal fade" id="${modalId}" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title"><i class="fas fa-bullhorn me-2"></i>Solicitar liberação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Solicite ao administrador a liberação desta escala para alterar a quantidade de vagas.</p>
+                    <div class="alert alert-info small">Se nenhum prazo for informado, o prazo atual será mantido e a solicitação ficará somente para alteração de quantidade.</div>
+                    <div class="row g-2">
+                        <div class="col-12"><label class="form-label fw-semibold">Novo prazo de inscrição (opcional)</label><input type="date" class="form-control" id="prazoData${modalId}"></div>
+                        <div class="col-6"><label class="form-label">Hora</label><select class="form-select" id="prazoHora${modalId}">${opcoesNumericas(0, 23)}</select></div>
+                        <div class="col-6"><label class="form-label">Minuto</label><select class="form-select" id="prazoMinuto${modalId}">${opcoesNumericas(0, 59)}</select></div>
+                        <div class="col-12"><label class="form-label">Observação (opcional)</label><textarea class="form-control" id="observacaoLiberacao${modalId}" rows="3" maxlength="500"></textarea></div>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-warning" id="enviarLiberacao${modalId}">Enviar solicitação</button></div>
+            </div></div>
+        </div>`;
+    document.body.appendChild(container);
+    const modal = new bootstrap.Modal(document.getElementById(modalId));
+    modal.show();
+
+    document.getElementById(`enviarLiberacao${modalId}`).onclick = async () => {
+        const data = document.getElementById(`prazoData${modalId}`).value;
+        const hora = document.getElementById(`prazoHora${modalId}`).value;
+        const minuto = document.getElementById(`prazoMinuto${modalId}`).value;
+        const prazo = formatarPrazoLiberacao(data, hora, minuto);
+        const observacao = document.getElementById(`observacaoLiberacao${modalId}`).value.trim();
+        if (prazo === null) {
+            mostrarMensagemFormulario('Preencha a data, a hora e o minuto do prazo ou deixe todos vazios.', 'warning');
+            return;
+        }
+
+        const botao = document.getElementById(`enviarLiberacao${modalId}`);
+        botao.disabled = true;
+        try {
+            const anoMes = obterAnoMesSolicitacao(solicitacao);
+            if (!anoMes) throw new Error('Mês da solicitação não identificado.');
+            const pedido = {
+                id_firebase: id,
+                opm_codigo: solicitacao.opm_codigo || '',
+                opm_nome: solicitacao.opm_nome || '',
+                composicao_cod: solicitacao.composicao_cod || '',
+                composicao_nome: solicitacao.composicao_nome || '',
+                data: solicitacao.data || '',
+                horario_inicial: solicitacao.horario_inicial || '',
+                prazo_inscricao_solicitado: prazo || null,
+                observacoes_liberacao: observacao || '',
+                status_inicial_anterior: solicitacao.Status_Inicial ?? null,
+                solicitado_por_re: userRE || '',
+                solicitado_por_nome: userDataCache?.nome || '',
+                solicitado_em: new Date().toISOString()
+            };
+            const atualizacoes = {};
+            atualizacoes[`solicitacoes/${id}/pedido_liberacao_edicao`] = pedido;
+            atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = pedido;
+            await update(ref(database), atualizacoes);
+            await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
+                observacao: prazo ? 'Solicitada liberação com novo prazo de inscrição' : 'Solicitada liberação para alteração de quantidade',
+                prazo_inscricao_solicitado: prazo || null,
+                observacoes_liberacao: observacao || ''
+            }));
+            fecharModalLiberacao(container, modalId);
+            mostrarMensagemFormulario('Solicitação de liberação enviada ao administrador.', 'success');
+            await atualizarTelaAposLiberacao();
+        } catch (error) {
+            console.error('Erro ao solicitar liberação:', error);
+            botao.disabled = false;
+            mostrarMensagemFormulario('Não foi possível solicitar a liberação.', 'danger');
+        }
+    };
+    document.getElementById(modalId).addEventListener('hidden.bs.modal', () => setTimeout(() => container.remove(), 250), { once: true });
+}
+
+async function abrirModalAnaliseLiberacao(id) {
+    const solicitacao = solicitacoesCache.find((item) => item.id === id);
+    if (Number(userDataCache?.nivel) !== 1 || !solicitacao?.pedido_liberacao_edicao) return;
+    const pedido = solicitacao.pedido_liberacao_edicao;
+    const modalId = `modalAnaliseLiberacao-${Date.now()}`;
+    const container = document.createElement('div');
+    const prazoSolicitado = pedido.prazo_inscricao_solicitado || 'Não informado; manter o prazo atual';
+    container.innerHTML = `
+        <div class="modal fade" id="${modalId}" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content">
+                <div class="modal-header bg-warning"><h5 class="modal-title"><i class="fas fa-clipboard-check me-2"></i>Analisar solicitação de liberação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body"><div class="row g-3">
+                    <div class="col-md-6"><strong>Solicitante:</strong><br>${escaparHTML(pedido.solicitado_por_nome || '-')} (${escaparHTML(pedido.solicitado_por_re || '-')})</div>
+                    <div class="col-md-6"><strong>Solicitado em:</strong><br>${escaparHTML(formatarDataHoraSolicitacao(pedido.solicitado_em) || '-')}</div>
+                    <div class="col-md-6"><strong>OPM:</strong><br>${escaparHTML(pedido.opm_nome || pedido.opm_codigo || '-')}</div>
+                    <div class="col-md-6"><strong>Composição:</strong><br>${escaparHTML(`${pedido.composicao_cod || ''} - ${pedido.composicao_nome || ''}`)}</div>
+                    <div class="col-md-6"><strong>Data da escala:</strong><br>${escaparHTML(pedido.data || '-')} ${escaparHTML(pedido.horario_inicial || '')}</div>
+                    <div class="col-md-6"><strong>Prazo atual:</strong><br>${escaparHTML(solicitacao.Prazo_Inscricao || '-')}</div>
+                    <div class="col-12"><div class="alert alert-info mb-0"><strong>Prazo solicitado:</strong> ${escaparHTML(prazoSolicitado)}</div></div>
+                    <div class="col-12"><strong>Observação:</strong><div class="border rounded p-2 bg-light">${escaparHTML(pedido.observacoes_liberacao || 'Nenhuma observação informada.')}</div></div>
+                    <div class="col-12"><label class="form-label">Motivo da recusa (opcional)</label><textarea class="form-control" id="motivoRecusa${modalId}" rows="2"></textarea></div>
+                </div></div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-danger" id="recusarLiberacao${modalId}"><i class="fas fa-times me-1"></i>Recusar</button><button type="button" class="btn btn-success" id="liberarSolicitacao${modalId}"><i class="fas fa-check me-1"></i>Liberar</button></div>
+            </div></div>
+        </div>`;
+    document.body.appendChild(container);
+    new bootstrap.Modal(document.getElementById(modalId)).show();
+
+    document.getElementById(`liberarSolicitacao${modalId}`).onclick = async () => {
+        try {
+            await concluirLiberacaoQuantidade(id, 'Solicitação liberada pelo administrador');
+            fecharModalLiberacao(container, modalId);
+            mostrarMensagemFormulario('Solicitação liberada para edição.', 'success');
+            await atualizarTelaAposLiberacao();
+        } catch (error) {
+            console.error('Erro ao liberar solicitação:', error);
+            mostrarMensagemFormulario('Não foi possível liberar a solicitação.', 'danger');
+        }
+    };
+    document.getElementById(`recusarLiberacao${modalId}`).onclick = async () => {
+        if (!confirm('Tem certeza que deseja recusar esta solicitação de liberação?')) return;
+        try {
+            const motivo = document.getElementById(`motivoRecusa${modalId}`).value.trim();
+            await recusarPedidoLiberacao(id, motivo);
+            fecharModalLiberacao(container, modalId);
+            mostrarMensagemFormulario('Solicitação de liberação recusada.', 'info');
+            await atualizarTelaAposLiberacao();
+        } catch (error) {
+            console.error('Erro ao recusar solicitação:', error);
+            mostrarMensagemFormulario('Não foi possível recusar a solicitação.', 'danger');
+        }
+    };
+    document.getElementById(modalId).addEventListener('hidden.bs.modal', () => setTimeout(() => container.remove(), 250), { once: true });
+}
+
+async function recusarPedidoLiberacao(id, motivo = '') {
+    const snapshot = await get(ref(database, `solicitacoes/${id}`));
+    const dados = snapshot.val() || {};
+    const pedido = dados.pedido_liberacao_edicao;
+    if (!pedido) return;
+    const anoMes = obterAnoMesSolicitacao({ ...dados, id });
+    const atualizacoes = { [`solicitacoes/${id}/pedido_liberacao_edicao`]: null };
+    if (anoMes && pedido.opm_codigo) atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = null;
+    await update(ref(database), atualizacoes);
+    await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
+        observacao: 'Solicitação de liberação recusada pelo administrador',
+        motivo_recusa: motivo || ''
+    }));
+}
+
 async function solicitarLiberacaoQuantidade(id) {
     const solicitacao = solicitacoesCache.find((item) => item.id === id);
     if (!solicitacao || !podeSolicitarLiberacaoQuantidade(solicitacao)) {
@@ -4482,16 +4669,25 @@ async function concluirLiberacaoQuantidade(id, observacao) {
     const dados = snapshot.val() || {};
     const pedido = dados.pedido_liberacao_edicao || null;
     const statusAnterior = dados.Status_Inicial ?? dados.status ?? null;
-    const atualizacoes = { [`solicitacoes/${id}/Status_Inicial`]: null };
+    const atualizacoes = {
+        [`solicitacoes/${id}/Status_Inicial`]: null,
+        [`solicitacoes/${id}/Status_Adm`]: 8
+    };
 
     if (pedido) {
         atualizacoes[`solicitacoes/${id}/pedido_liberacao_edicao`] = null;
         atualizacoes[`solicitacoes/${id}/liberacao_quantidade`] = {
             status_inicial_anterior: pedido.status_inicial_anterior ?? statusAnterior,
+            prazo_inscricao_solicitado: pedido.prazo_inscricao_solicitado || null,
+            observacoes_liberacao: pedido.observacoes_liberacao || '',
             liberado_por_re: userRE || '',
             liberado_por_nome: userDataCache?.nome || '',
             liberado_em: new Date().toISOString()
         };
+
+        if (pedido.prazo_inscricao_solicitado) {
+            atualizacoes[`solicitacoes/${id}/Prazo_Inscricao`] = pedido.prazo_inscricao_solicitado;
+        }
 
         const anoMes = obterAnoMesSolicitacao({ ...dados, id });
         if (anoMes && pedido.opm_codigo) {
@@ -4882,7 +5078,13 @@ export function setupSireneLiberacoes() {
 
     const nivel = Number(userDataCache?.nivel || sessionStorage.getItem('userLevel') || 0);
     if (nivel !== 1) {
-        dropdown.style.display = 'none';
+        const acoes = document.getElementById('navbarSolicitacoesTesteAcoes');
+        if (acoes) {
+            acoes.classList.add('d-none');
+            acoes.classList.remove('d-flex');
+            acoes.style.setProperty('display', 'none', 'important');
+        }
+        dropdown.style.setProperty('display', 'none', 'important');
         return;
     }
 
@@ -4926,6 +5128,12 @@ export function setupNotificacoesSolicitacoes() {
 
     if (userLevel !== '1' || !notificacoesDropdown) {
         if (notificacoesDropdown) notificacoesDropdown.style.display = 'none';
+        const acoes = document.getElementById('navbarSolicitacoesTesteAcoes');
+        if (acoes) {
+            acoes.classList.add('d-none');
+            acoes.classList.remove('d-flex');
+            acoes.style.setProperty('display', 'none', 'important');
+        }
         return;
     }
 
