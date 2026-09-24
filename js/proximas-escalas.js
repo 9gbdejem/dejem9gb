@@ -102,10 +102,9 @@ function exibirEscalas(re, escalas, ciencias = {}) {
         const idEscala = String(item.ID_Escala || '').trim();
         const ciente = ciencias[idEscala] === true;
         const status = formatarStatus(item.Status);
-        const bloqueado = !podeRegistrarCiencia;
         const tituloCiencia = ciente
             ? 'Ciente'
-            : (bloqueado ? 'Somente o militar da escala pode registrar ciência' : 'Registrar ciência');
+            : (podeRegistrarCiencia ? 'Registrar ciência' : 'Somente o RE do militar pode registrar ciência');
 
         return `
         <tr>
@@ -116,11 +115,11 @@ function exibirEscalas(re, escalas, ciencias = {}) {
             <td>${escaparHTML(idEscala || '-')}</td>
             <td>
                 <button type="button"
-                        class="btn btn-sm btn-ciencia ${ciente ? 'ciente' : ''} ${bloqueado ? 'bloqueado' : ''}"
+                        class="btn btn-sm btn-ciencia ${ciente ? 'ciente' : ''}"
                         data-re="${escaparHTML(re)}"
                         data-id-escala="${escaparHTML(idEscala)}"
                         title="${escaparHTML(tituloCiencia)}"
-                        ${ciente || bloqueado ? 'disabled' : ''}>
+                        ${ciente ? 'disabled' : ''}>
                     ${ciente ? 'Ciente' : 'Ciência'}
                 </button>
                 ${status ? `<span class="badge status-badge ms-1">${escaparHTML(status)}</span>` : ''}
@@ -133,9 +132,9 @@ function exibirEscalas(re, escalas, ciencias = {}) {
     resumo.textContent = `RE ${re}: ${escalas.length} próxima(s) escala(s) encontrada(s).`;
 }
 
-async function pesquisarProximas() {
+async function pesquisarProximas(reInformado = '') {
     const input = document.getElementById('inputREProximas');
-    const re = String(input?.value || '').replace(/\D/g, '');
+    const re = String(reInformado || input?.value || '').replace(/\D/g, '');
     if (input) input.value = re;
 
     limparMensagem();
@@ -181,6 +180,29 @@ function limparPesquisa() {
     limparMensagem();
 }
 
+async function configurarPaginaPorNivel() {
+    const formulario = document.getElementById('formPesquisarProximas');
+    const painelPesquisa = formulario?.closest('.search-panel');
+    const input = document.getElementById('inputREProximas');
+    const reLogado = String(sessionStorage.getItem('userRE') || '').replace(/\D/g, '');
+    const nivel = Number(sessionStorage.getItem('userNivel') || 3);
+
+    if (nivel === 1) {
+        painelPesquisa?.classList.remove('d-none');
+        limparPesquisa();
+        return;
+    }
+
+    painelPesquisa?.classList.add('d-none');
+    if (!/^\d{6}$/.test(reLogado)) {
+        mostrarMensagem('Não foi possível identificar o RE do usuário autenticado.', 'danger');
+        return;
+    }
+
+    if (input) input.value = reLogado;
+    await pesquisarProximas(reLogado);
+}
+
 export async function initProximasEscalas() {
     // Registra o bloqueio do envio HTML antes da validação do Firebase.
     // Isso evita que um clique rápido recarregue o app.html com "?".
@@ -190,7 +212,7 @@ export async function initProximasEscalas() {
     // A SPA recria o HTML ao voltar para esta página, mas mantém o módulo em cache.
     // Nesse caso, os eventos precisam ser ligados novamente ao novo botão.
     if (inicializado) {
-        document.getElementById('inputREProximas')?.focus();
+        await configurarPaginaPorNivel();
         return;
     }
     inicializado = true;
@@ -204,8 +226,7 @@ export async function initProximasEscalas() {
 
         if (window.updateUserGreetingInSPA) window.updateUserGreetingInSPA();
         prontoParaPesquisar = true;
-        const input = document.getElementById('inputREProximas');
-        input?.focus();
+        await configurarPaginaPorNivel();
     } catch (error) {
         console.error('Erro ao carregar próximas escalas:', error);
     }
@@ -227,30 +248,6 @@ function configurarEventosProximas() {
             return false;
         }
         pesquisarProximas();
-    });
-    form.addEventListener('click', async (event) => {
-        const botaoCiencia = event.target.closest('.btn-ciencia');
-        if (!botaoCiencia) return;
-
-        event.preventDefault();
-        if (botaoCiencia.classList.contains('ciente')) return;
-
-        const re = botaoCiencia.dataset.re;
-        const idEscala = botaoCiencia.dataset.idEscala;
-        if (!re || !idEscala) return;
-
-        botaoCiencia.disabled = true;
-        try {
-            // A chave já identifica o RE e a escala; o valor booleano evita dados desnecessários.
-            await set(ref(database, `cienciaProximasEscalas/${re}/${idEscala}`), true);
-            botaoCiencia.classList.add('ciente');
-            botaoCiencia.textContent = 'Ciente';
-            botaoCiencia.title = 'Ciente';
-        } catch (error) {
-            console.error('Erro ao registrar ciência da escala:', error);
-            botaoCiencia.disabled = false;
-            mostrarMensagem('Não foi possível registrar a ciência. Tente novamente.', 'danger');
-        }
     });
     pesquisar?.addEventListener('click', (event) => {
         event.preventDefault();

@@ -2750,15 +2750,6 @@ main.container-fluid {
     animation: none;
 }
 
-#proximasEscalasPage .btn-ciencia.bloqueado {
-    color: #fff !important;
-    background-color: #6c757d !important;
-    border-color: #5c636a !important;
-    animation: none;
-    cursor: not-allowed;
-    opacity: 0.72;
-}
-
 @keyframes pulsarCiencia {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.48; }
