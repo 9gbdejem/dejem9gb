@@ -22,7 +22,12 @@ export function gerarNomeArquivoCloudinary(ano, mes, opmCodigo, composicaoCod, n
 }
 
 // ✅ Função principal de upload para Cloudinary
-export async function uploadParaCloudinary(arquivo, nomeArquivo) {
+export async function uploadParaCloudinary(
+    arquivo,
+    nomeArquivo,
+    pasta = CLOUDINARY_CONFIG.folder,
+    tags = 'solicitacoes,anexo'
+) {
     try {
         // Validações básicas
         if (!arquivo) {
@@ -45,7 +50,7 @@ export async function uploadParaCloudinary(arquivo, nomeArquivo) {
         formData.append('file', arquivo);
         formData.append('upload_preset', CLOUDINARY_CONFIG.upload_preset);
         formData.append('public_id', nomeArquivo); // Nome único do arquivo (sem extensão)
-        formData.append('folder', CLOUDINARY_CONFIG.folder);
+        formData.append('folder', pasta);
         
         // Adicionar contexto com informações do upload (opcional)
         const userRE = sessionStorage.getItem('userRE') || 'desconhecido';
@@ -54,7 +59,7 @@ export async function uploadParaCloudinary(arquivo, nomeArquivo) {
         
         // Opções adicionais
         formData.append('resource_type', 'auto'); // Detecta automaticamente (PDF)
-        formData.append('tags', 'solicitacoes,anexo'); // Tags para organização
+        formData.append('tags', tags); // Tags para organização
         
         // Fazer upload para Cloudinary
         const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloud_name}/auto/upload`, {

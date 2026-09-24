@@ -2565,6 +2565,11 @@ main.container-fluid {
     display: none !important;
 }
 
+/* O navbar e fixo; o modal de confirmacao precisa ficar acima dele. */
+#confirmModal {
+    z-index: 1200 !important;
+}
+
 #dashboard-filtros {
     position: relative;
     z-index: 1 !important;

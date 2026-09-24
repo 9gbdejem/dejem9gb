@@ -1,6 +1,7 @@
 import { database } from './firebase-config.js';
 import { checkAuth } from './auth-check.js';
 import { ref, get, set } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+import { uploadParaCloudinary } from './cloudinary-config.js';
 
 // ==================== VARIÁVEIS GLOBAIS ====================
 let allEscalas = [];
@@ -14,6 +15,7 @@ let perfilUsuario = '';
 let confirmacoesCache = {};
 let confirmacoesLoadVersion = 0;
 let filtroConfirmacaoAdministrador = 'todos';
+let salvamentoConfirmacaoEmAndamento = false;
 
 // Cache para dias já carregados
 let loadedDaysCache = new Set(); // Formato: "YYYY-MM-DD"
@@ -868,18 +870,19 @@ function setupEventListeners() {
     }
     
     // Botões de confirmação
-    document.addEventListener('click', function(e) {
-        const confirmBtn = e.target.closest('.confirm-btn');
-        if (confirmBtn) {
-            const escalaId = confirmBtn.getAttribute('data-escala-id');
-            const re = confirmBtn.getAttribute('data-re');
-            if (escalaId && re) openConfirmModal(escalaId, re);
-        }
-    });
-    
-    document.addEventListener('click', function(e) {
-        if (e.target && e.target.id === 'saveConfirm') saveConfirmation();
-    });
+    document.removeEventListener('click', handleEscalasDocumentClick);
+    document.addEventListener('click', handleEscalasDocumentClick);
+}
+
+function handleEscalasDocumentClick(event) {
+    const confirmBtn = event.target.closest('.confirm-btn');
+    if (confirmBtn) {
+        const escalaId = confirmBtn.getAttribute('data-escala-id');
+        const re = confirmBtn.getAttribute('data-re');
+        if (escalaId && re) openConfirmModal(escalaId, re);
+    }
+
+    if (event.target.closest('#saveConfirm')) saveConfirmation();
 }
 
 // ✅ FILTROS DE DATA COM DEBOUNCE
@@ -1253,10 +1256,12 @@ function renderTable() {
         
         const escalaLink = getEscalaLink(escala.Id);
         const temConfirmacao = militares.some((militar) => getConfirmacaoStatus(escala.Id, militar.RE) !== null);
-        const temLinkSEI = temConfirmacao && confirmacoesCache[escala.Id]?.dadosGerais?.sei_link;
+        const dadosConfirmacao = confirmacoesCache[escala.Id]?.dadosGerais || {};
+        const anexoConfirmacao = dadosConfirmacao.anexo_confirmacao || {};
+        const urlDocumento = anexoConfirmacao.url || dadosConfirmacao.sei_link || '';
 
-        const adminLinkIcon = (userNivel === 1 && escala.Id && temConfirmacao && temLinkSEI) ? 
-            `<a href="${confirmacoesCache[escala.Id].dadosGerais.sei_link}" target="_blank" class="btn btn-sm btn-outline-info ms-1" title="Abrir documento SEI">
+        const adminLinkIcon = (userNivel === 1 && escala.Id && temConfirmacao && urlDocumento) ?
+            `<a href="${urlDocumento}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-info ms-1" title="Abrir documento da confirmação">
                 <i class="fas fa-paperclip"></i>
             </a>` : '';
 
@@ -1456,7 +1461,13 @@ window.openConfirmModal = async function(escalaId, reClicado) {
     const confirmacoesEscala = confirmacoesCache[escalaId] || {};
     const dadosGerais = confirmacoesEscala.dadosGerais || {};
     const militaresConfirmacoes = confirmacoesEscala.militares || {};
-    const adminSemLinkSEIChecked = isCobomTemporario || (isAdmin && dadosGerais.sem_link_sei === true);
+    const tipoDocumentoInicial = dadosGerais.anexo_confirmacao
+        ? 'GOV.BR'
+        : dadosGerais.sei_link
+            ? 'SEI'
+            : '';
+    const adminSemLinkSEIChecked = isAdmin && dadosGerais.sem_link_sei === true;
+    const adminDispensaAnexoChecked = isAdmin && dadosGerais.anexo_dispensado_admin === true;
     
     const primeiraEscala = escalasComMesmoId[0];
     
@@ -1529,23 +1540,50 @@ window.openConfirmModal = async function(escalaId, reClicado) {
             </div>
             
             <div class="mb-3">
-                <label for="seiLink" class="form-label">
-                    <i class="fas fa-link me-1"></i>LINK DO DOCUMENTO DO SEI (obrigatório):
+                <label class="form-label fw-bold">
+                    <i class="fas fa-file-signature me-1"></i>DOCUMENTO DA CONFIRMAÇÃO:
                 </label>
-                <input type="url" class="form-control" id="seiLink" 
-                       value="${dadosGerais.sei_link || ''}" 
-                       placeholder="https://sei.sp.gov.br/..." ${adminSemLinkSEIChecked ? 'disabled' : 'required'}>
-                ${isAdmin ? `
-                    <div class="form-check mt-2">
-                        <input class="form-check-input" type="checkbox" id="semLinkSEI" ${adminSemLinkSEIChecked ? 'checked' : ''}>
-                        <label class="form-check-label" for="semLinkSEI">
-                            Nao ha link SEI para esta confirmacao
-                        </label>
+                <div class="btn-group mb-3" id="tipoDocumentoConfirmacao" role="group" aria-label="Tipo de documento">
+                    <button type="button" class="btn btn-outline-primary" id="btnTipoDocumentoSEI">
+                        <i class="fas fa-link me-1"></i>SEI
+                    </button>
+                    <button type="button" class="btn btn-outline-primary" id="btnTipoDocumentoGovBr">
+                        <i class="fas fa-file-pdf me-1"></i>GOV.BR
+                    </button>
+                </div>
+
+                <input type="hidden" id="tipoDocumentoConfirmacaoValor" value="${tipoDocumentoInicial || ''}">
+
+                <div id="confirmacaoSeiContainer">
+                    <label for="seiLink" class="form-label">Link do documento SEI:</label>
+                    <input type="url" class="form-control" id="seiLink"
+                           value="${dadosGerais.sei_link || ''}"
+                           placeholder="https://sei.sp.gov.br/...">
+                    ${isAdmin ? `
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="semLinkSEI" ${adminSemLinkSEIChecked ? 'checked' : ''}>
+                            <label class="form-check-label" for="semLinkSEI">
+                                Permitir salvar sem informar o link SEI
+                            </label>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <div id="confirmacaoGovbrContainer">
+                    <label for="inputAnexo" class="form-label">Anexo da confirmação (PDF):</label>
+                    <input type="file" class="form-control" id="inputAnexo" accept="application/pdf,.pdf">
+                    ${isAdmin ? `
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="dispensarAnexoConfirmacao" ${adminDispensaAnexoChecked ? 'checked' : ''}>
+                            <label class="form-check-label" for="dispensarAnexoConfirmacao">
+                                Permitir salvar sem anexar PDF
+                            </label>
+                        </div>
+                    ` : ''}
+                    <div class="form-text text-warning">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        O documento GOV.BR deve ser anexado em PDF.
                     </div>
-                ` : ''}
-                <div class="form-text text-warning">
-                    <i class="fas fa-exclamation-triangle me-1"></i>
-                    O link deve começar com https://sei.sp.gov.br/ ou http://sei.sp.gov.br/
                 </div>
             </div>
             
@@ -1574,14 +1612,45 @@ window.openConfirmModal = async function(escalaId, reClicado) {
     if (!confirmContent) return;
     
     confirmContent.innerHTML = modalHTML;
-    
-    const semLinkSEICheck = document.getElementById('semLinkSEI');
-    const seiLinkInput = document.getElementById('seiLink');
-    if (semLinkSEICheck && seiLinkInput) {
-        semLinkSEICheck.addEventListener('change', () => {
-            seiLinkInput.disabled = semLinkSEICheck.checked;
-            seiLinkInput.required = !semLinkSEICheck.checked;
-            if (semLinkSEICheck.checked) seiLinkInput.value = '';
+
+    const btnTipoDocumentoSEI = document.getElementById('btnTipoDocumentoSEI');
+    const btnTipoDocumentoGovBr = document.getElementById('btnTipoDocumentoGovBr');
+    const tipoDocumentoConfirmacaoValor = document.getElementById('tipoDocumentoConfirmacaoValor');
+    const confirmacaoSeiContainer = document.getElementById('confirmacaoSeiContainer');
+    const confirmacaoGovbrContainer = document.getElementById('confirmacaoGovbrContainer');
+    const dispensarAnexoConfirmacao = document.getElementById('dispensarAnexoConfirmacao');
+    const inputAnexo = document.getElementById('inputAnexo');
+
+    const atualizarTipoDocumento = (tipoSelecionado = tipoDocumentoConfirmacaoValor?.value || '') => {
+        const tipoDocumento = tipoSelecionado === 'GOV.BR' || tipoSelecionado === 'SEI'
+            ? tipoSelecionado
+            : '';
+        if (tipoDocumentoConfirmacaoValor) tipoDocumentoConfirmacaoValor.value = tipoDocumento;
+        const usarSEI = tipoDocumento === 'SEI';
+        const usarGovBr = tipoDocumento === 'GOV.BR';
+        confirmacaoSeiContainer?.classList.toggle('d-none', !usarSEI);
+        confirmacaoGovbrContainer?.classList.toggle('d-none', !usarGovBr);
+        btnTipoDocumentoSEI?.classList.toggle('btn-primary', usarSEI);
+        btnTipoDocumentoSEI?.classList.toggle('btn-outline-primary', !usarSEI);
+        btnTipoDocumentoGovBr?.classList.toggle('btn-primary', usarGovBr);
+        btnTipoDocumentoGovBr?.classList.toggle('btn-outline-primary', !usarGovBr);
+        if (inputAnexo) inputAnexo.required = usarGovBr && !(dispensarAnexoConfirmacao?.checked === true);
+        const seiLinkInput = document.getElementById('seiLink');
+        if (seiLinkInput) seiLinkInput.required = usarSEI && !(document.getElementById('semLinkSEI')?.checked === true);
+    };
+
+    btnTipoDocumentoSEI?.addEventListener('click', () => atualizarTipoDocumento('SEI'));
+    btnTipoDocumentoGovBr?.addEventListener('click', () => atualizarTipoDocumento('GOV.BR'));
+    dispensarAnexoConfirmacao?.addEventListener('change', atualizarTipoDocumento);
+    document.getElementById('semLinkSEI')?.addEventListener('change', atualizarTipoDocumento);
+    atualizarTipoDocumento();
+
+    if (inputAnexo) {
+        inputAnexo.addEventListener('change', () => {
+            if (inputAnexo.files?.[0] && !inputAnexo.files[0].name.toLowerCase().endsWith('.pdf')) {
+                showMessage('O anexo da confirmação deve ser um arquivo PDF.', 'warning');
+                inputAnexo.value = '';
+            }
         });
     }
     
@@ -1604,25 +1673,46 @@ function limparBackdropConfirmacao() {
 }
 
 async function saveConfirmation() {
+    if (salvamentoConfirmacaoEmAndamento) return;
+
     const escalaId = document.getElementById('modalEscalaId')?.value;
     const userRE = document.getElementById('modalUserRE')?.value;
-    const seiLink = document.getElementById('seiLink')?.value.trim();
-    const semLinkSEI = perfilUsuario === 'COBOM_TEMPORARIO' ||
-        (userNivel === 1 && document.getElementById('semLinkSEI')?.checked === true);
+    const tipoDocumento = document.getElementById('tipoDocumentoConfirmacaoValor')?.value || '';
+    const seiLink = document.getElementById('seiLink')?.value.trim() || '';
+    const semLinkSEI = userNivel === 1 && document.getElementById('semLinkSEI')?.checked === true;
+    const inputAnexo = document.getElementById('inputAnexo');
+    const arquivoAnexo = inputAnexo?.files?.[0];
+    const dispensarAnexo = tipoDocumento === 'GOV.BR' && userNivel === 1 &&
+        document.getElementById('dispensarAnexoConfirmacao')?.checked === true;
     
     if (!escalaId || !userRE) {
         showMessage('Erro: Dados da escala não encontrados.', 'error');
         return;
     }
-    
-    if (!semLinkSEI && !seiLink) {
-        showMessage('O link do documento SEI é obrigatório!', 'warning');
+
+    if (!tipoDocumento) {
+        showMessage('Selecione SEI ou GOV.BR antes de salvar a confirmação.', 'warning');
         return;
     }
     
-    if (!semLinkSEI && !isValidSEILink(seiLink)) {
-        showMessage('O link do SEI deve começar com https://sei.sp.gov.br/ ou http://sei.sp.gov.br/', 'warning');
-        return;
+    if (tipoDocumento === 'SEI') {
+        if (!semLinkSEI && !seiLink) {
+            showMessage('O link do documento SEI é obrigatório.', 'warning');
+            return;
+        }
+        if (!semLinkSEI && !isValidSEILink(seiLink)) {
+            showMessage('O link do SEI deve começar com https://sei.sp.gov.br/ ou http://sei.sp.gov.br/.', 'warning');
+            return;
+        }
+    } else {
+        if (!arquivoAnexo && !dispensarAnexo) {
+            showMessage('O anexo em PDF é obrigatório para salvar a confirmação.', 'warning');
+            return;
+        }
+        if (arquivoAnexo && !arquivoAnexo.name.toLowerCase().endsWith('.pdf')) {
+            showMessage('O anexo da confirmação deve ser um arquivo PDF.', 'warning');
+            return;
+        }
     }
     
     const statusMilitares = {};
@@ -1646,6 +1736,8 @@ async function saveConfirmation() {
         showMessage('Selecione um status para pelo menos um militar!', 'warning');
         return;
     }
+
+    salvamentoConfirmacaoEmAndamento = true;
     
     try {
         const saveBtn = document.getElementById('saveConfirm');
@@ -1653,10 +1745,37 @@ async function saveConfirmation() {
         saveBtn.disabled = true;
         
         const timestamp = Date.now();
+        const dadosGeraisAnteriores = confirmacoesCache[escalaId]?.dadosGerais || {};
+        let anexoConfirmacao = dadosGeraisAnteriores.anexo_confirmacao || null;
+
+        if (tipoDocumento === 'GOV.BR' && arquivoAnexo) {
+            const nomeAnexo = `confirmacao_${escalaId}_${timestamp}`;
+            const resultadoAnexo = await uploadParaCloudinary(
+                arquivoAnexo,
+                nomeAnexo,
+                'confirmacoes_presenca',
+                'confirmacoes_presenca,confirmacao,anexo'
+            );
+
+            anexoConfirmacao = {
+                url: resultadoAnexo.url,
+                secure_url: resultadoAnexo.secure_url,
+                public_id: resultadoAnexo.public_id,
+                nome_sistema: resultadoAnexo.nome_sistema,
+                tamanho: resultadoAnexo.tamanho,
+                formato: resultadoAnexo.formato || 'pdf',
+                enviado_em: timestamp,
+                enviado_por: userRE
+            };
+        }
         
         await set(ref(database, `confirmacoes/${escalaId}/dados_gerais`), {
-            sei_link: semLinkSEI ? '' : seiLink,
-            sem_link_sei: semLinkSEI,
+            // Mantém o link antigo apenas para preservar o histórico.
+            sei_link: tipoDocumento === 'SEI' ? seiLink : (dadosGeraisAnteriores.sei_link || ''),
+            sem_link_sei: tipoDocumento === 'SEI' ? semLinkSEI : (dadosGeraisAnteriores.sem_link_sei === true),
+            documento_tipo: tipoDocumento,
+            anexo_confirmacao: anexoConfirmacao,
+            anexo_dispensado_admin: tipoDocumento === 'GOV.BR' ? dispensarAnexo : false,
             observacoes: document.getElementById('observacoes')?.value.trim() || '',
             ultima_atualizacao: timestamp,
             atualizado_por: userRE
@@ -1681,7 +1800,11 @@ async function saveConfirmation() {
         if (!confirmacoesCache[escalaId]) confirmacoesCache[escalaId] = { dadosGerais: {}, militares: {} };
         
         confirmacoesCache[escalaId].dadosGerais = {
-            sei_link: seiLink,
+            sei_link: tipoDocumento === 'SEI' ? seiLink : (dadosGeraisAnteriores.sei_link || ''),
+            sem_link_sei: tipoDocumento === 'SEI' ? semLinkSEI : (dadosGeraisAnteriores.sem_link_sei === true),
+            documento_tipo: tipoDocumento,
+            anexo_confirmacao: anexoConfirmacao,
+            anexo_dispensado_admin: tipoDocumento === 'GOV.BR' ? dispensarAnexo : false,
             observacoes: document.getElementById('observacoes')?.value.trim() || '',
             ultima_atualizacao: timestamp,
             atualizado_por: userRE
@@ -1714,6 +1837,7 @@ async function saveConfirmation() {
         console.error('❌ Erro ao salvar confirmação:', error);
         showError('Erro ao salvar: ' + error.message);
     } finally {
+        salvamentoConfirmacaoEmAndamento = false;
         const saveBtn = document.getElementById('saveConfirm');
         if (saveBtn) {
             saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Salvar';
