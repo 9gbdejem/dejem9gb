@@ -2750,6 +2750,24 @@ main.container-fluid {
     animation: none;
 }
 
+.ciencia-escala {
+    display: inline-block;
+    width: 12px;
+    margin-right: 4px;
+    font-size: 0.66rem;
+    font-weight: 400;
+    text-align: center;
+    vertical-align: baseline;
+}
+
+.ciencia-confirmada {
+    color: #111;
+}
+
+.ciencia-pendente {
+    color: #c62828;
+}
+
 @keyframes pulsarCiencia {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.48; }

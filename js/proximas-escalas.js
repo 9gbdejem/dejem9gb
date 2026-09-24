@@ -1,6 +1,6 @@
 import { checkAuth, loadNavbar } from './auth-check.js';
 import { database } from './firebase-config.js';
-import { get, ref, set } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
+import { get, ref, update } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js';
 
 let inicializado = false;
 let prontoParaPesquisar = false;
@@ -78,6 +78,16 @@ function normalizarEscalas(dados) {
         .sort((a, b) => obterTimestampEscala(a) - obterTimestampEscala(b));
 }
 
+function caminhoCienciaNoDia(dataEscala, idEscala, re) {
+    const partes = String(dataEscala || '').trim().split('/');
+    if (partes.length !== 3) return '';
+
+    const [dia, mes, ano] = partes.map(Number);
+    if (!dia || !mes || !ano || !idEscala || !re) return '';
+
+    return `escalados/${ano}/${String(mes).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${idEscala}${re}/Ciencia`;
+}
+
 function exibirEscalas(re, escalas, ciencias = {}) {
     const corpo = document.getElementById('proximasEscalasBody');
     const resumo = document.getElementById('resumoProximas');
@@ -118,6 +128,7 @@ function exibirEscalas(re, escalas, ciencias = {}) {
                         class="btn btn-sm btn-ciencia ${ciente ? 'ciente' : ''}"
                         data-re="${escaparHTML(re)}"
                         data-id-escala="${escaparHTML(idEscala)}"
+                        data-data-escala="${escaparHTML(item.Data_Esc || '')}"
                         title="${escaparHTML(tituloCiencia)}"
                         ${ciente ? 'disabled' : ''}>
                     ${ciente ? 'Ciente' : 'Ciência'}
@@ -284,6 +295,7 @@ function configurarEventosGlobaisCiencia() {
         event.preventDefault();
         const re = String(botaoCiencia.dataset.re || '').trim();
         const idEscala = String(botaoCiencia.dataset.idEscala || '').trim();
+        const dataEscala = String(botaoCiencia.dataset.dataEscala || '').trim();
         const reLogado = String(sessionStorage.getItem('userRE') || '').replace(/\D/g, '');
         if (!/^\d{6}$/.test(re) || !idEscala) return;
         if (re !== reLogado) {
@@ -293,8 +305,14 @@ function configurarEventosGlobaisCiencia() {
 
         botaoCiencia.disabled = true;
         try {
-            // RE e ID_Escala são a própria chave; o Firebase recebe somente o valor true.
-            await set(ref(database, `cienciaProximasEscalas/${re}/${idEscala}`), true);
+            const caminhoNoDia = caminhoCienciaNoDia(dataEscala, idEscala, re);
+            if (!caminhoNoDia) throw new Error('Dados da escala inválidos para registrar ciência.');
+
+            // Uma única atualização mantém o índice de consulta e a marca no registro diário.
+            await update(ref(database), {
+                [`cienciaProximasEscalas/${re}/${idEscala}`]: true,
+                [caminhoNoDia]: true
+            });
             botaoCiencia.classList.add('ciente');
             botaoCiencia.textContent = 'Ciente';
             botaoCiencia.title = 'Ciente';

@@ -1172,6 +1172,14 @@ function grupoAtendeFiltroConfirmacao(grupo) {
     return true;
 }
 
+function getCienciaIcon(militar) {
+    const deuCiencia = militar?.Ciencia === true || String(militar?.Ciencia || '').toLowerCase() === 'true';
+    if (deuCiencia) {
+        return '<i class="fas fa-check ciencia-escala ciencia-confirmada" title="Ciência registrada" aria-label="Ciência registrada"></i>';
+    }
+    return '<i class="fas fa-xmark ciencia-escala ciencia-pendente" title="Ciência ainda não registrada" aria-label="Ciência ainda não registrada"></i>';
+}
+
 function getEscalasAgrupadas(aplicarFiltro = true) {
     const grupos = new Map();
     filteredEscalas.forEach((escala, indice) => {
@@ -1285,7 +1293,7 @@ function renderTable() {
                 <td>${militares.map(item => item.PostoGrad || '-').join('<br>')}</td>
                 <td>${militares.map(item => item.RE || '-').join('<br>')}</td>
                 <td>
-                    <div class="fw-bold">${militares.map(item => item.Militar || '-').join('<br>')}</div>
+                    <div class="fw-bold">${militares.map(item => `${getCienciaIcon(item)}<span>${item.Militar || '-'}</span>`).join('<br>')}</div>
                 </td>
                 <td>
                     <a href="${escalaLink}" target="_blank" class="text-primary fw-bold escala-id-link" title="Abrir escala no sistema">
