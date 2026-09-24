@@ -1588,9 +1588,20 @@ window.openConfirmModal = async function(escalaId, reClicado) {
     const modalElement = document.getElementById('confirmModal');
     if (!modalElement) return;
     
-    const modal = new bootstrap.Modal(modalElement);
+    modalElement.addEventListener('hidden.bs.modal', limparBackdropConfirmacao, { once: true });
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
     modal.show();
 };
+
+function limparBackdropConfirmacao() {
+    const modalAberto = document.querySelector('.modal.show');
+    if (modalAberto) return;
+
+    document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+}
 
 async function saveConfirmation() {
     const escalaId = document.getElementById('modalEscalaId')?.value;
@@ -1688,8 +1699,12 @@ async function saveConfirmation() {
         
         const modalElement = document.getElementById('confirmModal');
         if (modalElement) {
-            const modal = bootstrap.Modal.getInstance(modalElement);
-            if (modal) modal.hide();
+            const modal = bootstrap.Modal.getInstance(modalElement) ||
+                bootstrap.Modal.getOrCreateInstance(modalElement);
+            modalElement.addEventListener('hidden.bs.modal', limparBackdropConfirmacao, { once: true });
+            modal.hide();
+            // Fallback para o caso de a transição do Bootstrap não disparar o evento.
+            setTimeout(limparBackdropConfirmacao, 400);
         }
         
         renderTable();
