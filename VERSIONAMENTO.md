@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.0.0**
+**Sistema de Gestão de Escalas - Versão 1.0.1**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -18,13 +18,20 @@ Exemplos: `1.0.1`, `1.1.0` e `2.0.0`.
 
 ## Fechamento diário
 
-Ao término de um dia de trabalho, quando não houver uma funcionalidade importante incompleta:
+Durante o desenvolvimento, registrar as alterações em `ALTERACOES-EM-ANDAMENTO.md`.
 
-1. Atualizar este arquivo com as alterações concluídas.
-2. Alterar o texto da versão no Dashboard, quando o número mudar.
-3. Conferir os arquivos modificados com `git status`.
-4. Criar o commit da versão e a tag correspondente.
-5. Enviar o commit e a tag ao repositório remoto, quando houver conexão configurada.
+Ao término de um dia de trabalho, não é necessário criar uma versão se a etapa ainda estiver em teste ou incompleta.
+
+Quando o responsável informar que fará o upload da versão:
+
+1. Resumir todas as alterações registradas em `ALTERACOES-EM-ANDAMENTO.md`.
+2. Definir o próximo número da versão.
+3. Atualizar este arquivo com o novo histórico.
+4. Alterar o texto da versão no Dashboard.
+5. Conferir os arquivos modificados com `git status`.
+6. Criar o commit da versão e a tag correspondente.
+7. Enviar o commit e a tag ao repositório remoto, quando houver conexão configurada.
+8. Limpar `ALTERACOES-EM-ANDAMENTO.md` para iniciar a próxima versão.
 
 Modelo de comandos:
 
@@ -35,9 +42,18 @@ git tag -a v1.0.1 -m "Versão 1.0.1"
 git push origin main --follow-tags
 ```
 
-Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação como "em andamento" e fechar somente quando a etapa estiver concluída.
+Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.0.1 - 24/09/2026
+
+- Alterado o título do item do navbar de “Dashboard” para “Escalas abertas”.
+- Incluído o fluxo de confirmação por documento SEI ou GOV.BR.
+- Incluído upload de PDF de confirmação para o Cloudinary em `confirmacoes_presenca`.
+- Mantida a compatibilidade com links SEI antigos.
+- Corrigida a duplicação de uploads causada por listeners registrados mais de uma vez.
+- Corrigida a limpeza do fundo do modal de confirmação.
 
 ### 1.0.0 - 04/09/2026
 

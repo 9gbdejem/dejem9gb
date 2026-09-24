@@ -298,7 +298,7 @@ function renderDashboardBase() {
 
         <hr>
         <div class="text-center text-muted small">
-            <div><strong>Sistema de Gestão de Escalas</strong> - Versão 1.0.0</div>
+            <div><strong>Sistema de Gestão de Escalas</strong> - Versão 1.0.1</div>
             <div>Desenvolvido por Cabo PM Alexandre Alves Ferreira</div>
             <div>© 2026 Corpo de Bombeiros do Estado de São Paulo. Todos os direitos reservados.</div>
         </div>
