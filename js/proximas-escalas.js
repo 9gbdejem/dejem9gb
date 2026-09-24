@@ -118,12 +118,12 @@ function exibirEscalas(re, escalas, ciencias = {}) {
 
         return `
         <tr>
-            <td>${escaparHTML(item.Data_Esc || '-')}</td>
-            <td>${escaparHTML(item.Horario_Inicial || '-')} - ${escaparHTML(item.Horario_Final || '-')}</td>
-            <td>${escaparHTML(item.OPM_Nome || '-')}</td>
-            <td>${escaparHTML(item.Composicao_Nome || '-')}</td>
-            <td>${escaparHTML(idEscala || '-')}</td>
-            <td>
+            <td data-label="Data">${escaparHTML(item.Data_Esc || '-')}</td>
+            <td data-label="Horário">${escaparHTML(item.Horario_Inicial || '-')} - ${escaparHTML(item.Horario_Final || '-')}</td>
+            <td data-label="Estação">${escaparHTML(item.OPM_Nome || '-')}</td>
+            <td data-label="Composição">${escaparHTML(item.Composicao_Nome || '-')}</td>
+            <td data-label="ID">${escaparHTML(idEscala || '-')}</td>
+            <td data-label="Status">
                 <button type="button"
                         class="btn btn-sm btn-ciencia ${ciente ? 'ciente' : ''}"
                         data-re="${escaparHTML(re)}"

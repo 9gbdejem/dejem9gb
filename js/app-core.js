@@ -5,7 +5,6 @@ class AppCore {
     constructor() {
         // VERIFICAR ANTES DE TUDO: Só inicializa em app.html
         if (!window.location.pathname.includes('app.html')) {
-            console.log(`🚫 ${window.location.pathname.split('/').pop()} - Não é SPA, ignorando app-core.js`);
             return null;
         }
         
@@ -14,7 +13,6 @@ class AppCore {
     
     async init() {
         if (!window.location.pathname.includes('app.html')) {
-            console.log('📄 Página não-SPA - SPA não inicializado');
             return;
         }
         
@@ -29,7 +27,7 @@ class AppCore {
             await this.inicializarAcoesGlobaisSolicitacoes(userData.nivel);
             
             this.setupNavbar();
-            await this.loadPage('dashboard.html');
+            await this.loadPage(this.obterPaginaParaRestaurar());
             
         } catch (error) {
             console.error('❌ Erro ao inicializar SPA:', error);
@@ -49,6 +47,20 @@ class AppCore {
         
         this.setupUserGreeting();
         this.setupDropdown();
+    }
+
+    obterPaginaParaRestaurar() {
+        const paginasPermitidas = new Set([
+            'dashboard.html',
+            'solicitacoes.html',
+            'escalas.html',
+            'proximas-escalas.html',
+            'exclusoes.html',
+            'perfil.html',
+            'instalar.html'
+        ]);
+        const paginaSalva = sessionStorage.getItem('dejemPaginaAtual');
+        return paginasPermitidas.has(paginaSalva) ? paginaSalva : 'dashboard.html';
     }
 
     async inicializarAcoesGlobaisSolicitacoes(nivel) {
@@ -213,7 +225,7 @@ class AppCore {
             
             const html = await response.text();
             
-            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html' || pageUrl === 'proximas-escalas.html') {
+            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html' || pageUrl === 'proximas-escalas.html' || pageUrl === 'instalar.html') {
                 await this.loadSpecialPage(html, pageUrl);
             } else {
                 const pageContent = this.extractContent(html, pageUrl);
@@ -225,6 +237,7 @@ class AppCore {
             }
             
             this.currentPage = pageUrl;
+            sessionStorage.setItem('dejemPaginaAtual', pageUrl);
             this.updateActiveNav(pageUrl);
             
         } catch (error) {
@@ -256,6 +269,8 @@ class AppCore {
                 await this.loadSolicitacoesScript();
             } else if (pageUrl === 'proximas-escalas.html') {
                 await this.loadProximasEscalasScript();
+            } else if (pageUrl === 'instalar.html') {
+                await this.loadInstalarScript();
             }
         } else {
             contentDiv.innerHTML = '<div class="alert alert-danger">Erro: Conteúdo não encontrado</div>';
@@ -361,10 +376,21 @@ class AppCore {
         }
     }
 
+    async loadInstalarScript() {
+        try {
+            const instalarModule = await import('./instalar.js');
+            if (instalarModule && instalarModule.initInstalar) {
+                await instalarModule.initInstalar();
+            }
+        } catch (error) {
+            console.error('Erro ao carregar a página de instalação:', error);
+            this.showError(error);
+        }
+    }
+
     async loadGoogleDriveAPI() {
         return new Promise((resolve) => {
             if (window.gapi && window.gapi.load) {
-                console.log('✅ Google Drive API já carregada');
                 resolve();
                 return;
             }
@@ -373,7 +399,6 @@ class AppCore {
                 const script = document.createElement('script');
                 script.src = 'https://apis.google.com/js/api.js';
                 script.onload = () => {
-                    console.log('✅ Google Drive API carregada pelo SPA');
                     setTimeout(resolve, 1000);
                 };
                 script.onerror = () => {
@@ -651,7 +676,6 @@ if (window.location.pathname.includes('app.html')) {
         }
     });
 } else {
-    console.log(`📄 ${window.location.pathname.split('/').pop()} - Página independente, SPA não inicializado`);
 }
 
 export default AppCore;

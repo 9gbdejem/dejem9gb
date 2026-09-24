@@ -78,7 +78,6 @@ async function loadExclusoesMesAtual() {
         const ano = hoje.getFullYear();
         const mes = (hoje.getMonth() + 1).toString().padStart(2, '0');
         
-        console.log(`📅 Carregando exclusões de ${mes}/${ano}...`);
         
         // Atualizar selects com mês/ano atual
         const monthSelect = document.getElementById('filterMonth');
@@ -112,9 +111,7 @@ async function loadExclusoesMesAtual() {
                 });
             });
             
-            console.log(`✅ ${allExclusoes.length} exclusões carregadas para ${mes}/${ano}`);
         } else {
-            console.log(`📭 Nenhuma exclusão encontrada em ${mes}/${ano}`);
             allExclusoes = [];
         }
         
@@ -151,7 +148,6 @@ async function loadExclusoesPorMesAno(ano, mes) {
         const mesNum = parseInt(mes);
         const mesStr = mesNum.toString().padStart(2, '0');
         
-        console.log(`📅 Carregando exclusões de ${mesStr}/${anoStr}...`);
         
         const caminho = `escalados/${anoStr}/${mesStr}`;
         const exclusoesRef = ref(database, caminho);
@@ -176,9 +172,7 @@ async function loadExclusoesPorMesAno(ano, mes) {
                 });
             });
             
-            console.log(`✅ ${allExclusoes.length} exclusões carregadas`);
         } else {
-            console.log(`📭 Nenhuma exclusão encontrada`);
             allExclusoes = [];
         }
         
@@ -571,7 +565,6 @@ async function aplicarFiltrosData() {
     
     // Se algum filtro estiver inválido, NÃO CARREGA NADA
     if (mesInvalido || anoInvalido) {
-        console.log('⚠️ Filtro inválido detectado - exibindo noData');
         
         // Limpar dados
         filteredExclusoes = [];
@@ -603,7 +596,6 @@ async function aplicarFiltrosData() {
     
     // Se mudou mês ou ano, recarregar dados
     if (novoMes !== currentMonth || novoAno !== currentYear) {
-        console.log(`📅 Mudança de data detectada: ${currentMonth}/${currentYear} → ${novoMes}/${novoAno}`);
         
         currentMonth = novoMes;
         currentYear = novoAno;
@@ -807,7 +799,6 @@ function clearFilters() {
 }
 
 function refreshExclusoes() {
-    console.log('🔄 Atualizando exclusões...');
     
     const refreshBtn = document.getElementById('refreshData');
     if (refreshBtn) {
@@ -1053,9 +1044,7 @@ function addStatisticsTooltips(vagasCount, escalasCount, militaresCount) {
 // ==================== INICIALIZAÇÃO ====================
 // Event listener para quando a página carrega sozinha (não via SPA)
 if (!window.location.pathname.includes('app.html')) {
-    console.log('📄 exclusoes.html carregando independentemente...');
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('✅ DOM carregado, iniciando exclusoes...');
         setTimeout(() => {
             if (typeof initExclusoes === 'function') {
                 initExclusoes();

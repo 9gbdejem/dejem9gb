@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#223c6c">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Instalar - DEJEM 9GB</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="img/logo.png">
+    <link rel="apple-touch-icon" href="img/pwa-icon-192.png">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div id="navbar"></div>
+
+    <main class="container mt-4">
+        <div id="instalarPage" class="mx-auto">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center gap-2">
+                    <h1 class="h5 mb-0"><i class="fas fa-mobile-screen-button me-2"></i>Instalar DEJEM 9GB</h1>
+                    <span id="statusInstalacao" class="badge text-bg-secondary">Verificando</span>
+                </div>
+                <div class="card-body p-4">
+                    <p class="lead">Instale o Sistema DEJEM 9GB para acessar pelo ícone da tela inicial, em uma janela própria e sem as barras comuns do navegador.</p>
+
+                    <button type="button" class="btn btn-primary btn-lg w-100 mb-3" id="btnInstalarAplicativo">
+                        <i class="fas fa-download me-2"></i>Preparando instalação...
+                    </button>
+
+                    <div id="mensagemInstalacao" class="alert alert-info mb-0">O navegador verificará se o aplicativo pode ser instalado.</div>
+
+                    <div id="instrucoesAndroidDesktop" class="mt-4">
+                        <h2 class="h6">Android e computador</h2>
+                        <ol class="mb-0">
+                            <li>Toque em <strong>Instalar aplicativo</strong> quando o botão estiver disponível.</li>
+                            <li>Confirme a instalação solicitada pelo navegador.</li>
+                            <li>Abra o ícone <strong>DEJEM 9GB</strong> na tela inicial ou no menu de aplicativos.</li>
+                        </ol>
+                    </div>
+
+                    <div id="instrucoesIOS" class="mt-4 d-none">
+                        <h2 class="h6">iPhone e iPad</h2>
+                        <ol class="mb-0">
+                            <li>Abra esta página pelo navegador <strong>Safari</strong>.</li>
+                            <li>Toque no botão <strong>Compartilhar</strong> do Safari.</li>
+                            <li>Selecione <strong>Adicionar à Tela de Início</strong>.</li>
+                            <li>Confirme em <strong>Adicionar</strong>.</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="js/pwa.js"></script>
+    <script type="module" src="js/instalar.js"></script>
+</body>
+</html>

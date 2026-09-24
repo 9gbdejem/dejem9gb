@@ -1,0 +1,27 @@
+{
+  "id": "./app.html",
+  "name": "Sistema DEJEM 9GB",
+  "short_name": "DEJEM 9GB",
+  "description": "Sistema de Gestão de Escalas DEJEM do 9º GB.",
+  "lang": "pt-BR",
+  "start_url": "./app.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone"],
+  "background_color": "#ffffff",
+  "theme_color": "#223c6c",
+  "icons": [
+    {
+      "src": "img/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "img/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

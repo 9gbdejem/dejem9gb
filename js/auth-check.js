@@ -13,7 +13,6 @@ export function checkAuth(requiredLevel = 1) {
     return new Promise((resolve, reject) => {
         onAuthStateChanged(auth, async (user) => {
             if (!user) {
-                console.log('❌ Usuário não autenticado');
                 window.location.href = 'index.html';
                 return;
             }
@@ -62,7 +61,6 @@ export function checkAuth(requiredLevel = 1) {
                     });
                 } else {
                     // ✅ CORRIGIDO: Mostra msgbox e redireciona CORRETAMENTE
-                    console.log(`🚫 Nível insuficiente: usuário ${userLevel}, necessário ${requiredLevel}`);
                     
                     // SALVAR O NÍVEL ATUAL ANTES DO ALERT (para navbar carregar certo)
                     sessionStorage.setItem('currentUserLevel', userLevel);
@@ -109,18 +107,17 @@ function clearUserData() {
     sessionStorage.removeItem('userName');
     sessionStorage.removeItem('userNivel');
     sessionStorage.removeItem('currentUserLevel');
+    sessionStorage.removeItem('dejemPaginaAtual');
     localStorage.removeItem('userRE');
     localStorage.removeItem('userName');
     localStorage.removeItem('userNivel');
 }
 
 export async function loadNavbar() {
-    // console.log('🔄 Iniciando loadNavbar()...');
     
     // ✅ CORRIGIDO: Verificar se navbar já foi carregada
     const existingNavbar = document.getElementById('navbar');
     if (existingNavbar && existingNavbar.innerHTML.trim() !== '') {
-        console.log('✅ Navbar já carregada, ignorando nova carga');
         configurarFechamentoDropdownsNavbar();
         return true;
     }
@@ -147,9 +144,7 @@ export async function loadNavbar() {
         // ✅ CORRIGIDO: Inserir SEMPRE, mas verificar se já tem conteúdo
         if (navbarElement.innerHTML.trim() === '') {
             navbarElement.innerHTML = html;
-            // console.log('✅ Navbar carregada no DOM');
         } else {
-            // console.log('✅ Navbar já tinha conteúdo, mantendo');
         }
 
         configurarFechamentoDropdownsNavbar();
@@ -168,7 +163,6 @@ export async function loadNavbar() {
         // Fallback básico APENAS se não tiver conteúdo
         if (!navbarElement.innerHTML.trim()) {
             navbarElement.innerHTML = createFallbackNavbar();
-            console.log('✅ Navbar fallback criado');
         }
 
         configurarFechamentoDropdownsNavbar();
@@ -201,7 +195,6 @@ async function hideNavbarItemsByLevel() {
             sessionStorage.setItem('currentUserLevel', userLevel);
         }
         
-        // console.log(`🎯 Ajustando navbar para nível ${userLevel}...`);
         
         // Aguardar um pouco mais para garantir que elementos foram renderizados
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -243,7 +236,6 @@ function hideElement(selector, retryCount = 0) {
         const parentLi = element.closest('li.nav-item');
         if (parentLi) {
             parentLi.style.display = 'none';
-            // console.log(`👁️ Ocultando menu: ${selector}`);
             return true;
         }
     }
@@ -312,7 +304,6 @@ export function updateSessionTimer() {
     updateNavbarTimer(timeRemaining);
     
     if (timeRemaining <= 0) {
-        console.log('⏰ Sessão expirada, fazendo logout...');
         performNavbarLogout();
     }
 }
@@ -334,7 +325,6 @@ export function checkAccessDeniedMessage() {
 
 // ✅ NOVA FUNÇÃO: Navegação segura para dashboard
 export function safeRedirectToDashboard() {
-    console.log('🔄 Redirecionando seguramente para dashboard...');
     
     // Limpar qualquer estado de erro
     sessionStorage.removeItem('accessDeniedMessage');
@@ -342,16 +332,13 @@ export function safeRedirectToDashboard() {
     if (window.location.pathname.includes('app.html')) {
         // Se estiver no SPA
         if (window.app && typeof window.app.loadPage === 'function') {
-            console.log('📍 Navegando via SPA para dashboard');
             window.app.loadPage('dashboard.html');
         } else {
             // Fallback para navegação normal
-            console.log('📍 Navegando normalmente para dashboard (fallback)');
             window.location.href = 'dashboard.html';
         }
     } else {
         // Páginas independentes
-        console.log('📍 Navegando para dashboard (página independente)');
         window.location.href = 'dashboard.html';
     }
 }
@@ -361,9 +348,24 @@ function configurarFechamentoDropdownsNavbar() {
 
     window.dejemFechamentoDropdownsNavbarConfigurado = true;
 
+    // Fecha imediatamente quando o toque/clique começar fora de um dropdown.
+    document.addEventListener('pointerdown', (event) => {
+        if (!event.target.closest('#navbar .navbar')) {
+            fecharDropdownsNavbar();
+            fecharMenuRetratilNavbar();
+        }
+    }, true);
+
     document.addEventListener('click', (event) => {
         const navbar = document.getElementById('navbar');
         if (!navbar) return;
+
+        const itemNavegacao = event.target.closest('#navbar .nav-link[href], #navbar .dropdown-item[href]');
+        if (itemNavegacao && !itemNavegacao.matches('[data-bs-toggle="dropdown"]')) {
+            fecharDropdownsNavbar();
+            fecharMenuRetratilNavbar();
+            return;
+        }
 
         const toggle = event.target.closest('#navbar [data-bs-toggle="dropdown"]');
         if (toggle) {
@@ -377,23 +379,63 @@ function configurarFechamentoDropdownsNavbar() {
             return;
         }
 
+        if (event.target.closest('#navbar .dropdown-menu')) {
+            setTimeout(() => fecharDropdownsNavbar(), 0);
+            return;
+        }
+
         if (!event.target.closest('#navbar .dropdown')) {
             fecharDropdownsNavbar();
         }
+
+        if (!event.target.closest('#navbar .navbar')) {
+            fecharMenuRetratilNavbar();
+        }
     });
+}
+
+function fecharMenuRetratilNavbar() {
+    const menu = document.getElementById('mainNavbar');
+    if (!menu || !menu.classList.contains('show')) return;
+
+    try {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Collapse) {
+            bootstrap.Collapse.getOrCreateInstance(menu, { toggle: false }).hide();
+        }
+    } catch (error) {
+        console.warn('Não foi possível recolher o menu pelo Bootstrap.', error);
+    }
+
+    // Fallback para garantir o recolhimento mesmo se o Bootstrap falhar.
+    menu.classList.remove('show');
+    document.querySelector('#navbar .navbar-toggler')?.setAttribute('aria-expanded', 'false');
 }
 
 function fecharDropdownsNavbar(toggleMantido = null) {
     document.querySelectorAll('#navbar [data-bs-toggle="dropdown"]').forEach((toggle) => {
         if (toggle === toggleMantido) return;
 
-        if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
-            bootstrap.Dropdown.getOrCreateInstance(toggle).hide();
-        } else {
-            toggle.setAttribute('aria-expanded', 'false');
-            const menu = toggle.parentElement?.querySelector('.dropdown-menu');
-            if (menu) menu.classList.remove('show');
+        try {
+            if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
+                bootstrap.Dropdown.getOrCreateInstance(toggle).hide();
+            }
+        } catch (error) {
+            console.warn('Não foi possível fechar o dropdown pelo Bootstrap.', error);
         }
+
+        // Fallback forçado: funciona mesmo se o Bootstrap não concluir o hide.
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.classList.remove('show');
+        const dropdown = toggle.closest('.dropdown');
+        dropdown?.classList.remove('show');
+        dropdown?.querySelectorAll('.dropdown-menu').forEach((menu) => {
+            menu.classList.remove('show');
+            menu.removeAttribute('data-popper-placement');
+            menu.style.removeProperty('position');
+            menu.style.removeProperty('inset');
+            menu.style.removeProperty('margin');
+            menu.style.removeProperty('transform');
+        });
 
         if (toggle.id === 'userGreetingDropdown') {
             toggle.style.borderColor = 'rgba(255, 255, 255, 0.5)';

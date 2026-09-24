@@ -189,7 +189,6 @@ function populateYearFilterLocal() {
         try { yearFilter.value = currentValue; } catch (e) {}
     }
     
-    console.log(`✅ Anos ${startYear}-${endYear} adicionados localmente`);
 }
 
 // ✅ ESTAÇÕES: Carrega do nó '/local'
@@ -245,7 +244,6 @@ async function populateStationFilter() {
                 stationFilter.appendChild(option);
             });
             
-            console.log(`✅ ${sortedStations.length} estações carregadas`);
         }
         
     } catch (error) {
@@ -318,7 +316,6 @@ async function loadEscalasByDate(year, month, day) {
     
     // Se já carregou este dia, usar cache
     if (loadedDaysCache.has(cacheKey)) {
-        console.log(`📦 Usando cache para ${cacheKey}`);
         // Filtrar apenas as escalas deste dia
         filteredEscalas = allEscalas.filter(e => 
             e.ano === year && e.mês === month && e.dia === day
@@ -331,7 +328,6 @@ async function loadEscalasByDate(year, month, day) {
         const dayStr = day.toString().padStart(2, '0');
         const path = `escalados/${year}/${monthStr}/${dayStr}`;
         
-        console.log(`🔍 Carregando APENAS o dia: ${path}`);
         
         const escalasRef = ref(database, path);
         const snapshot = await get(escalasRef);
@@ -360,11 +356,9 @@ async function loadEscalasByDate(year, month, day) {
                 e.ano === year && e.mês === month && e.dia === day
             );
             
-            console.log(`✅ ${filteredEscalas.length} escalas carregadas para ${day}/${month}/${year}`);
             return filteredEscalas.length > 0;
         }
         
-        console.log(`ℹ️ Nenhuma escala encontrada em ${day}/${month}/${year}`);
         filteredEscalas = [];
         return false;
         
@@ -378,7 +372,6 @@ async function loadEscalasByDate(year, month, day) {
 window.loadPeriod = async function(year, month, day = null) {
     // 🚨 Se não tiver dia, NÃO carrega dados e limpa tabela
     if (!day) {
-        console.log('⚠️ Nenhum dia selecionado. Limpando tabela...');
         filteredEscalas = [];
         currentYear = year;
         currentMonth = month;
@@ -588,7 +581,6 @@ async function loadConfirmacoesForCurrentPage() {
     
     if (escalaIds.size === 0) return;
     
-    console.log(`🔍 Carregando confirmações para ${escalaIds.size} IDs da página ${currentPage}`);
     
     const idsPendentes = Array.from(escalaIds).filter((id) =>
         !Object.prototype.hasOwnProperty.call(confirmacoesCache, normalizarChaveConfirmacao(id))
@@ -929,7 +921,6 @@ function setupFilterChangeEvents() {
         
         // 🎯 DEBOUNCE: Cancela o timeout anterior
         if (filterTimeoutId) {
-            console.log('⏱️ Debounce: cancelando busca anterior');
             clearTimeout(filterTimeoutId);
         }
         
@@ -939,7 +930,6 @@ function setupFilterChangeEvents() {
         
         // 🎯 DEBOUNCE: Agenda nova busca após 5 segundos
         filterTimeoutId = setTimeout(async () => {
-            console.log(`🚀 Debounce finalizado! Carregando: ${day ? day + '/' : ''}${month}/${year}`);
             
             if (day) {
                 await window.loadPeriod(parseInt(year), parseInt(month), parseInt(day));

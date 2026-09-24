@@ -233,7 +233,6 @@ function converterIdAntigoParaNovo(idAntigo) {
 
 // Exportar funções para SPA
 export async function initSolicitacoesSPA() {
-    console.log('🚀 Solicitações inicializando (SPA)...');
     await initSolicitacoes();
 }
 
@@ -311,7 +310,6 @@ export async function initSolicitacoes() {
             });
         }
 
-        console.log('✅ Sistema de Solicitações carregado');
 
     } catch (error) {
         console.error('❌ Erro nas solicitações:', error);
@@ -371,7 +369,6 @@ async function carregarSolicitacoesMes() {
         solicitacoesCache = [];
 
         if (!opmSelecionada) {
-            console.log('⚠️ Nenhuma OPM selecionada');
             const tbody = document.getElementById('tbodySolicitacoes');
             if (tbody) {
                 tbody.innerHTML = `
@@ -565,7 +562,6 @@ function extrairDataDoIdHierarquico(ano, mes, diaHoraMinuto) {
 
 // FUNÇÃO: Fallback para estrutura antiga
 async function carregarSolicitacoesMesFallback() {
-    console.log('🔄 Usando fallback para estrutura antiga...');
 
     try {
         const solicitacoesRef = ref(database, 'solicitacoes');
@@ -616,12 +612,10 @@ async function carregarSolicitacoesMesFallback() {
 // FUNÇÃO: Migrar para nova estrutura
 async function migrarParaNovaEstrutura(idAntigo, dados, idNovo) {
     try {
-        console.log(`🔄 Migrando ${idAntigo} → ${idNovo}`);
 
         const novaRef = ref(database, `solicitacoes/${idNovo}`);
         await set(novaRef, dados);
 
-        console.log(`Migração concluída: ${idAntigo}`);
     } catch (error) {
         console.error(`Erro na migração de ${idAntigo}:`, error);
     }
@@ -835,7 +829,6 @@ async function excluirPendencia(paths) {
         await update(ref(database), updates);
         const path = Object.keys(updates).join(', ');
 
-        console.log(`✅ Pendência removida: ${path}`);
 
         await carregarNotificacoesAdmin();
 
@@ -939,7 +932,6 @@ async function verificarAnexosExistentes(ano, mes, opmCodigo, composicaoCod) {
             temAnexos: anexos.length > 0
         };
 
-        console.log(`📎 Anexos encontrados: ${anexos.length}`);
         return anexosExistentesCache[cacheKey];
 
     } catch (error) {
@@ -1053,7 +1045,6 @@ async function salvarMetadadosAnexo(ano, mes, opmCodigo, composicaoCod, numeroAn
         };
 
         await set(anexoRef, dadosAnexo);
-        console.log(`✅ Metadados salvos em: ${caminhoAnexo}`);
 
         const cacheKey = `${ano}-${mes}-${opmCodigo}-${composicaoCod}`;
         if (anexosExistentesCache[cacheKey]) {
@@ -1120,7 +1111,6 @@ function ordenarPorPostoGradCorrigido(militares) {
 // FUNÇÃO: Buscar escalados
 async function buscarEscaladosModal(idSistema, dataSolicitacao) {
     try {
-        console.log('🔍 Buscando escalados para ID:', idSistema, 'Data:', dataSolicitacao);
 
         const idSistemaStr = String(idSistema || '').trim();
         const dataSolicitacaoStr = String(dataSolicitacao || '').trim();
@@ -1583,7 +1573,6 @@ async function cadastrarSolicitacao() {
                     return;
                 }
                 numeroAnexo = anexoExistenteSelecionado;
-                console.log(`Solicitação cadastrada usando anexo existente de referência: ${numeroAnexo}.`);
             } else {
                 if (!inputAnexo || inputAnexo.files.length === 0) {
                     mostrarMensagemFormulario('❌ Selecione um arquivo PDF para anexar.', 'danger');
@@ -1733,7 +1722,6 @@ async function cadastrarDiaSolicitacao(dados, dia, numeroAnexo, urlAnexo, nomeSi
     });
     await update(historicoRef, entradaHistorico);
 
-    console.log(`Solicitação cadastrada: ${idSolicitacao}`);
 }
 
 // FUNÇÃO: Criar timestamp Firebase
@@ -5243,7 +5231,6 @@ function showSolicitacoesError(error) {
 
 // ✅ FUNÇÕES GLOBAIS
 window.aplicarFiltroOPM = function(opmCodigo) {
-    console.log('🎯 aplicarFiltroOPM chamado com:', opmCodigo);
 
     if (!opmCodigo) return;
 
@@ -5260,7 +5247,6 @@ window.aplicarFiltroOPM = function(opmCodigo) {
     };
 
     if (tentarAplicarFiltro()) {
-        console.log('✅ Filtro aplicado imediatamente');
         return;
     }
 
@@ -5270,7 +5256,6 @@ window.aplicarFiltroOPM = function(opmCodigo) {
         tentativas++;
 
         if (tentarAplicarFiltro()) {
-            console.log(`✅ Filtro aplicado após ${tentativas} tentativa(s)`);
             clearInterval(intervalo);
         } else if (tentativas >= maxTentativas) {
             console.warn(`Não foi possível aplicar filtro após ${maxTentativas} tentativas`);
@@ -5280,7 +5265,6 @@ window.aplicarFiltroOPM = function(opmCodigo) {
 };
 
 window.aplicarFiltrosSolicitacoes = function(opm, mes, ano) {
-    console.log('🎯 Aplicando filtros:', { opm, mes, ano });
 
     if (!document.getElementById('solicitacoes-content') && window.app?.loadPage) {
         sessionStorage.setItem('filtroSolicitacoesTeste', JSON.stringify({

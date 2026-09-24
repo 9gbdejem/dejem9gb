@@ -3,7 +3,6 @@ import { checkAuth } from './auth-check.js';
 
 // Exportar funções principais para SPA
 export async function initSolicitacoesSPA() {
-    // console.log('🚀 Solicitações inicializando (SPA)...');
     await initSolicitacoes();
 }
 
@@ -24,7 +23,6 @@ export async function initSolicitacoes() {
         // 4. Renderizar página de solicitações
         renderSolicitacoes(userData, re);
         
-        // console.log('✅ Solicitações carregado com sucesso');
         
     } catch (error) {
         console.error('❌ Erro nas solicitações:', error);
@@ -184,7 +182,6 @@ function showSolicitacoesError(error) {
 if (!window.location.pathname.includes('app.html') && 
     !document.getElementById('app-content')) {
     
-    console.log('🌐 Solicitações carregando como página normal...');
     document.addEventListener('DOMContentLoaded', async function() {
         // Carrega navbar primeiro
         try {

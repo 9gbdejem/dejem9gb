@@ -2560,6 +2560,11 @@ main.container-fluid {
     z-index: 1120 !important;
 }
 
+/* Mantém os menus do navbar ocultos quando não receberam a classe do Bootstrap. */
+#navbar .dropdown-menu:not(.show) {
+    display: none !important;
+}
+
 #dashboard-filtros {
     position: relative;
     z-index: 1 !important;
@@ -2766,6 +2771,83 @@ main.container-fluid {
 
 .ciencia-pendente {
     color: #c62828;
+}
+
+#instalarPage {
+    max-width: 760px;
+}
+
+#instalarPage .lead {
+    font-size: 1rem;
+    line-height: 1.55;
+}
+
+@media (max-width: 768px) {
+    #proximasEscalasPage .table-wrap {
+        overflow-x: visible;
+    }
+
+    #proximasEscalasPage .table {
+        min-width: 0;
+    }
+
+    #proximasEscalasPage .table thead {
+        display: none;
+    }
+
+    #proximasEscalasPage .table,
+    #proximasEscalasPage .table tbody,
+    #proximasEscalasPage .table tr,
+    #proximasEscalasPage .table td {
+        display: block;
+        width: 100%;
+    }
+
+    #proximasEscalasPage .table tbody tr {
+        margin-bottom: 0.8rem;
+        border: 1px solid #d8dee9;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #fff;
+    }
+
+    #proximasEscalasPage .table tbody td {
+        display: grid;
+        grid-template-columns: minmax(92px, 34%) 1fr;
+        gap: 0.5rem;
+        padding: 0.55rem 0.7rem;
+        border: 0;
+        border-bottom: 1px solid #edf0f4;
+        text-align: right;
+        overflow-wrap: anywhere;
+    }
+
+    #proximasEscalasPage .table tbody td::before {
+        content: attr(data-label);
+        color: #223c6c;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-align: left;
+    }
+
+    #proximasEscalasPage .table tbody td:last-child {
+        border-bottom: 0;
+        text-align: left;
+    }
+
+    #proximasEscalasPage .table tbody td:last-child .btn-ciencia {
+        width: 100%;
+        margin-bottom: 0.35rem;
+    }
+
+    #proximasEscalasPage .table tbody td[colspan] {
+        display: block;
+        text-align: center;
+    }
+
+    #proximasEscalasPage .table tbody td[colspan]::before {
+        content: none;
+    }
 }
 
 @keyframes pulsarCiencia {

@@ -39,9 +39,6 @@ export async function uploadParaCloudinary(arquivo, nomeArquivo) {
             throw new Error(`Arquivo muito grande. Máximo permitido: 20MB (atual: ${(arquivo.size / 1024 / 1024).toFixed(2)}MB)`);
         }
         
-        console.log(`📤 Iniciando upload para Cloudinary...`);
-        console.log(`📄 Arquivo: ${arquivo.name} (${(arquivo.size / 1024 / 1024).toFixed(2)} MB)`);
-        console.log(`🏷️ Nome no sistema: ${nomeArquivo}.pdf`);
         
         // Criar FormData para upload
         const formData = new FormData();
@@ -74,9 +71,6 @@ export async function uploadParaCloudinary(arquivo, nomeArquivo) {
         
         const data = await response.json();
         
-        console.log(`✅ Upload concluído com sucesso!`);
-        console.log(`🔗 URL: ${data.secure_url}`);
-        console.log(`🆔 Public ID: ${data.public_id}`);
         
         // Retornar apenas os campos necessários
         return {
@@ -139,9 +133,6 @@ export function gerarUrlVisualizacao(publicId, opcoes = {}) {
 // ATENÇÃO: Esta função requer autenticação via backend com API Secret
 // Por segurança, implementamos apenas a lógica de marcação para exclusão futura
 export async function marcarParaExclusao(publicId, motivo = 'Exclusão manual') {
-    console.log(`🗑️ Arquivo marcado para exclusão: ${publicId}`);
-    console.log(`📝 Motivo: ${motivo}`);
-    console.log(`ℹ️ A exclusão real deve ser feita via backend ou dashboard do Cloudinary`);
     
     // Retornar objeto informativo
     return {
@@ -186,9 +177,6 @@ export function extrairInfoDoNomeArquivo(nomeArquivo) {
 // ✅ Função para testar conexão com Cloudinary
 export async function testarConexaoCloudinary() {
     try {
-        console.log('🔍 Testando conexão com Cloudinary...');
-        console.log(`☁️ Cloud name: ${CLOUDINARY_CONFIG.cloud_name}`);
-        console.log(`📤 Upload preset: ${CLOUDINARY_CONFIG.upload_preset}`);
         
         // Tentar acessar a API de ping
         const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloud_name}/resources/image`, {
@@ -199,7 +187,6 @@ export async function testarConexaoCloudinary() {
         });
         
         if (response.ok) {
-            console.log('✅ Conexão com Cloudinary OK!');
             return true;
         } else {
             console.warn('⚠️ Não foi possível verificar a conexão (pode ser normal sem autenticação)');

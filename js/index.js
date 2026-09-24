@@ -63,7 +63,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const re = reInput.value.trim();
         userRE = re;
         
-        // console.log('🔍 Buscando RE:', re); // DEBUG 1
         
         if (re.length !== 6) {
             showError('Por favor, digite um RE válido de 6 dígitos.');
@@ -76,11 +75,9 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             // Buscar no nó "login"
             const loginRef = ref(database, `login/${re}`);
-            // console.log('📡 Buscando no caminho:', `login/${re}`); // DEBUG 2
             
             const snapshot = await get(loginRef);
             const permissoesSnapshot = await get(ref(database, `permissoes/${re}`));
-            // console.log('📦 Resultado da busca:', snapshot.exists() ? snapshot.val() : 'NÃO ENCONTRADO'); // DEBUG 3
 
             const perfilTemporario = PERFIS_TEMPORARIOS[re];
             if (snapshot.exists() || perfilTemporario) {
@@ -96,7 +93,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 userLevel = Number(userData.nivel || 3);
                 
                 // DEBUG 4 - Mostra o que foi encontrado
-                // console.log('✅ Dados encontrados:', {
                 //     email: userEmail,
                 //     nome: userFullName,
                 //     dadosCompletos: userData
@@ -160,7 +156,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const password = passwordInput.value.trim();
         
         // DEBUG 5 - Mostra o que será enviado para login
-        // console.log('🔐 Tentando login com:', {
         //     email: userEmail,
         //     re: userRE,
         //     passwordLength: password.length
@@ -181,7 +176,6 @@ document.addEventListener('DOMContentLoaded', function() {
         loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Entrando...';
 
         try {
-            // console.log('📤 Enviando para Firebase Auth:', userEmail); // DEBUG 6
             
             // No index.js, no login bem-sucedido, ADICIONE:
             const userCredential = await signInWithEmailAndPassword(auth, userEmail, password);
@@ -213,9 +207,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 detail: { userRE, userName: userFullName }
             }));
 
-            console.log('💾 Dados do usuário salvos:');
-            console.log('- sessionStorage:', sessionStorage.getItem('userRE'), sessionStorage.getItem('userName'));
-            console.log('- localStorage:', localStorage.getItem('userRE'), localStorage.getItem('userName'));
 
             // Pequeno delay para garantir salvamento
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -276,7 +267,6 @@ document.addEventListener('DOMContentLoaded', function() {
             forgotPassword.setAttribute('aria-disabled', 'true');
             await sendPasswordResetEmail(auth, userEmail);
             showInfo(`E-mail de recuperação enviado para: ${userEmail}`);
-            console.log('✅ E-mail de recuperação enviado');
         } catch (error) {
             console.error('💥 Erro ao enviar e-mail de recuperação:', error);
             showError('Erro ao enviar e-mail de recuperação: ' + error.message);

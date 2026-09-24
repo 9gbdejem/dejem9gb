@@ -10,7 +10,6 @@ let reAtual = null;
 
 // Exportar funções para SPA
 export async function initPermissoesSPA() {
-    console.log('🚀 Permissões inicializando (SPA)...');
     await initPermissoes();
 }
 
@@ -78,7 +77,6 @@ export async function initPermissoes() {
         // 4. Configurar listeners
         setupPermissoesListeners();
         
-        console.log('✅ Sistema de permissões carregado');
         
     } catch (error) {
         console.error('❌ Erro nas permissões:', error);
@@ -105,7 +103,6 @@ async function carregarOPMs() {
                 }
             });
             
-            console.log(`✅ ${Object.keys(opmsDisponiveis).length} OPMs carregadas`);
         } else {
             console.warn('⚠️ Nenhuma OPM encontrada no banco');
         }
@@ -755,11 +752,9 @@ async function salvarPermissoes(e) {
             opms: permissoesOPM,
             atualizado_em: new Date().toISOString()
         });
-        console.log(`✅ Dados salvos em efetivo/${re}`);
         
         // 4. SE EMAIL FOI ALTERADO, ATUALIZAR TAMBÉM NO NÓ LOGIN
         if (emailAlterado) {
-            console.log(`📧 Email alterado de "${emailAntigo}" para "${email}". Atualizando login...`);
             
             try {
                 // Atualizar no nó login/RE/email
@@ -772,7 +767,6 @@ async function salvarPermissoes(e) {
                         email: email,
                         atualizado_em: new Date().toISOString()
                     });
-                    console.log(`✅ Login atualizado em login/${re}`);
                 } else {
                     // Se não existe, criar o nó login
                     await set(loginRef, {
@@ -781,7 +775,6 @@ async function salvarPermissoes(e) {
                         criado_em: new Date().toISOString(),
                         atualizado_em: new Date().toISOString()
                     });
-                    console.log(`✅ Login criado em login/${re}`);
                 }
                 
                 mostrarMensagem('✅ Dados salvos e e-mail sincronizado com o login!', 'success', mensagensDiv);
@@ -812,7 +805,6 @@ async function salvarPermissoes(e) {
                             criado_em: new Date().toISOString(),
                             atualizado_em: new Date().toISOString()
                         });
-                        console.log(`✅ Login criado para novo usuário em login/${re}`);
                     }
                 } catch (loginError) {
                     console.warn('⚠️ Não foi possível criar login para novo usuário:', loginError);
@@ -837,7 +829,6 @@ async function salvarPermissoes(e) {
         // 8. SE O USUÁRIO ALTEROU O PRÓPRIO EMAIL, ATUALIZAR SESSION STORAGE
         const userRE = sessionStorage.getItem('userRE');
         if (userRE === re && emailAlterado) {
-            console.log('📝 Usuário alterou próprio email, atualizando sessionStorage');
             // Atualizar email na sessionStorage se existir
             // Nota: O email normalmente não fica na sessionStorage, mas se quiser adicionar:
             // sessionStorage.setItem('userEmail', email);
@@ -1032,7 +1023,6 @@ document.addEventListener('DOMContentLoaded', function() {
 if (!window.location.pathname.includes('app.html') && 
     !document.getElementById('app-content')) {
     
-    console.log('🌐 Permissões carregando como página independente...');
     
     document.addEventListener('DOMContentLoaded', async function() {
         // Carregar navbar primeiro

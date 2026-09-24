@@ -2,7 +2,6 @@
 import { auth } from './firebase-config.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 
-console.log('✅ navbar.js carregado');
 
 // 1. FUNÇÃO QUE ATUALIZA O DROPDOWN COM NOME DO USUÁRIO
 function updateUserGreeting() {
@@ -10,7 +9,6 @@ function updateUserGreeting() {
     const dropdownToggle = document.getElementById('userGreetingDropdown');
     
     if (!greeting || !dropdownToggle) {
-        console.log('⏳ Aguardando elementos do dropdown...');
         setTimeout(updateUserGreeting, 100);
         return;
     }
@@ -19,7 +17,6 @@ function updateUserGreeting() {
     const userName = sessionStorage.getItem('userName');
     const userRE = sessionStorage.getItem('userRE');
     
-    console.log('📦 Dados encontrados:', { userName, userRE });
     
     // Se tem dados, atualiza
     if (userName) {
@@ -35,11 +32,8 @@ function updateUserGreeting() {
         // Adicionar tooltip opcional com RE
         if (userRE) {
             dropdownToggle.title = `RE: ${userRE}`;
-            dropdownToggle.setAttribute('data-bs-toggle', 'tooltip');
-            dropdownToggle.setAttribute('data-bs-placement', 'bottom');
         }
         
-        console.log('✅ Dropdown atualizado:', cleanName);
         return true;
     }
     
@@ -192,7 +186,6 @@ function styleDropdownToggle() {
 
 // 7. ✅ FUNÇÃO CORRIGIDA: Atualizar navbar baseado no nível do usuário
 export function updateNavbarByLevel(userLevel) {
-    console.log(`🎯 Atualizando navbar para nível ${userLevel}...`);
 
     // As notificações e as solicitações de liberação são ações exclusivas
     // do administrador. Mantém a regra também fora do fluxo do app.html.
@@ -223,7 +216,6 @@ export function updateNavbarByLevel(userLevel) {
                 // Fallback: ocultar o próprio elemento
                 exclusoesItem.style.display = 'none';
             }
-            console.log('🔒 Menu Exclusões ocultado para nível 3+');
         }
     }
 
@@ -231,7 +223,6 @@ export function updateNavbarByLevel(userLevel) {
 
 // 8. INICIALIZAÇÃO
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🏁 Navbar inicializando...');
     
     // Atualizar dropdown com nome IMEDIATAMENTE
     updateUserGreeting();
@@ -262,7 +253,6 @@ document.addEventListener('DOMContentLoaded', function() {
         updateNavbarByLevel(parseInt(userNivel));
     }
     
-    console.log('✅ Navbar inicializado');
 });
 
 // 9. Função global para forçar atualização

@@ -15,7 +15,6 @@ let userRE = null;
 
 // Exportar funções principais para SPA
 export async function initPerfilSPA() {
-    console.log('🚀 Perfil inicializando (SPA)...');
     await initPerfil();
 }
 
@@ -41,7 +40,6 @@ export async function initPerfil() {
         // 5. Adicionar listeners
         setupEventListeners();
         
-        console.log('✅ Perfil carregado com sucesso');
         
     } catch (error) {
         console.error('❌ Erro no perfil:', error);
@@ -755,7 +753,6 @@ function showPerfilError(error) {
 if (!window.location.pathname.includes('app.html') && 
     !document.getElementById('app-content')) {
     
-    console.log('🌐 Perfil carregando como página normal...');
     document.addEventListener('DOMContentLoaded', async function() {
         // Carrega navbar primeiro
         try {
