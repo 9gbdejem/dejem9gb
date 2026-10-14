@@ -16,6 +16,7 @@ let confirmacoesCache = {};
 let confirmacoesLoadVersion = 0;
 let filtroConfirmacaoAdministrador = 'todos';
 let salvamentoConfirmacaoEmAndamento = false;
+const DOCUMENTACAO_CONFIRMACAO_ATIVA = false;
 
 // Cache para dias já carregados
 let loadedDaysCache = new Set(); // Formato: "YYYY-MM-DD"
@@ -1105,6 +1106,51 @@ function getConfirmacaoStatus(escalaId, re) {
     return confirmacoesCache[chaveEscala].militares[chaveRE] || null;
 }
 
+function obterDataHoraInicioEscala(escala) {
+    if (!escala?.Data) return null;
+
+    const partesData = String(escala.Data).trim().split('/').map(Number);
+    if (partesData.length !== 3 || partesData.some((parte) => !Number.isFinite(parte))) return null;
+
+    const horario = String(escala.horarioInicio || '').trim();
+    const partesHorario = horario.match(/^(\d{1,2}):(\d{2})$/);
+    if (!partesHorario) return null;
+
+    const [dia, mes, ano] = partesData;
+    const hora = Number(partesHorario[1]);
+    const minuto = Number(partesHorario[2]);
+    const inicio = new Date(ano, mes - 1, dia, hora, minuto, 0, 0);
+
+    if (Number.isNaN(inicio.getTime())) return null;
+    if (inicio.getFullYear() !== ano || inicio.getMonth() !== mes - 1 || inicio.getDate() !== dia) return null;
+    if (inicio.getHours() !== hora || inicio.getMinutes() !== minuto) return null;
+
+    return inicio;
+}
+
+function validarInicioParaConfirmacao(escala) {
+    const inicio = obterDataHoraInicioEscala(escala);
+
+    if (!inicio) {
+        showMessage('Não foi possível identificar corretamente a data e o horário inicial da escala. A confirmação foi bloqueada.', 'warning');
+        return false;
+    }
+
+    if (Date.now() < inicio.getTime()) {
+        const dataHoraLiberacao = inicio.toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        showMessage(`A confirmação desta escala será liberada somente em ${dataHoraLiberacao}.`, 'warning');
+        return false;
+    }
+
+    return true;
+}
+
 function getConfirmacaoStatusGrupo(escalaId, militares) {
     if (!escalaId || !Array.isArray(militares) || militares.length === 0) return null;
 
@@ -1444,6 +1490,15 @@ function createModalIfNotExists() {
 
 window.openConfirmModal = async function(escalaId, reClicado) {
     const escalasComMesmoId = allEscalas.filter(e => e.Id == escalaId);
+    const primeiraEscala = escalasComMesmoId[0];
+
+    if (!primeiraEscala) {
+        showMessage('Não foi possível localizar os dados da escala.', 'warning');
+        return;
+    }
+
+    if (!validarInicioParaConfirmacao(primeiraEscala)) return;
+
     const usuarioEstaNaEscala = escalasComMesmoId.some(e => e.RE == userRE);
     const isAdmin = userNivel === 1;
     const isCobomTemporario = perfilUsuario === 'COBOM_TEMPORARIO';
@@ -1468,8 +1523,6 @@ window.openConfirmModal = async function(escalaId, reClicado) {
             : '';
     const adminSemLinkSEIChecked = isAdmin && dadosGerais.sem_link_sei === true;
     const adminDispensaAnexoChecked = isAdmin && dadosGerais.anexo_dispensado_admin === true;
-    
-    const primeiraEscala = escalasComMesmoId[0];
     
     let modalHTML = `
         <div class="modal-header">
@@ -1539,7 +1592,7 @@ window.openConfirmModal = async function(escalaId, reClicado) {
                 </table>
             </div>
             
-            <div class="mb-3">
+            <div class="mb-3 ${DOCUMENTACAO_CONFIRMACAO_ATIVA ? '' : 'd-none'}" id="documentacaoConfirmacao" aria-hidden="${DOCUMENTACAO_CONFIRMACAO_ATIVA ? 'false' : 'true'}">
                 <label class="form-label fw-bold">
                     <i class="fas fa-file-signature me-1"></i>DOCUMENTO DA CONFIRMAÇÃO:
                 </label>
@@ -1590,9 +1643,13 @@ window.openConfirmModal = async function(escalaId, reClicado) {
             <div class="mb-3">
                 <label for="observacoes" class="form-label">
                     <i class="fas fa-sticky-note me-1"></i>OBSERVAÇÕES:
+                    <span id="observacoesObrigatoria" class="text-danger d-none">*</span>
                 </label>
                 <textarea class="form-control" id="observacoes" rows="3" 
                           placeholder="Observações sobre a escala...">${dadosGerais.observacoes || ''}</textarea>
+                <div id="observacoesAjudaNovidade" class="form-text text-danger d-none">
+                    Informe obrigatoriamente o motivo ou a novidade encontrada.
+                </div>
             </div>
             
             <input type="hidden" id="modalEscalaId" value="${escalaId}">
@@ -1634,9 +1691,9 @@ window.openConfirmModal = async function(escalaId, reClicado) {
         btnTipoDocumentoSEI?.classList.toggle('btn-outline-primary', !usarSEI);
         btnTipoDocumentoGovBr?.classList.toggle('btn-primary', usarGovBr);
         btnTipoDocumentoGovBr?.classList.toggle('btn-outline-primary', !usarGovBr);
-        if (inputAnexo) inputAnexo.required = usarGovBr && !(dispensarAnexoConfirmacao?.checked === true);
+        if (inputAnexo) inputAnexo.required = DOCUMENTACAO_CONFIRMACAO_ATIVA && usarGovBr && !(dispensarAnexoConfirmacao?.checked === true);
         const seiLinkInput = document.getElementById('seiLink');
-        if (seiLinkInput) seiLinkInput.required = usarSEI && !(document.getElementById('semLinkSEI')?.checked === true);
+        if (seiLinkInput) seiLinkInput.required = DOCUMENTACAO_CONFIRMACAO_ATIVA && usarSEI && !(document.getElementById('semLinkSEI')?.checked === true);
     };
 
     btnTipoDocumentoSEI?.addEventListener('click', () => atualizarTipoDocumento('SEI'));
@@ -1653,6 +1710,20 @@ window.openConfirmModal = async function(escalaId, reClicado) {
             }
         });
     }
+
+    const observacoesInput = document.getElementById('observacoes');
+    const atualizarObrigatoriedadeObservacoes = () => {
+        const temNovidade = Array.from(document.querySelectorAll('.militar-status input[value="novidade"]:checked')).length > 0;
+        if (observacoesInput) observacoesInput.required = temNovidade;
+        document.getElementById('observacoesObrigatoria')?.classList.toggle('d-none', !temNovidade);
+        document.getElementById('observacoesAjudaNovidade')?.classList.toggle('d-none', !temNovidade);
+        if (!temNovidade) observacoesInput?.classList.remove('is-invalid');
+    };
+
+    document.querySelectorAll('.militar-status input[type="radio"]').forEach((campo) => {
+        campo.addEventListener('change', atualizarObrigatoriedadeObservacoes);
+    });
+    atualizarObrigatoriedadeObservacoes();
     
     const modalElement = document.getElementById('confirmModal');
     if (!modalElement) return;
@@ -1690,12 +1761,10 @@ async function saveConfirmation() {
         return;
     }
 
-    if (!tipoDocumento) {
-        showMessage('Selecione SEI ou GOV.BR antes de salvar a confirmação.', 'warning');
-        return;
-    }
-    
-    if (tipoDocumento === 'SEI') {
+    const escalaParaConfirmar = allEscalas.find((escala) => escala.Id == escalaId);
+    if (!escalaParaConfirmar || !validarInicioParaConfirmacao(escalaParaConfirmar)) return;
+
+    if (DOCUMENTACAO_CONFIRMACAO_ATIVA && tipoDocumento === 'SEI') {
         if (!semLinkSEI && !seiLink) {
             showMessage('O link do documento SEI é obrigatório.', 'warning');
             return;
@@ -1704,7 +1773,7 @@ async function saveConfirmation() {
             showMessage('O link do SEI deve começar com https://sei.sp.gov.br/ ou http://sei.sp.gov.br/.', 'warning');
             return;
         }
-    } else {
+    } else if (DOCUMENTACAO_CONFIRMACAO_ATIVA) {
         if (!arquivoAnexo && !dispensarAnexo) {
             showMessage('O anexo em PDF é obrigatório para salvar a confirmação.', 'warning');
             return;
@@ -1737,6 +1806,19 @@ async function saveConfirmation() {
         return;
     }
 
+    const observacoesInput = document.getElementById('observacoes');
+    const observacoes = observacoesInput?.value.trim() || '';
+    const temNovidade = Object.values(statusMilitares).includes('novidade');
+
+    if (temNovidade && !observacoes) {
+        observacoesInput?.classList.add('is-invalid');
+        observacoesInput?.focus();
+        showMessage('O campo Observações é obrigatório quando houver alguma Novidade.', 'warning');
+        return;
+    }
+
+    observacoesInput?.classList.remove('is-invalid');
+
     salvamentoConfirmacaoEmAndamento = true;
     
     try {
@@ -1748,7 +1830,7 @@ async function saveConfirmation() {
         const dadosGeraisAnteriores = confirmacoesCache[escalaId]?.dadosGerais || {};
         let anexoConfirmacao = dadosGeraisAnteriores.anexo_confirmacao || null;
 
-        if (tipoDocumento === 'GOV.BR' && arquivoAnexo) {
+        if (DOCUMENTACAO_CONFIRMACAO_ATIVA && tipoDocumento === 'GOV.BR' && arquivoAnexo) {
             const nomeAnexo = `confirmacao_${escalaId}_${timestamp}`;
             const resultadoAnexo = await uploadParaCloudinary(
                 arquivoAnexo,
@@ -1771,12 +1853,12 @@ async function saveConfirmation() {
         
         await set(ref(database, `confirmacoes/${escalaId}/dados_gerais`), {
             // Mantém o link antigo apenas para preservar o histórico.
-            sei_link: tipoDocumento === 'SEI' ? seiLink : (dadosGeraisAnteriores.sei_link || ''),
-            sem_link_sei: tipoDocumento === 'SEI' ? semLinkSEI : (dadosGeraisAnteriores.sem_link_sei === true),
-            documento_tipo: tipoDocumento,
+            sei_link: DOCUMENTACAO_CONFIRMACAO_ATIVA && tipoDocumento === 'SEI' ? seiLink : (dadosGeraisAnteriores.sei_link || ''),
+            sem_link_sei: DOCUMENTACAO_CONFIRMACAO_ATIVA && tipoDocumento === 'SEI' ? semLinkSEI : (dadosGeraisAnteriores.sem_link_sei === true),
+            documento_tipo: DOCUMENTACAO_CONFIRMACAO_ATIVA ? tipoDocumento : (dadosGeraisAnteriores.documento_tipo || ''),
             anexo_confirmacao: anexoConfirmacao,
-            anexo_dispensado_admin: tipoDocumento === 'GOV.BR' ? dispensarAnexo : false,
-            observacoes: document.getElementById('observacoes')?.value.trim() || '',
+            anexo_dispensado_admin: DOCUMENTACAO_CONFIRMACAO_ATIVA && tipoDocumento === 'GOV.BR' ? dispensarAnexo : (dadosGeraisAnteriores.anexo_dispensado_admin === true),
+            observacoes: observacoes,
             ultima_atualizacao: timestamp,
             atualizado_por: userRE
         });
@@ -1800,12 +1882,12 @@ async function saveConfirmation() {
         if (!confirmacoesCache[escalaId]) confirmacoesCache[escalaId] = { dadosGerais: {}, militares: {} };
         
         confirmacoesCache[escalaId].dadosGerais = {
-            sei_link: tipoDocumento === 'SEI' ? seiLink : (dadosGeraisAnteriores.sei_link || ''),
-            sem_link_sei: tipoDocumento === 'SEI' ? semLinkSEI : (dadosGeraisAnteriores.sem_link_sei === true),
-            documento_tipo: tipoDocumento,
+            sei_link: DOCUMENTACAO_CONFIRMACAO_ATIVA && tipoDocumento === 'SEI' ? seiLink : (dadosGeraisAnteriores.sei_link || ''),
+            sem_link_sei: DOCUMENTACAO_CONFIRMACAO_ATIVA && tipoDocumento === 'SEI' ? semLinkSEI : (dadosGeraisAnteriores.sem_link_sei === true),
+            documento_tipo: DOCUMENTACAO_CONFIRMACAO_ATIVA ? tipoDocumento : (dadosGeraisAnteriores.documento_tipo || ''),
             anexo_confirmacao: anexoConfirmacao,
-            anexo_dispensado_admin: tipoDocumento === 'GOV.BR' ? dispensarAnexo : false,
-            observacoes: document.getElementById('observacoes')?.value.trim() || '',
+            anexo_dispensado_admin: DOCUMENTACAO_CONFIRMACAO_ATIVA && tipoDocumento === 'GOV.BR' ? dispensarAnexo : (dadosGeraisAnteriores.anexo_dispensado_admin === true),
+            observacoes: observacoes,
             ultima_atualizacao: timestamp,
             atualizado_por: userRE
         };

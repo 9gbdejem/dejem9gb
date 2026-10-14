@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.0.1**
+**Sistema de Gestão de Escalas - Versão 1.0.2**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,14 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.0.2 - 14/10/2026
+
+- Ocultada temporariamente a documentação SEI/GOV.BR no modal de confirmação.
+- Removida a obrigatoriedade de documentação na confirmação de escala.
+- Tornado obrigatório o preenchimento de Observações quando algum militar for marcado com status `Novidade`.
+- Confirmado o registro da data, hora e RE do usuário responsável pela confirmação para emissão de relatórios futuros.
+- Bloqueada a confirmação de presença antes da data e do horário inicial da escala, inclusive para administradores.
 
 ### 1.0.1 - 24/09/2026
 
