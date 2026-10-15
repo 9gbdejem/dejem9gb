@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.0.2**
+**Sistema de Gestão de Escalas - Versão 1.0.3**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,16 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.0.3 - 15/10/2026
+
+- Incluído na página inicial um acesso direto ao site oficial de inscrição nas DEJEM.
+- Exigida pelo menos uma vaga de Ten, Cap ou Sup para composições que contenham `OFICIAL`, `OFICIAIS` ou `SUPERVISOR`.
+- Restringido aos administradores de nível 1 o cadastro de solicitações com vagas para oficiais.
+- Ajustado o filtro Código de local para listar somente os códigos existentes na tabela de solicitações carregada.
+- Ajustado o `frmEscalasObserv` para salvar exclusivamente a observação administrativa e apresentar o motivo e a observação do solicitante apenas para consulta.
+- Renomeado o botão de observações do `sfrmLinhaEscala` para `btnOpcoes`.
+- Criado o `frmEscalasOpcoes`, com acesso às observações e ao motivo da escala e ao relatório de presença na Intranet.
 
 ### 1.0.2 - 14/10/2026
 

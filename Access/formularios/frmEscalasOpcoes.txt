@@ -1,0 +1,73 @@
+Option Compare Database
+Option Explicit
+
+Private Const URL_RELATORIO_PRESENCA As String = "https://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/arrelpreesc.aspx?"
+
+Private mstrIDCadastro As String
+Private mstrIDEscala As String
+
+Private Sub Form_Load()
+    On Error GoTo Erro_Form_Load
+
+    Dim strOpenArgs As String
+    Dim lngSeparador As Long
+
+    strOpenArgs = Nz(Me.OpenArgs, "")
+    lngSeparador = InStr(1, strOpenArgs, "|", vbBinaryCompare)
+
+    If lngSeparador > 0 Then
+        mstrIDCadastro = Trim$(Left$(strOpenArgs, lngSeparador - 1))
+        mstrIDEscala = Trim$(Mid$(strOpenArgs, lngSeparador + 1))
+    Else
+        mstrIDCadastro = Trim$(strOpenArgs)
+        mstrIDEscala = ""
+    End If
+
+    If mstrIDCadastro = "" And mstrIDEscala = "" Then
+        MsgBox "Nenhuma escala foi informada.", vbExclamation, "Opções da escala"
+        DoCmd.Close acForm, Me.Name
+    End If
+
+    Exit Sub
+
+Erro_Form_Load:
+    Debug.Print "Erro frmEscalasOpcoes.Form_Load: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao carregar as opções da escala: " & Err.Description, vbCritical, "Erro"
+    DoCmd.Close acForm, Me.Name
+End Sub
+
+Private Sub btnObservMotivo_Click()
+    On Error GoTo Erro_btnObservMotivo
+
+    If mstrIDCadastro = "" Then
+        MsgBox "Esta escala não possui ID_Cadastro para consultar as observações e o motivo.", _
+               vbExclamation, "Observações e motivo"
+        Exit Sub
+    End If
+
+    DoCmd.OpenForm "frmEscalasObserv", , , , , acDialog, mstrIDCadastro
+
+    Exit Sub
+
+Erro_btnObservMotivo:
+    Debug.Print "Erro frmEscalasOpcoes.btnObservMotivo_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao abrir as observações e o motivo: " & Err.Description, vbCritical, "Erro"
+End Sub
+
+Private Sub btnRelPresEsc_Click()
+    On Error GoTo Erro_btnRelPresEsc
+
+    If mstrIDEscala = "" Or mstrIDEscala = "0" Then
+        MsgBox "Esta escala ainda não possui ID_Escala para abrir o relatório de presença.", _
+               vbExclamation, "Relatório de presença"
+        Exit Sub
+    End If
+
+    CreateObject("Shell.Application").Open URL_RELATORIO_PRESENCA & mstrIDEscala
+
+    Exit Sub
+
+Erro_btnRelPresEsc:
+    Debug.Print "Erro frmEscalasOpcoes.btnRelPresEsc_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao abrir o relatório de presença: " & Err.Description, vbCritical, "Erro"
+End Sub

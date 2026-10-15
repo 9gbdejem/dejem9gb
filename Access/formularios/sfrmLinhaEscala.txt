@@ -185,19 +185,23 @@ Private Sub btnBombeiros_Click()
     DoCmd.OpenForm "frmEscalados", , , , , acDialog, strID
 End Sub
 
-Private Sub btnObserv_Click()
-    Dim strID As String
+Private Sub btnOpcoes_Click()
+    Dim strIDCadastro As String
+    Dim strIDEscala As String
+    Dim strOpenArgs As String
     Dim frmPai As Form
     Dim lngTotal As Long
     
-    strID = Nz(Me.ID_Cadastro, "")
+    strIDCadastro = Trim$(Nz(Me.ID_Cadastro, ""))
+    strIDEscala = Trim$(Nz(Me.ID_Escala, ""))
     
-    If strID = "" Then
-        MsgBox "Nenhum cadastro selecionado.", vbExclamation
+    If strIDCadastro = "" And strIDEscala = "" Then
+        MsgBox "Nenhuma escala selecionada.", vbExclamation, "Opções da escala"
         Exit Sub
     End If
     
-    DoCmd.OpenForm "frmEscalasObserv", , , , , acDialog, strID
+    strOpenArgs = strIDCadastro & "|" & strIDEscala
+    DoCmd.OpenForm "frmEscalasOpcoes", , , , , acDialog, strOpenArgs
     
     Me.Requery
     lngTotal = Me.RecordsetClone.RecordCount

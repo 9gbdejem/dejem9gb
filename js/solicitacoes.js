@@ -40,6 +40,31 @@ let opmsPermitidas = [];
 let opmsNomes = {};
 let opmFiltrosEspeciais = {};
 let composicoesDisponiveis = {};
+
+function obterNomeComposicaoSelecionada(dados) {
+    const nomeCadastrado = composicoesDisponiveis[dados.opm_codigo]?.[dados.composicao_cod]?.composicao;
+    if (nomeCadastrado) return String(nomeCadastrado);
+
+    return document.getElementById('selectComposicao')?.selectedOptions?.[0]?.textContent || '';
+}
+
+function composicaoExigeOficial(dados) {
+    const nomeComposicao = obterNomeComposicaoSelecionada(dados).toLocaleUpperCase('pt-BR');
+    return ['OFICIAL', 'OFICIAIS', 'SUPERVISOR'].some((termo) => nomeComposicao.includes(termo));
+}
+
+function totalVagasOficiais(dados) {
+    return ['solic_superior', 'solic_intermed', 'solic_subalterno'].reduce((total, campo) => {
+        const quantidade = Number(dados[campo]);
+        return total + (Number.isFinite(quantidade) && quantidade > 0 ? quantidade : 0);
+    }, 0);
+}
+
+function destacarCamposOficiais(destacar) {
+    ['inputSolicSuperior', 'inputSolicIntermed', 'inputSolicSubalterno'].forEach((id) => {
+        document.getElementById(id)?.classList.toggle('is-invalid', destacar);
+    });
+}
 let solicitacoesCache = [];
 let opmSelecionada = null;
 let mesFiltro = null;
@@ -1840,6 +1865,34 @@ function validarDadosFormulario(dados) {
         };
     }
 
+    const quantidadeOficiais = totalVagasOficiais(dados);
+    const usuarioAdministrador = Number(userDataCache?.nivel || sessionStorage.getItem('userLevel') || 0) === 1;
+    const exigeOficial = composicaoExigeOficial(dados);
+
+    destacarCamposOficiais(false);
+
+    if (exigeOficial && !usuarioAdministrador) {
+        return {
+            valido: false,
+            mensagem: 'Esta composição exige pelo menos uma vaga para oficial e somente pode ser cadastrada por administradores.'
+        };
+    }
+
+    if (quantidadeOficiais > 0 && !usuarioAdministrador) {
+        return {
+            valido: false,
+            mensagem: 'Somente administradores podem cadastrar vagas para oficiais.'
+        };
+    }
+
+    if (exigeOficial && quantidadeOficiais < 1) {
+        destacarCamposOficiais(true);
+        return {
+            valido: false,
+            mensagem: 'Para esta composição, informe pelo menos uma vaga em Ten, Cap ou Sup.'
+        };
+    }
+
     return { valido: true, mensagem: 'Dados válidos' };
 }
 
@@ -3178,14 +3231,6 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
         if (Number(userDataCache?.nivel) === 1 && solicitacao.pedido_liberacao_edicao) {
             statusDisponiveis.add('pedido_liberacao');
         }
-    });
-
-    obterOpmsDaSelecao().forEach((opmCodigo) => {
-        Object.entries(composicoesDisponiveis[opmCodigo] || {}).forEach(([cod, dados]) => {
-            const codigo = String(cod || '').trim();
-            if (!codigo || composicoes.has(codigo)) return;
-            composicoes.set(codigo, dados?.composicao || codigo);
-        });
     });
 
     const composicoesOrdenadas = [...composicoes.entries()]

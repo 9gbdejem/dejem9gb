@@ -5,7 +5,6 @@ Private mstrIDCadastro As String
 Private mblnCarregado As Boolean
 
 Private mstrObservAdmOriginal As String
-Private mstrObservSlcOriginal As String
 Private mstrMotivoReaberturaOriginal As String
 
 Private Sub Form_Load()
@@ -15,8 +14,12 @@ Private Sub Form_Load()
     mblnCarregado = False
 
     mstrObservAdmOriginal = ""
-    mstrObservSlcOriginal = ""
     mstrMotivoReaberturaOriginal = ""
+
+    Me.txtObservSlc.Locked = True
+    Me.txtObservSlc.TabStop = False
+    Me.txtMotivo.Locked = True
+    Me.txtMotivo.TabStop = False
 
     ' Recebe o ID_Cadastro pelo OpenArgs
     mstrIDCadastro = Trim(Nz(Me.OpenArgs, ""))
@@ -41,8 +44,8 @@ Private Sub CarregarObservacoes()
     Dim strSQL As String
     Dim rs As DAO.Recordset
 
-    ' Busca Adm e Solic pelo ID_Cadastro
-    strSQL = "SELECT ID_Cadastro, ID_Escala, Observacoes_Adm, Observacoes_Slc, Motivo_reabertura " & _
+    ' Busca as observações e o motivo pelo ID_Cadastro
+    strSQL = "SELECT ID_Cadastro, ID_Escala, Observacoes_Adm, Observacoes_Slc, Motivo, Motivo_reabertura " & _
              "FROM TblEscGeral " & _
              "WHERE ID_Cadastro = '" & SQLTexto(mstrIDCadastro) & "'"
 
@@ -54,18 +57,18 @@ Private Sub CarregarObservacoes()
         
         Me.txtObservAdm = TextoObservacaoAdm(mstrMotivoReaberturaOriginal, Nz(rs!Observacoes_Adm, ""))
         Me.txtObservSlc = Nz(rs!Observacoes_Slc, "")
+        Me.txtMotivo = Nz(rs!Motivo, "")
 
         mstrObservAdmOriginal = Nz(Me.txtObservAdm.Value, "")
-        mstrObservSlcOriginal = Nz(Me.txtObservSlc.Value, "")
 
         Me.txtVerifAlt = 0
         mblnCarregado = True
     Else
         Me.txtObservAdm = ""
         Me.txtObservSlc = ""
+        Me.txtMotivo = ""
 
         mstrObservAdmOriginal = ""
-        mstrObservSlcOriginal = ""
         mstrMotivoReaberturaOriginal = ""
 
         Me.txtVerifAlt = 0
@@ -104,13 +107,10 @@ Private Sub VerificarAlteracoes()
     If Not mblnCarregado Then Exit Sub
 
     Dim strAdmAtual As String
-    Dim strSlcAtual As String
 
     strAdmAtual = ValorAtualCampo("txtObservAdm")
-    strSlcAtual = ValorAtualCampo("txtObservSlc")
 
-    If strAdmAtual <> mstrObservAdmOriginal _
-       Or strSlcAtual <> mstrObservSlcOriginal Then
+    If strAdmAtual <> mstrObservAdmOriginal Then
 
         Me.txtVerifAlt = 1
     Else
@@ -149,7 +149,6 @@ Private Sub btnSalvar_Click()
     Dim resposta As Integer
     Dim strSQL As String
     Dim strObservAdm As String
-    Dim strObservSlc As String
 
     If Not mblnCarregado Then
         MsgBox "Dados não carregados corretamente.", vbExclamation, "Observações"
@@ -176,12 +175,10 @@ Private Sub btnSalvar_Click()
     If resposta = vbNo Then Exit Sub
 
     strObservAdm = ObservacaoAdmParaSalvar(Nz(Me.txtObservAdm.Value, ""))
-    strObservSlc = Nz(Me.txtObservSlc.Value, "")
 
-    ' Salva Adm e Solic pelo ID_Cadastro
+    ' Salva somente a observação administrativa pelo ID_Cadastro
     strSQL = "UPDATE TblEscGeral SET " & _
-             "Observacoes_Adm = '" & SQLTexto(strObservAdm) & "', " & _
-             "Observacoes_Slc = '" & SQLTexto(strObservSlc) & "' " & _
+             "Observacoes_Adm = '" & SQLTexto(strObservAdm) & "' " & _
              "WHERE ID_Cadastro = '" & SQLTexto(mstrIDCadastro) & "'"
 
     CurrentDb.Execute strSQL, dbFailOnError
@@ -190,7 +187,6 @@ Private Sub btnSalvar_Click()
 
     Me.txtVerifAlt = 0
     mstrObservAdmOriginal = Nz(Me.txtObservAdm.Value, "")
-    mstrObservSlcOriginal = Nz(Me.txtObservSlc.Value, "")
 
     DoCmd.Close acForm, Me.Name
 
