@@ -1,4 +1,6 @@
-const admin = require('firebase-admin');
+const { cert, getApps, initializeApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getDatabase } = require('firebase-admin/database');
 const crypto = require('crypto');
 
 const DATABASE_URL = 'https://dejem-9gb-default-rtdb.firebaseio.com';
@@ -15,7 +17,7 @@ function resposta(statusCode, corpo) {
 }
 
 function obterAplicativoAdmin() {
-    if (admin.apps.length) return admin.app();
+    if (getApps().length) return getApps()[0];
 
     const credencialJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
     let serviceAccount;
@@ -39,8 +41,8 @@ function obterAplicativoAdmin() {
         serviceAccount = { projectId, clientEmail, privateKey };
     }
 
-    return admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+    return initializeApp({
+        credential: cert(serviceAccount),
         databaseURL: process.env.FIREBASE_DATABASE_URL || DATABASE_URL
     });
 }
@@ -64,14 +66,15 @@ exports.handler = async function handler(event) {
     }
 
     try {
-        obterAplicativoAdmin();
+        const aplicativo = obterAplicativoAdmin();
+        const auth = getAuth(aplicativo);
+        const db = getDatabase(aplicativo);
 
         const authorization = event.headers.authorization || event.headers.Authorization || '';
         const idToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
         if (!idToken) return resposta(401, { erro: 'Sessão não autenticada.' });
 
-        const token = await admin.auth().verifyIdToken(idToken, true);
-        const db = admin.database();
+        const token = await auth.verifyIdToken(idToken, true);
         const reAdministrador = await obterREAdministrador(db, token);
         if (!reAdministrador) {
             return resposta(403, { erro: 'Não foi possível identificar o administrador autenticado.' });
@@ -114,10 +117,10 @@ exports.handler = async function handler(event) {
             });
         }
 
-        const usuarioAlvo = await admin.auth().getUserByEmail(emailAntigo);
+        const usuarioAlvo = await auth.getUserByEmail(emailAntigo);
 
         try {
-            const usuarioDoNovoEmail = await admin.auth().getUserByEmail(emailNovo);
+            const usuarioDoNovoEmail = await auth.getUserByEmail(emailNovo);
             if (usuarioDoNovoEmail.uid !== usuarioAlvo.uid) {
                 return resposta(409, { erro: 'O novo e-mail já pertence a outro usuário.' });
             }
@@ -125,7 +128,7 @@ exports.handler = async function handler(event) {
             if (error.code !== 'auth/user-not-found') throw error;
         }
 
-        await admin.auth().updateUser(usuarioAlvo.uid, {
+        await auth.updateUser(usuarioAlvo.uid, {
             email: emailNovo,
             emailVerified: false
         });
@@ -147,7 +150,7 @@ exports.handler = async function handler(event) {
         try {
             await db.ref().update(atualizacoes);
         } catch (error) {
-            await admin.auth().updateUser(usuarioAlvo.uid, {
+            await auth.updateUser(usuarioAlvo.uid, {
                 email: emailAntigo,
                 emailVerified: false
             });
@@ -157,9 +160,9 @@ exports.handler = async function handler(event) {
         let senhaAnteriorInvalidada = true;
         try {
             const senhaTemporaria = `${crypto.randomBytes(32).toString('base64url')}Aa1!`;
-            await admin.auth().updateUser(usuarioAlvo.uid, { password: senhaTemporaria });
+            await auth.updateUser(usuarioAlvo.uid, { password: senhaTemporaria });
             if (usuarioAlvo.uid !== token.uid) {
-                await admin.auth().revokeRefreshTokens(usuarioAlvo.uid);
+                await auth.revokeRefreshTokens(usuarioAlvo.uid);
             }
         } catch (error) {
             senhaAnteriorInvalidada = false;

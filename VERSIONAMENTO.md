@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.0.4**
+**Sistema de Gestão de Escalas - Versão 1.0.5**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,12 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.0.5 - 21/10/2026
+
+- Corrigida a inicialização do Firebase Admin SDK na Netlify Function de alteração de e-mail, adotando a API modular compatível com a versão instalada.
+- Corrigido o Dashboard em smartphones para manter filtros, avisos e tabela dentro da largura da tela, com rolagem horizontal restrita à tabela.
+- Substituído o endereço extenso do site oficial de inscrições por um botão responsivo, evitando que o aviso ultrapasse o quadro.
 
 ### 1.0.4 - 21/10/2026
 

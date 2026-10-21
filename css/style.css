@@ -2529,10 +2529,41 @@ main.container-fluid {
 
 /* Permite que os filtros múltiplos do dashboard ultrapassem a altura da tabela. */
 #dashboardEscalasCard,
-#dashboardEscalasCard .card-body,
+#dashboard-filtros {
+    overflow: visible !important;
+}
+
+#dashboardEscalasCard,
 #dashboard-filtros,
 #dashboard-content {
-    overflow: visible !important;
+    min-width: 0;
+    max-width: 100%;
+}
+
+#dashboard-content {
+    overflow: hidden !important;
+}
+
+#dashboard-content > .table-responsive {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+}
+
+#dashboardPage .dashboard-inscricao-aviso {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+#dashboardPage .dashboard-inscricao-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 #dashboard-filtros .dropdown {
@@ -2581,6 +2612,54 @@ main.container-fluid {
 
 #dashboard-filtros .dropdown-menu.show {
     z-index: 1000 !important;
+}
+
+@media (max-width: 767.98px) {
+    #app-content:has(#dashboardPage) {
+        width: 100%;
+        max-width: 100vw;
+        min-width: 0;
+        padding-right: 8px !important;
+        padding-left: 8px !important;
+        overflow-x: clip;
+    }
+
+    #dashboardPage {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        padding-right: 0;
+        padding-left: 0;
+    }
+
+    #dashboardPage .alert {
+        min-width: 0;
+        align-items: flex-start !important;
+    }
+
+    #dashboardPage .alert > div {
+        min-width: 0;
+    }
+
+    #dashboardPage .dashboard-inscricao-aviso {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #dashboardPage .dashboard-inscricao-btn {
+        width: 100%;
+        white-space: normal;
+    }
+
+    #dashboardEscalasCard .card-header,
+    #dashboardEscalasCard .card-body {
+        padding-right: 0.75rem;
+        padding-left: 0.75rem;
+    }
+
+    #dashboard-filtros .dropdown-menu {
+        max-width: calc(100vw - 48px);
+    }
 }
 /* Remove setas dos inputs numericos das quantidades na tabela de solicitacoes. */
 #tabelaSolicitacoes .vagas-cell input[type="number"] {
