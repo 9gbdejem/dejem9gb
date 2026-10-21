@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.0.3**
+**Sistema de Gestão de Escalas - Versão 1.0.4**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,16 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.0.4 - 21/10/2026
+
+- A tela `Perfil > Gerenciar Permissões` passou a alterar o e-mail no Firebase Authentication preservando a UID do usuário.
+- Criada uma Netlify Function protegida, acessível somente a administradores de nível 1, para executar a alteração no Authentication.
+- Sincronizados os e-mails de acesso em `/login/{RE}` e `/efetivo/{RE}`, com índice seguro por UID.
+- Invalidada a senha anterior após a troca do e-mail e enviado ao novo endereço o link para definição de uma nova senha.
+- Incluídas validações para conta inexistente, e-mail duplicado e divergência entre o e-mail informado e o cadastro atual.
+- Configurado o Firebase Admin SDK para execução nas Netlify Functions com Node.js 22.
+- Corrigida a ordem de carregamento de jQuery, DataTables e do adaptador Bootstrap, eliminando a falha intermitente de inicialização.
 
 ### 1.0.3 - 15/10/2026
 

@@ -513,37 +513,31 @@ class AppCore {
     }
   
     async loadExternalScripts() {
-        return new Promise((resolve) => {
-            const scripts = [
-                'https://code.jquery.com/jquery-3.6.0.min.js',
-                'https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js',
-                'https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js',
-                'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
-            ];
-            
-            let loaded = 0;
-            
-            scripts.forEach(src => {
-                if (document.querySelector(`script[src="${src}"]`)) {
-                    loaded++;
-                    if (loaded === scripts.length) resolve();
-                    return;
-                }
-                
+        const scripts = [
+            'https://code.jquery.com/jquery-3.6.0.min.js',
+            'https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js',
+            'https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+        ];
+
+        for (const src of scripts) {
+            const existente = document.querySelector(`script[src="${src}"]`);
+            if (existente) continue;
+
+            await new Promise((resolve) => {
                 const script = document.createElement('script');
                 script.src = src;
                 script.onload = () => {
-                    loaded++;
-                    if (loaded === scripts.length) resolve();
+                    script.dataset.carregado = 'true';
+                    resolve();
                 };
                 script.onerror = () => {
-                    loaded++;
-                    console.warn(`⚠️ Script não carregado: ${src}`);
-                    if (loaded === scripts.length) resolve();
+                    console.error(`Script não carregado: ${src}`);
+                    resolve();
                 };
                 document.head.appendChild(script);
             });
-        });
+        }
     }
     
     async loadDashboardScript() {

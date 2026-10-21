@@ -1,5 +1,6 @@
 // js/perfil-permissao.js - Sistema de Permissões (Somente Admin - Nível 1)
 import { auth } from './firebase-config.js';
+import { sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import { ref, get, set, update, push } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 import { database } from './firebase-config.js';
 
@@ -719,17 +720,32 @@ async function salvarPermissoes(e) {
         const loginSnapshotAtual = await get(loginRef);
         const loginAtual = loginSnapshotAtual.exists() ? loginSnapshotAtual.val() : {};
         
-        let emailAntigo = null;
-        if (existingUser.exists()) {
-            emailAntigo = existingUser.val().email;
+        const dadosAtuais = existingUser.exists() ? existingUser.val() : {};
+        const emailAntigo = String(
+            loginAtual.email || dadosAtuais.email || dadosAtuais.mail_funcional || ''
+        ).trim().toLowerCase();
+        const emailNormalizado = email.toLowerCase();
+        const cadastroExistente = existingUser.exists() || loginSnapshotAtual.exists();
+        if (cadastroExistente && !emailAntigo) {
+            throw new Error('O cadastro atual não possui um e-mail anterior que permita localizar a conta no Authentication.');
         }
-        
-        const emailAlterado = (emailAntigo && emailAntigo !== email);
+        const emailAlterado = Boolean(emailAntigo && emailAntigo !== emailNormalizado);
+
+        // O Authentication precisa ser atualizado antes dos dados locais para evitar
+        // que o login passe a apontar para um e-mail que ainda não existe na conta.
+        if (emailAlterado) {
+            await atualizarEmailAuthentication({
+                re,
+                nome,
+                emailAntigo,
+                emailNovo: emailNormalizado
+            });
+        }
         
         // 2. PREPARAR DADOS DO USUÁRIO PARA EFETIVO
         const userData = {
             nome: nome,
-            email: email,
+            email: emailNormalizado,
             nivel: nivel,
             atualizado_em: new Date().toISOString(),
             re: re
@@ -744,7 +760,7 @@ async function salvarPermissoes(e) {
         await set(userRef, userData);
         await set(loginRef, {
             atualizado_em: new Date().toISOString(),
-            email,
+            email: emailNormalizado,
             nome
         });
         await set(ref(database, `permissoes/${re}`), {
@@ -753,37 +769,19 @@ async function salvarPermissoes(e) {
             atualizado_em: new Date().toISOString()
         });
         
-        // 4. SE EMAIL FOI ALTERADO, ATUALIZAR TAMBÉM NO NÓ LOGIN
+        // 4. ENVIAR AO NOVO E-MAIL O LINK PARA DEFINIÇÃO DE SENHA
         if (emailAlterado) {
-            
             try {
-                // Atualizar no nó login/RE/email
-                const loginRef = ref(database, `login/${re}`);
-                const loginSnapshot = await get(loginRef);
-                
-                if (loginSnapshot.exists()) {
-                    // Se já existe, atualizar apenas o email
-                    await update(loginRef, {
-                        email: email,
-                        atualizado_em: new Date().toISOString()
-                    });
-                } else {
-                    // Se não existe, criar o nó login
-                    await set(loginRef, {
-                        email: email,
-                        re: re,
-                        criado_em: new Date().toISOString(),
-                        atualizado_em: new Date().toISOString()
-                    });
-                }
-                
-                mostrarMensagem('✅ Dados salvos e e-mail sincronizado com o login!', 'success', mensagensDiv);
-                
-            } catch (loginError) {
-                console.error('❌ Erro ao atualizar login:', loginError);
-                // Não falhar a operação principal, apenas avisar
+                await sendPasswordResetEmail(auth, emailNormalizado);
                 mostrarMensagem(
-                    '⚠️ Dados salvos, mas houve erro ao sincronizar e-mail no login. Entre em contato com o suporte.',
+                    '✅ Dados salvos, e-mail de acesso alterado e redefinição de senha enviada ao novo endereço.',
+                    'success',
+                    mensagensDiv
+                );
+            } catch (resetError) {
+                console.error('Erro ao enviar redefinição de senha:', resetError);
+                mostrarMensagem(
+                    '⚠️ O e-mail de acesso foi alterado, mas não foi possível enviar a redefinição de senha. O usuário pode usar “Esqueci minha senha” na tela de login.',
                     'warning',
                     mensagensDiv
                 );
@@ -800,7 +798,7 @@ async function salvarPermissoes(e) {
                     
                     if (!loginSnapshot.exists()) {
                         await set(loginRef, {
-                            email: email,
+                            email: emailNormalizado,
                             re: re,
                             criado_em: new Date().toISOString(),
                             atualizado_em: new Date().toISOString()
@@ -844,6 +842,36 @@ async function salvarPermissoes(e) {
             btnSalvar.innerHTML = '<i class="fas fa-save me-1"></i>Salvar Alterações';
         }
     }
+}
+
+async function atualizarEmailAuthentication({ re, nome, emailAntigo, emailNovo }) {
+    const usuarioAutenticado = auth.currentUser;
+    if (!usuarioAutenticado) {
+        throw new Error('A sessão não está autenticada. Entre novamente no sistema.');
+    }
+
+    const idToken = await usuarioAutenticado.getIdToken(true);
+    const response = await fetch('/.netlify/functions/atualizar-email-usuario', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${idToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ re, nome, emailAntigo, emailNovo })
+    });
+
+    let resultado = {};
+    try {
+        resultado = await response.json();
+    } catch (error) {
+        resultado = {};
+    }
+
+    if (!response.ok) {
+        throw new Error(resultado.erro || 'Não foi possível atualizar o e-mail no Authentication.');
+    }
+
+    return resultado;
 }
 
 // Excluir usuário - VERSÃO CORRIGIDA
