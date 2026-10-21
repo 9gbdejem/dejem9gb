@@ -3,6 +3,7 @@ const { getAuth } = require('firebase-admin/auth');
 const { getDatabase } = require('firebase-admin/database');
 const crypto = require('crypto');
 
+const PROJECT_ID = 'dejem-9gb';
 const DATABASE_URL = 'https://dejem-9gb-default-rtdb.firebaseio.com';
 
 function resposta(statusCode, corpo) {
@@ -19,31 +20,34 @@ function resposta(statusCode, corpo) {
 function obterAplicativoAdmin() {
     if (getApps().length) return getApps()[0];
 
-    const credencialJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-    let serviceAccount;
-    if (credencialJson) {
-        try {
-            serviceAccount = JSON.parse(credencialJson);
-        } catch (error) {
-            throw new Error('A variável FIREBASE_SERVICE_ACCOUNT_JSON não contém um JSON válido.');
-        }
-    } else {
-        const projectId = process.env.FIREBASE_PROJECT_ID;
-        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-        const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+    const projectId = String(process.env.DEJEM_FIREBASE_PROJECT_ID || '').trim();
+    const clientEmail = String(process.env.DEJEM_FIREBASE_CLIENT_EMAIL || '').trim();
+    const privateKeyBase64 = String(process.env.DEJEM_FIREBASE_PRIVATE_KEY_BASE64 || '').trim();
 
-        if (!projectId || !clientEmail || !privateKey) {
-            throw new Error(
-                'Configure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY na Netlify.'
-            );
-        }
+    if (!projectId || !clientEmail || !privateKeyBase64) {
+        throw new Error(
+            'As credenciais administrativas do Firebase DEJEM não estão configuradas na Netlify.'
+        );
+    }
 
-        serviceAccount = { projectId, clientEmail, privateKey };
+    if (projectId !== PROJECT_ID || !clientEmail.endsWith(`@${PROJECT_ID}.iam.gserviceaccount.com`)) {
+        throw new Error('As credenciais administrativas configuradas não pertencem ao projeto dejem-9gb.');
+    }
+
+    let privateKey;
+    try {
+        privateKey = Buffer.from(privateKeyBase64, 'base64').toString('utf8');
+    } catch (error) {
+        throw new Error('A chave administrativa do Firebase DEJEM está em formato inválido.');
+    }
+
+    if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+        throw new Error('A chave administrativa do Firebase DEJEM não é válida.');
     }
 
     return initializeApp({
-        credential: cert(serviceAccount),
-        databaseURL: process.env.FIREBASE_DATABASE_URL || DATABASE_URL
+        credential: cert({ projectId, clientEmail, privateKey }),
+        databaseURL: process.env.DEJEM_FIREBASE_DATABASE_URL || DATABASE_URL
     });
 }
 

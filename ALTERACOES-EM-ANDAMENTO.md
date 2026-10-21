@@ -12,6 +12,8 @@ Ainda não definida.
 
 <!-- Registrar abaixo cada alteração concluída ou em teste. -->
 
+- Corrigida a Netlify Function de alteração de e-mail para utilizar exclusivamente credenciais administrativas do projeto `dejem-9gb`, sem conflito com as variáveis do projeto `dejemdb`.
+
 ## Pendências e observações
 
 <!-- Registrar aqui o que ainda depende de teste, validação ou decisão. -->
