@@ -18,20 +18,30 @@ function obterAplicativoAdmin() {
     if (admin.apps.length) return admin.app();
 
     const credencialJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-    if (!credencialJson) {
-        throw new Error('A variável FIREBASE_SERVICE_ACCOUNT_JSON não está configurada na Netlify.');
-    }
-
     let serviceAccount;
-    try {
-        serviceAccount = JSON.parse(credencialJson);
-    } catch (error) {
-        throw new Error('A variável FIREBASE_SERVICE_ACCOUNT_JSON não contém um JSON válido.');
+    if (credencialJson) {
+        try {
+            serviceAccount = JSON.parse(credencialJson);
+        } catch (error) {
+            throw new Error('A variável FIREBASE_SERVICE_ACCOUNT_JSON não contém um JSON válido.');
+        }
+    } else {
+        const projectId = process.env.FIREBASE_PROJECT_ID;
+        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+        const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+
+        if (!projectId || !clientEmail || !privateKey) {
+            throw new Error(
+                'Configure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY na Netlify.'
+            );
+        }
+
+        serviceAccount = { projectId, clientEmail, privateKey };
     }
 
     return admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        databaseURL: DATABASE_URL
+        databaseURL: process.env.FIREBASE_DATABASE_URL || DATABASE_URL
     });
 }
 

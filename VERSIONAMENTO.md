@@ -53,7 +53,7 @@ Não criar versão quando a alteração ainda estiver em teste, incompleta ou de
 - Sincronizados os e-mails de acesso em `/login/{RE}` e `/efetivo/{RE}`, com índice seguro por UID.
 - Invalidada a senha anterior após a troca do e-mail e enviado ao novo endereço o link para definição de uma nova senha.
 - Incluídas validações para conta inexistente, e-mail duplicado e divergência entre o e-mail informado e o cadastro atual.
-- Configurado o Firebase Admin SDK para execução nas Netlify Functions com Node.js 22.
+- Configurado o Firebase Admin SDK para execução nas Netlify Functions com Node.js 22, reutilizando as credenciais individuais já existentes no ambiente.
 - Corrigida a ordem de carregamento de jQuery, DataTables e do adaptador Bootstrap, eliminando a falha intermitente de inicialização.
 
 ### 1.0.3 - 15/10/2026
