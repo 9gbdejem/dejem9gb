@@ -37,8 +37,14 @@ window.DEJEMPWA = {
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js').catch((error) => {
-            console.warn('Não foi possível registrar o modo aplicativo:', error);
+        navigator.serviceWorker.register('./service-worker.js?v=20261022-1', {
+            updateViaCache: 'none'
+        }).then((registro) => {
+            registro.update().catch((error) => {
+                console.error('Não foi possível verificar atualizações do aplicativo:', error);
+            });
+        }).catch((error) => {
+            console.error('Não foi possível registrar o modo aplicativo:', error);
         });
     });
 }

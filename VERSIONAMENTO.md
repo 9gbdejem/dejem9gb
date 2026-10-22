@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.0.5**
+**Sistema de Gestão de Escalas - Versão 1.0.6**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,13 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.0.6 - 22/10/2026
+
+- Corrigidas as credenciais administrativas da Netlify Function de alteração de e-mail para utilizar exclusivamente o projeto Firebase `dejem-9gb`.
+- Substituídos o favicon, os ícones de instalação e as imagens do login e do navbar pela nova identidade visual `9D`, com transparência preservada.
+- Incluídos na tela de login o título `DEJEM 9GB`, a versão e o rodapé institucional.
+- Configurada a atualização automática dos recursos da PWA, com manifesto e ícones versionados, verificação imediata do `service worker` e limpeza de caches antigos.
 
 ### 1.0.5 - 21/10/2026
 

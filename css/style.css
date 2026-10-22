@@ -62,6 +62,20 @@ body {
     max-width: 50%;
 }
 
+.login-title {
+    margin: 0.75rem 0 0;
+    color: var(--primary-color);
+    font-size: 1.45rem;
+    font-weight: 750;
+    line-height: 1.2;
+}
+
+.login-copyright {
+    margin-top: 1.5rem;
+    font-size: 0.66rem;
+    line-height: 1.4;
+}
+
 .step {
     display: none;
 }
@@ -162,6 +176,9 @@ body {
 
 .navbar-logo {
     height: 32px;
+    width: 32px;
+    border-radius: 7px;
+    object-fit: contain;
     transition: transform 0.3s ease;
 }
 
@@ -1898,6 +1915,7 @@ main.container-fluid {
 
 .navbar-logo {
     height: 30px;
+    width: 30px;
 }
 
 .nav-link {
