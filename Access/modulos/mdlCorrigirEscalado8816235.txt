@@ -206,7 +206,15 @@ Private Function FracaoHoraCorrecao(ByVal vHora As Variant) As Double
 End Function
 
 Private Function JsonNumeroCorrecao(ByVal dblValor As Double) As String
-    JsonNumeroCorrecao = Replace$(Format$(dblValor, "0.##########"), ",", ".")
+    Dim strNumero As String
+
+    strNumero = Replace$(Format$(dblValor, "0.##########"), ",", ".")
+    Do While Len(strNumero) > 0 And Right$(strNumero, 1) = "."
+        strNumero = Left$(strNumero, Len(strNumero) - 1)
+    Loop
+    If strNumero = "" Or strNumero = "-" Then strNumero = "0"
+
+    JsonNumeroCorrecao = strNumero
 End Function
 
 Private Function JsonTextoCorrecao(ByVal strValor As String) As String

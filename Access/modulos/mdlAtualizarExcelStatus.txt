@@ -745,7 +745,15 @@ Erro:
 End Function
 
 Private Function NumeroJsonImportacao(ByVal dblValor As Double) As String
-    NumeroJsonImportacao = Replace(Format(dblValor, "0.##########"), ",", ".")
+    Dim strNumero As String
+
+    strNumero = Replace(Format$(dblValor, "0.##########"), ",", ".")
+    Do While Len(strNumero) > 0 And Right$(strNumero, 1) = "."
+        strNumero = Left$(strNumero, Len(strNumero) - 1)
+    Loop
+    If strNumero = "" Or strNumero = "-" Then strNumero = "0"
+
+    NumeroJsonImportacao = strNumero
 End Function
 
 Private Function JsonEscapeImportacao(ByVal vValor As Variant) As String

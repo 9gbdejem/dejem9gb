@@ -1045,9 +1045,18 @@ function clearFilters() {
     showMessage('Filtros de busca limpos com sucesso.', 'success');
 }
 
-function refreshEscalas() {
+async function refreshEscalas() {
     if (currentYear && currentMonth && currentDay) {
-        window.loadPeriod(currentYear, currentMonth, currentDay);
+        const cacheKey = `${currentYear}-${currentMonth}-${currentDay}`;
+
+        loadedDaysCache.delete(cacheKey);
+        allEscalas = allEscalas.filter(escala => !(
+            escala.ano === currentYear &&
+            escala.mês === currentMonth &&
+            escala.dia === currentDay
+        ));
+
+        await window.loadPeriod(currentYear, currentMonth, currentDay);
     }
 }
 

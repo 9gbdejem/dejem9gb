@@ -44,6 +44,7 @@ Public Function ImportarIDEscalasFiltradasIntranet(Optional ByVal blnMostrarMens
     End If
     
     If Not ObterBuscaInicialFiltrada(rsFiltro, dtDataInicial, dtDataFinal, strAISP) Then
+        Call TratarEscalasCadastradasSemID(frm)
         If blnMostrarMensagem Then
             MsgBox "Nenhuma escala elegivel foi encontrada.", vbInformation, "Baixar IDs"
         End If
@@ -80,12 +81,14 @@ Public Function ImportarIDEscalasFiltradasIntranet(Optional ByVal blnMostrarMens
 ProximoItemSite:
     Next
     
-    If lngImportadas > 0 Then
-        On Error Resume Next
-        frm.Requery
-        If CurrentProject.AllForms("frmEscalas").IsLoaded Then Forms!frmEscalas.Requery
-        On Error GoTo Erro
-    End If
+    On Error Resume Next
+    If Not rsFiltro Is Nothing Then rsFiltro.Close
+    Set rsFiltro = Nothing
+    frm.Requery
+    If CurrentProject.AllForms("frmEscalas").IsLoaded Then Forms!frmEscalas.Requery
+    On Error GoTo Erro
+
+    Call TratarEscalasCadastradasSemID(frm)
     
     ImportarIDEscalasFiltradasIntranet = lngImportadas
     lngPerdidasRetorno = lngPerdidas
@@ -125,6 +128,66 @@ Erro:
     Debug.Print "Erro ImportarIDEscalasFiltradasIntranet: " & Err.Number & " - " & Err.Description
     MsgBox "Erro ao baixar IDs: " & Err.Number & " - " & Err.Description, vbCritical, "Baixar IDs"
     mblnBloquearEventosID = False
+    Resume Sair
+End Function
+
+Private Function TratarEscalasCadastradasSemID(ByRef frm As Form) As Long
+    Dim rs As DAO.Recordset
+    Dim lngEncontradas As Long
+    Dim lngAlteradas As Long
+    Dim resposta As VbMsgBoxResult
+
+    On Error GoTo Erro
+
+    Set rs = frm.RecordsetClone
+    If rs.BOF And rs.EOF Then GoTo Sair
+
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If Trim(Nz(rs!Status_Adm, "")) = "3" And IDEscalaVazioID(rs) Then
+            lngEncontradas = lngEncontradas + 1
+        End If
+        rs.MoveNext
+    Loop
+
+    If lngEncontradas = 0 Then GoTo Sair
+
+    resposta = MsgBox( _
+        "Ainda existem " & lngEncontradas & " escala(s) com Status_Adm = 3 e sem ID_Escala." & _
+        vbCrLf & vbCrLf & _
+        "Deseja alterar o Status_Adm dessas escalas para 1, para que possam ser cadastradas novamente na Intranet?", _
+        vbQuestion + vbYesNo + vbDefaultButton2, _
+        "Escalas sem ID")
+
+    If resposta <> vbYes Then GoTo Sair
+
+    rs.MoveFirst
+    Do While Not rs.EOF
+        If Trim(Nz(rs!Status_Adm, "")) = "3" And IDEscalaVazioID(rs) Then
+            rs.Edit
+            rs!Status_Adm = "1"
+            rs.Update
+            lngAlteradas = lngAlteradas + 1
+        End If
+        rs.MoveNext
+    Loop
+
+    TratarEscalasCadastradasSemID = lngAlteradas
+
+    If lngAlteradas > 0 Then
+        frm.Requery
+        MsgBox lngAlteradas & " escala(s) alterada(s) para Status_Adm = 1.", _
+               vbInformation, "Escalas sem ID"
+    End If
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+
+Erro:
+    Debug.Print "Erro TratarEscalasCadastradasSemID: " & Err.Number & " - " & Err.Description
     Resume Sair
 End Function
 

@@ -12,6 +12,11 @@ Ainda não definida.
 
 <!-- Registrar abaixo cada alteração concluída ou em teste. -->
 
+- Incluída, após a baixa de IDs no Access, a verificação das escalas filtradas com `Status_Adm = 3` e `ID_Escala` vazio, permitindo ao usuário alterar somente o status dessas escalas para `1` e encaminhá-las novamente ao fluxo de cadastro na Intranet.
+- Corrigido o envio dos escalados pelo Access ao Firebase: as chaves de `ID_Escala` e `Militar_RE` agora são normalizadas, os identificadores são serializados como texto JSON, caracteres de controle são escapados, horários inteiros são enviados sem separador decimal inválido e o `PATCH` envia somente os registros pendentes, preservando os dados já existentes sem baixar e remontar todo o nó do dia.
+
+- Corrigida a atualização da página `Escalas`: o botão `Atualizar` agora invalida somente o cache do dia selecionado antes de consultar novamente o Firebase.
+
 ## Pendências e observações
 
 <!-- Registrar aqui o que ainda depende de teste, validação ou decisão. -->

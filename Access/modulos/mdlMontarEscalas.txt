@@ -589,6 +589,8 @@ Public Sub SincronizarEscalasPendentesFirebase()
     Dim strSQL As String
     Dim strIDEscala As String
     Dim strRE As String
+    Dim strIDEscalaFirebase As String
+    Dim strREFirebase As String
     Dim strJson As String
     Dim strChave As String
     Dim lngEnviadas As Long
@@ -605,6 +607,7 @@ Public Sub SincronizarEscalasPendentesFirebase()
     Dim varDia As Variant
     Dim varID As Variant
     Dim varIDEscala As Variant
+    Dim varRegistroEnviado As Variant
 
     strSQL = "SELECT ID_Escala, Data_Esc, Militar_RE, Militar_Nome, Militar_Posto_Grad, Militar_OPM, " & _
              "OPM_Nome, Composicao_Nome, Horario_Inicial, Horario_Final " & _
@@ -628,6 +631,16 @@ Public Sub SincronizarEscalasPendentesFirebase()
         If strIDEscala <> "" And strRE <> "" And IsDate(Nz(rs!Data_Esc, "")) Then
             lngRegistrosPendentes = lngRegistrosPendentes + 1
 
+            strIDEscalaFirebase = SomenteDigitosFirebase(strIDEscala)
+            strREFirebase = SomenteDigitosFirebase(strRE)
+
+            If strIDEscalaFirebase = "" Or strREFirebase = "" Then
+                Debug.Print "Registro não enviado por ID_Escala ou Militar_RE inválido: " & _
+                            "ID_Escala=" & strIDEscala & " | RE=" & strRE & _
+                            " | Data_Esc=" & Format(CDate(rs!Data_Esc), "dd/mm/yyyy")
+                GoTo ProximoRegistroPendente
+            End If
+
             If Not dictAnos.Exists(Year(CDate(rs!Data_Esc))) Then
                 Set dictMeses = CreateObject("Scripting.Dictionary")
                 dictAnos.Add Year(CDate(rs!Data_Esc)), dictMeses
@@ -646,7 +659,7 @@ Public Sub SincronizarEscalasPendentesFirebase()
             End If
             Set dictEscalas = dictDias(Format(CDate(rs!Data_Esc), "DD"))
 
-            strChave = strIDEscala & strRE
+            strChave = strIDEscalaFirebase & strREFirebase
             If Not dictEscalas.Exists(strChave) Then
                 strJson = MontarJsonEscalaFirebase(strIDEscala, strRE)
                 If Len(strJson) > 0 Then
@@ -659,14 +672,15 @@ Public Sub SincronizarEscalasPendentesFirebase()
                         Set dictEscalas = CreateObject("Scripting.Dictionary")
                         dictIDsPorDia.Add strDiaKey, dictEscalas
                     End If
-                    If Not dictIDsPorDia(strDiaKey).Exists(strIDEscala) Then
-                        dictIDsPorDia(strDiaKey).Add strIDEscala, True
+                    If Not dictIDsPorDia(strDiaKey).Exists(strChave) Then
+                        dictIDsPorDia(strDiaKey).Add strChave, Array(strIDEscala, strRE)
                     End If
                 End If
             End If
         Else
             Debug.Print "Registro ignorado por dados incompletos: ID_Escala=" & strIDEscala & " RE=" & strRE & " Data_Esc=" & Nz(rs!Data_Esc, "")
         End If
+ProximoRegistroPendente:
         rs.MoveNext
     Loop
 
@@ -681,27 +695,28 @@ Public Sub SincronizarEscalasPendentesFirebase()
             Set dictDias = dictMeses(varMes)
             For Each varDia In dictDias.Keys
                 Dim strNodeDia As String
-                Dim strJsonExistente As String
                 Dim strJsonDiaFinal As String
                 Dim strKeyDia As String
 
                 strNodeDia = "escalados/" & CStr(varAno) & "/" & CStr(varMes) & "/" & CStr(varDia)
-                strJsonExistente = BuscarJsonFirebaseNode(strNodeDia)
-                strJsonDiaFinal = MesclarJsonDiaFirebase(strJsonExistente, dictDias(varDia))
+                strJsonDiaFinal = "{" & MontarJsonEscalasDiaFirebase(dictDias(varDia)) & "}"
 
                 If Len(strJsonDiaFinal) > 2 Then
                     If EnviarDadosFirebasePatch(strNodeDia, strJsonDiaFinal) Then
                         strKeyDia = CStr(varAno) & "|" & CStr(varMes) & "|" & CStr(varDia)
                         If dictIDsPorDia.Exists(strKeyDia) Then
                             For Each varIDEscala In dictIDsPorDia(strKeyDia).Keys
+                                varRegistroEnviado = dictIDsPorDia(strKeyDia)(varIDEscala)
                                 db.Execute "UPDATE TblMilEsc SET Firebase_Enviado = " & SQLTexto(CStr("Sim")) & _
-                                           " WHERE ID_Escala = " & SQLTexto(CStr(varIDEscala)) & _
+                                           " WHERE ID_Escala = " & SQLTexto(CStr(varRegistroEnviado(0))) & _
+                                           " AND Militar_RE = " & SQLTexto(CStr(varRegistroEnviado(1))) & _
                                            " AND UCase(Trim(Nz(Firebase_Enviado, ''))) IN ('NAO', '-1')", dbFailOnError
                             Next
                         End If
                         lngEnviadas = lngEnviadas + 1
                     Else
                         Debug.Print "PATCH FALHOU para dia=" & varDia & " node=" & strNodeDia
+                        Call DiagnosticarJsonEscaladosFirebase(strNodeDia, strJsonDiaFinal, dictDias(varDia))
                         lngFalhasEnvio = lngFalhasEnvio + 1
                     End If
                 Else
@@ -899,6 +914,8 @@ Private Function MontarJsonEscalaFirebase(ByVal strIDEscala As String, Optional 
     Dim strPostoGrad As String
     Dim strOPMMilitar As String
     Dim strConferencia As String
+    Dim strIDEscalaJson As String
+    Dim strREJson As String
     Dim dblHorarioInic As Double
     Dim dblHorarioTerm As Double
 
@@ -907,7 +924,7 @@ Private Function MontarJsonEscalaFirebase(ByVal strIDEscala As String, Optional 
     If Trim(strIDEscala) = "" Then
         Debug.Print "MontarJsonEscalaFirebase: ID_Escala vazio."
         MontarJsonEscalaFirebase = ""
-        Exit Function
+        GoTo Sair
     End If
 
     If Trim(strRE) = "" Then
@@ -922,7 +939,7 @@ Private Function MontarJsonEscalaFirebase(ByVal strIDEscala As String, Optional 
     If rs.EOF And rs.BOF Then
         Debug.Print "MontarJsonEscalaFirebase: registro nao encontrado | ID_Escala=" & strIDEscala & " | RE=" & strRE
         MontarJsonEscalaFirebase = ""
-        Exit Function
+        GoTo Sair
     End If
 
     strDataEscala = Nz(rs!Data_Esc, "")
@@ -937,47 +954,207 @@ Private Function MontarJsonEscalaFirebase(ByVal strIDEscala As String, Optional 
     If Not IsDate(strDataEscala) Then
         Debug.Print "MontarJsonEscalaFirebase: Data_Esc invalida | ID_Escala=" & strIDEscala & " | RE=" & strRE & " | Data_Esc=" & strDataEscala
         MontarJsonEscalaFirebase = ""
-        Exit Function
+        GoTo Sair
     End If
 
     If IsDate(strHoraInicio) Then dblHorarioInic = CDbl(TimeValue(CStr(strHoraInicio)))
     If IsDate(strHoraTermino) Then dblHorarioTerm = CDbl(TimeValue(CStr(strHoraTermino)))
 
-    strConferencia = Trim(strIDEscala) & Trim(Nz(rs!Militar_RE, ""))
+    strIDEscalaJson = SomenteDigitosFirebase(Trim(Nz(rs!ID_Escala, strIDEscala)))
+    strREJson = SomenteDigitosFirebase(Trim(Nz(rs!Militar_RE, strRE)))
+
+    If strIDEscalaJson = "" Or strREJson = "" Then
+        Debug.Print "MontarJsonEscalaFirebase: ID_Escala ou Militar_RE inválido | " & _
+                    "ID_Escala=" & Nz(rs!ID_Escala, strIDEscala) & _
+                    " | RE=" & Nz(rs!Militar_RE, strRE)
+        MontarJsonEscalaFirebase = ""
+        GoTo Sair
+    End If
+
+    strConferencia = strIDEscalaJson & strREJson
 
     strJson = "{"
     strJson = strJson & """Composicao"":""" & EscaparJson(CStr(strComposicao)) & ""","
     strJson = strJson & """Documento"":"""","
     strJson = strJson & """Estacao"":""" & EscaparJson(CStr(strEstacao)) & ""","
-    strJson = strJson & """HorarioInic"":" & Replace(Format(dblHorarioInic, "0.##########"), ",", ".") & ","
-    strJson = strJson & """HorarioTerm"":" & Replace(Format(dblHorarioTerm, "0.##########"), ",", ".") & ","
-    strJson = strJson & """Id"":" & Trim(strIDEscala) & ","
+    strJson = strJson & """HorarioInic"":" & NumeroJsonFirebase(dblHorarioInic) & ","
+    strJson = strJson & """HorarioTerm"":" & NumeroJsonFirebase(dblHorarioTerm) & ","
+    strJson = strJson & """Id"":""" & EscaparJson(strIDEscalaJson) & ""","
     strJson = strJson & """Militar"":""" & EscaparJson(CStr(strNomeMilitar)) & ""","
     strJson = strJson & """OPM"":""" & EscaparJson(CStr(strOPMMilitar)) & ""","
     strJson = strJson & """PostoGrad"":""" & EscaparJson(CStr(strPostoGrad)) & ""","
-    strJson = strJson & """RE"":" & Trim(Nz(rs!Militar_RE, "0")) & ","
-    strJson = strJson & """conferencia"":" & strConferencia & ","
+    strJson = strJson & """RE"":""" & EscaparJson(strREJson) & ""","
+    strJson = strJson & """conferencia"":""" & EscaparJson(strConferencia) & ""","
     strJson = strJson & """mês"":" & Month(CDate(strDataEscala)) & ""
     strJson = strJson & "}"
 
     MontarJsonEscalaFirebase = strJson
+    GoTo Sair
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
     Exit Function
 
 Erro:
     Debug.Print "Erro mdlMontarEscalas.MontarJsonEscalaFirebase: " & Err.Number & " - " & Err.Description & " | ID_Escala=" & strIDEscala & " | RE=" & strRE
     MontarJsonEscalaFirebase = ""
+    Resume Sair
 End Function
 
 Private Function EscaparJson(ByVal strTexto As String) As String
     Dim strRetorno As String
+    Dim strCaractere As String
+    Dim lngCodigo As Long
+    Dim i As Long
 
-    strRetorno = strTexto
-    strRetorno = Replace(strRetorno, "\", "\\")
-    strRetorno = Replace(strRetorno, Chr(34), "\" & Chr(34))
-    strRetorno = Replace(strRetorno, vbCrLf, "\n")
-    strRetorno = Replace(strRetorno, vbCr, "\n")
-    strRetorno = Replace(strRetorno, vbLf, "\n")
+    For i = 1 To Len(strTexto)
+        strCaractere = Mid$(strTexto, i, 1)
+        lngCodigo = AscW(strCaractere)
+
+        Select Case lngCodigo
+            Case 8
+                strRetorno = strRetorno & "\b"
+            Case 9
+                strRetorno = strRetorno & "\t"
+            Case 10
+                strRetorno = strRetorno & "\n"
+            Case 12
+                strRetorno = strRetorno & "\f"
+            Case 13
+                strRetorno = strRetorno & "\r"
+            Case 34
+                strRetorno = strRetorno & "\" & Chr$(34)
+            Case 92
+                strRetorno = strRetorno & "\\"
+            Case 0 To 31
+                strRetorno = strRetorno & "\u" & Right$("0000" & Hex$(lngCodigo), 4)
+            Case Else
+                strRetorno = strRetorno & strCaractere
+        End Select
+    Next i
+
     EscaparJson = strRetorno
+End Function
+
+Private Function SomenteDigitosFirebase(ByVal strValor As String) As String
+    Dim i As Long
+    Dim strCaractere As String
+
+    For i = 1 To Len(strValor)
+        strCaractere = Mid$(strValor, i, 1)
+        If strCaractere >= "0" And strCaractere <= "9" Then
+            SomenteDigitosFirebase = SomenteDigitosFirebase & strCaractere
+        End If
+    Next i
+End Function
+
+Private Function NumeroJsonFirebase(ByVal dblValor As Double) As String
+    Dim strNumero As String
+
+    strNumero = Replace(Format$(dblValor, "0.##########"), ",", ".")
+
+    Do While Len(strNumero) > 0 And Right$(strNumero, 1) = "."
+        strNumero = Left$(strNumero, Len(strNumero) - 1)
+    Loop
+
+    If strNumero = "" Or strNumero = "-" Then strNumero = "0"
+    If Left$(strNumero, 1) = "." Then strNumero = "0" & strNumero
+    If Left$(strNumero, 2) = "-." Then strNumero = "-0" & Mid$(strNumero, 2)
+
+    NumeroJsonFirebase = strNumero
+End Function
+
+Private Sub DiagnosticarJsonEscaladosFirebase(ByVal strNode As String, _
+                                               ByVal strJson As String, _
+                                               ByVal dictEscalasDia As Object)
+    Dim varChave As Variant
+    Dim strItem As String
+    Dim lngObjetosAbertos As Long
+    Dim lngArraysAbertos As Long
+    Dim lngPosicao As Long
+    Dim lngCodigo As Long
+    Dim strCaractere As String
+    Dim blnDentroTexto As Boolean
+    Dim blnEscape As Boolean
+    Dim lngControles As Long
+
+    On Error GoTo Erro
+
+    For lngPosicao = 1 To Len(strJson)
+        strCaractere = Mid$(strJson, lngPosicao, 1)
+        lngCodigo = AscW(strCaractere)
+
+        If blnDentroTexto Then
+            If blnEscape Then
+                blnEscape = False
+            ElseIf strCaractere = "\" Then
+                blnEscape = True
+            ElseIf strCaractere = Chr$(34) Then
+                blnDentroTexto = False
+            ElseIf lngCodigo >= 0 And lngCodigo < 32 Then
+                lngControles = lngControles + 1
+            End If
+        Else
+            Select Case strCaractere
+                Case Chr$(34)
+                    blnDentroTexto = True
+                Case "{"
+                    lngObjetosAbertos = lngObjetosAbertos + 1
+                Case "}"
+                    lngObjetosAbertos = lngObjetosAbertos - 1
+                Case "["
+                    lngArraysAbertos = lngArraysAbertos + 1
+                Case "]"
+                    lngArraysAbertos = lngArraysAbertos - 1
+            End Select
+        End If
+    Next lngPosicao
+
+    Debug.Print "DIAGNÓSTICO FIREBASE | nó=" & strNode
+    Debug.Print "JSON tamanho=" & Len(strJson) & _
+                " | objetos=" & lngObjetosAbertos & _
+                " | arrays=" & lngArraysAbertos & _
+                " | dentro_texto=" & blnDentroTexto & _
+                " | escape_pendente=" & blnEscape & _
+                " | controles_invalidos=" & lngControles
+    Debug.Print "JSON início=" & Left$(strJson, 1000)
+    Debug.Print "JSON final=" & Right$(strJson, 1000)
+
+    If dictEscalasDia Is Nothing Then Exit Sub
+
+    Debug.Print "ITENS DO LOTE=" & dictEscalasDia.Count
+    For Each varChave In dictEscalasDia.Keys
+        strItem = Nz(dictEscalasDia(varChave), "")
+        Debug.Print "ITEM | chave=[" & CStr(varChave) & "]" & _
+                    " | chave_valida=" & ChaveFirebaseValida(CStr(varChave)) & _
+                    " | tamanho=" & Len(strItem) & _
+                    " | JSON=" & strItem
+    Next varChave
+    Exit Sub
+
+Erro:
+    Debug.Print "Erro DiagnosticarJsonEscaladosFirebase: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Function ChaveFirebaseValida(ByVal strChave As String) As Boolean
+    Dim i As Long
+    Dim strCaractere As String
+    Dim lngCodigo As Long
+
+    If Len(strChave) = 0 Then Exit Function
+
+    For i = 1 To Len(strChave)
+        strCaractere = Mid$(strChave, i, 1)
+        lngCodigo = AscW(strCaractere)
+
+        If lngCodigo >= 0 And lngCodigo <= 31 Then Exit Function
+        If InStr(1, ".#$[]/", strCaractere, vbBinaryCompare) > 0 Then Exit Function
+    Next i
+
+    ChaveFirebaseValida = True
 End Function
 
 Private Sub RegistrarSemInscritos(ByRef rsEscala As DAO.Recordset)

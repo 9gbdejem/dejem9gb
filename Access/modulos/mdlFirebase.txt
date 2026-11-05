@@ -81,6 +81,9 @@ Public Function EnviarDadosFirebasePatch(strNode As String, strDados As String) 
         Debug.Print "Falha EnviarDadosFirebasePatch: nó=" & strNode & _
                     " | HTTP=" & objXML.status & _
                     " | resposta=" & Left$(objXML.ResponseText, 500)
+        Debug.Print "JSON PATCH: tamanho=" & Len(strDados)
+        Debug.Print "JSON PATCH início: " & Left$(strDados, 1000)
+        Debug.Print "JSON PATCH final: " & Right$(strDados, 1000)
     End If
     Exit Function
     
