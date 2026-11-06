@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEJEM dos Oficiais - DEJEM 9GB</title>
+    <link rel="icon" type="image/png" sizes="64x64" href="img/site-icon-64.png?v=20261022-1">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div id="navbar"></div>
+    <main class="container-fluid mt-4">
+        <section id="dejemOficiaisPage">
+            <div id="mensagemDejemOficiais" class="alert d-none" role="alert"></div>
+
+            <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
+                <div>
+                    <h1 class="h4 mb-1"><i class="fas fa-user-shield me-2"></i>DEJEM dos Oficiais</h1>
+                    <div class="text-muted small">Escolha e acompanhamento das escalas destinadas aos Oficiais.</div>
+                </div>
+                <div class="d-flex flex-wrap align-items-end gap-2">
+                    <div>
+                        <label for="selectMesOficiais" class="form-label small fw-semibold mb-1">Mês/ano</label>
+                        <select id="selectMesOficiais" class="form-select form-select-sm"></select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3" id="resumoDejemOficiais">
+                <div class="col-12 col-sm-4">
+                    <div class="card resumo-oficiais-card h-100">
+                        <div class="card-body">
+                            <div class="text-muted small">Vagas disponibilizadas</div>
+                            <div class="h3 mb-0" id="totalVagasOficiais">0</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-4">
+                    <div class="card resumo-oficiais-card h-100">
+                        <div class="card-body">
+                            <div class="text-muted small">Vagas utilizadas</div>
+                            <div class="h3 mb-0 text-success" id="totalUtilizadasOficiais">0</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-4">
+                    <div class="card resumo-oficiais-card h-100">
+                        <div class="card-body">
+                            <div class="text-muted small">Vagas pendentes</div>
+                            <div class="h3 mb-0 text-warning" id="totalPendentesOficiais">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-3" id="cardOfertasOficiaisAdmin">
+                <div class="card-header fw-semibold">Distribuição de vagas no mês</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr><th>Tipo de DEJEM</th><th class="text-center">Disponibilizadas</th><th class="text-center">Utilizadas</th><th class="text-center">Pendentes</th></tr>
+                            </thead>
+                            <tbody id="ofertasOficiaisAdminBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-3">
+                <div class="card-header fw-semibold">Escolher escala</div>
+                <div class="card-body">
+                    <form id="formEscolhaOficial" class="row g-3">
+                        <input type="hidden" id="idEscolhaOficial">
+                        <div class="col-12 col-lg-4">
+                            <label for="selectOfertaOficial" class="form-label">Tipo de DEJEM</label>
+                            <select id="selectOfertaOficial" class="form-select" required></select>
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-2">
+                            <label for="inputDataOficial" class="form-label">Data</label>
+                            <input type="date" id="inputDataOficial" class="form-control" required>
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-3">
+                            <label for="selectLocalOficial" class="form-label">Local</label>
+                            <select id="selectLocalOficial" class="form-select" required></select>
+                        </div>
+                        <div class="col-6 col-lg-1">
+                            <label for="inputHoraInicialOficial" class="form-label">Início</label>
+                            <input type="time" id="inputHoraInicialOficial" class="form-control" step="300" required>
+                        </div>
+                        <div class="col-6 col-lg-2">
+                            <label for="inputHoraFinalOficial" class="form-label">Término</label>
+                            <input type="time" id="inputHoraFinalOficial" class="form-control" readonly>
+                        </div>
+
+                        <div class="col-12 d-none" id="grupoOficialAdmin">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-12 col-sm-4 col-lg-2">
+                                    <label for="inputREOficialAdmin" class="form-label">RE do Oficial</label>
+                                    <input type="text" id="inputREOficialAdmin" class="form-control" inputmode="numeric" maxlength="6">
+                                </div>
+                                <div class="col-12 col-sm-auto">
+                                    <button type="button" id="btnBuscarOficialAdmin" class="btn btn-outline-primary w-100">
+                                        <i class="fas fa-search me-1"></i>Buscar
+                                    </button>
+                                </div>
+                                <div class="col-12 col-lg">
+                                    <div id="oficialAdminEncontrado" class="form-control bg-light text-muted">Informe o RE do Oficial.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12 d-flex flex-wrap gap-2 justify-content-end">
+                            <button type="button" id="btnCancelarEdicaoOficial" class="btn btn-outline-secondary d-none">Cancelar edição</button>
+                            <button type="submit" id="btnSalvarEscolhaOficial" class="btn btn-success">
+                                <i class="fas fa-check me-1"></i>Confirmar escolha
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <span class="fw-semibold">Escolhas dos Oficiais</span>
+                    <div class="input-group input-group-sm filtro-militar-oficiais">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="search" id="filtroMilitarOficiais" class="form-control" autocomplete="off"
+                            placeholder="Filtrar por RE ou nome" aria-label="Filtrar escolhas por RE ou nome">
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" id="tabelaDejemOficiais">
+                            <thead>
+                                <tr>
+                                    <th>Data</th><th>Início</th><th>Término</th><th>Militar</th><th>OPM</th>
+                                    <th>Código</th><th>Prazo</th><th>ID</th><th>Status</th><th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dejemOficiaisBody">
+                                <tr><td colspan="10" class="text-center text-muted py-4">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="js/dejem-oficiais.js"></script>
+</body>
+</html>

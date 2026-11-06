@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.0.6**
+**Sistema de Gestão de Escalas - Versão 1.1.0**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,18 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.1.0 - 06/11/2026
+
+- Criada a página `Oficiais`, com acesso de administradores e Oficiais, distribuição mensal de vagas, escolha compartilhada de escalas e acompanhamento dos estados de importação, cadastro, montagem, cancelamento e ausência de inscritos.
+- Integrada a distribuição de vagas de Oficiais ao `frmDistribuicao` do Access e criado o índice central de locais por composição, atualizado pelo `frmComposicao`.
+- Integrado o fluxo de escolhas de Oficiais a `solicitacoes`, `SolicPendentes` e `TblEscGeral`, incluindo reserva transacional de vagas, bloqueio após importação e sincronização de ID da escala, prazo e status com o Firebase.
+- Corrigida a importação de escolhas de Oficiais para atualizar o status somente após a baixa de `SolicPendentes`, com conferência posterior pelo `btnAtualizarOnline` do `frmEscalas`.
+- Ajustado o envio dos escalados ao Firebase, com normalização de chaves, serialização JSON segura e envio parcial dos registros pendentes.
+- Incluída a validação de escalas com `Status_Adm = 3` e sem `ID_Escala` após a baixa das IDs, permitindo devolvê-las ao status `1` para novo cadastro na Intranet.
+- Removida a opção especial `OFICIAIS` do filtro de OPM da página `Solicitações` e incluído filtro instantâneo por RE ou nome na página `Oficiais`.
+- Padronizada a necessidade das escolhas de Oficiais como `viatura_extra` e preservado o `Status_Inicial` vazio até a importação.
+- Ajustada a tabela de Oficiais com dia da semana, destaque do dia atual, alternância branca/cinza e amarelo para sábado e domingo.
 
 ### 1.0.6 - 22/10/2026
 

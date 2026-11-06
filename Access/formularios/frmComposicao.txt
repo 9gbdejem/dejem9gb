@@ -8,6 +8,11 @@ Private mlngEditID As Long
 Private mstrModoSalvar As String
 Private mblnAlteracoesNaoSalvas As Boolean
 
+Private Sub btnCadastrar_Click()
+    CreateObject("Shell.Application").Open ("http://sistemasadmin.intranet.policiamilitar.sp.gov.br/Escala/CadEsc.aspx?" & LinkUsuarioLogado())
+    DoCmd.Close acForm, Me.Name
+End Sub
+
 '-----------------------------------------------------------
 ' Eventos do Formulário
 '-----------------------------------------------------------
@@ -285,14 +290,14 @@ Private Sub cboLOCAL_AfterUpdate()
     On Error GoTo Erro_cboLOCAL
     
     If Not IsNull(Me.cboLOCAL) Then
-        Dim strLOCAL As String
-        strLOCAL = Me.cboLOCAL.Value
+        Dim strLocal As String
+        strLocal = Me.cboLOCAL.Value
         
         Dim rs As DAO.Recordset
-        Set rs = CurrentDb.OpenRecordset("SELECT [OPM], [GB], [SGB], [PB], [EB] FROM [TblOPM_Nome] WHERE [LOCAL] = " & SQLTexto(strLOCAL))
+        Set rs = CurrentDb.OpenRecordset("SELECT [OPM], [GB], [SGB], [PB], [EB] FROM [TblOPM_Nome] WHERE [LOCAL] = " & SQLTexto(strLocal))
         
         If Not rs.EOF Then
-            Me.txtOPM = rs![OPM] & ""
+            Me.txtOPM = rs![opm] & ""
             Me.cboLOCAL.Tag = rs![GB] & " " & rs![SGB] & " " & rs![PB] & " " & rs![EB]
         Else
             Me.txtOPM = ""
@@ -413,7 +418,7 @@ Private Sub AtivarModoEdicao()
         Me.txtEPI = rs![EPI] & ""
         Me.txtOBS = rs![OBS] & ""
         Me.txtAISP = rs![AISP] & ""
-        Me.txtCODIGO = rs![CODIGO] & ""
+        Me.txtCODIGO = rs![codigo] & ""
         Me.txtCONVENIO = rs![Convênio] & ""
         Me.txtOPM_RESP = rs![OPM RESP] & ""
         
@@ -981,15 +986,17 @@ End Sub
 
 Private Sub SalvarInclusao()
     On Error GoTo Erro_SalvarInclusao
+    Dim strComposicaoSalva As String
     
     If Not ValidarCamposInclusao() Then Exit Sub
+    strComposicaoSalva = Trim(Nz(Me.cboCOMPOSICAO, ""))
     
     Dim lngNewID As Long
     lngNewID = IncluirRegistro()
     
     If lngNewID > 0 Then
         Call EncerrarOperacao(True, lngNewID)
-        Call SincronizarComposicoesFirebaseAposSalvar
+        Call SincronizarComposicoesFirebaseAposSalvar(strComposicaoSalva)
         MsgBox "Registro incluído com sucesso!", vbInformation, "Sucesso"
     Else
         MsgBox "Erro ao incluir o registro.", vbCritical, "Erro"
@@ -1003,6 +1010,7 @@ End Sub
 
 Private Sub SalvarEdicao()
     On Error GoTo Erro_SalvarEdicao
+    Dim strComposicaoSalva As String
     
     If mlngEditID = 0 Then
         MsgBox "Nenhum registro selecionado para edição.", vbExclamation, "Erro"
@@ -1010,13 +1018,14 @@ Private Sub SalvarEdicao()
     End If
     
     If Not ValidarCamposEdicao() Then Exit Sub
+    strComposicaoSalva = Trim(Nz(Me.cboCOMPOSICAO, ""))
     
     Dim lngIDSalvo As Long
     lngIDSalvo = mlngEditID
     
     If AtualizarRegistroEdicao(lngIDSalvo) Then
         Call EncerrarOperacao(True, lngIDSalvo)
-        Call SincronizarComposicoesFirebaseAposSalvar
+        Call SincronizarComposicoesFirebaseAposSalvar(strComposicaoSalva)
         MsgBox "Registro atualizado com sucesso!", vbInformation, "Sucesso"
     Else
         MsgBox "Erro ao atualizar o registro.", vbCritical, "Erro"
@@ -1028,12 +1037,14 @@ Erro_SalvarEdicao:
     MsgBox "Erro ao salvar edição: " & Err.Description, vbCritical, "Erro"
 End Sub
 
-Private Sub SincronizarComposicoesFirebaseAposSalvar()
+Private Sub SincronizarComposicoesFirebaseAposSalvar(ByVal strComposicaoSalva As String)
     On Error GoTo Erro
     
     If Not AtualizarComposicoesFirebase(False) Then
         MsgBox "O registro foi salvo no Access, mas não foi possível atualizar o Firebase." & vbCrLf & _
                "Use o botão Atualizar Online para tentar novamente.", vbExclamation, "Atualizar Online"
+    Else
+        Call AtualizarLocaisOficiaisPorComposicaoFirebase(strComposicaoSalva)
     End If
     
     Exit Sub
@@ -1209,7 +1220,7 @@ Private Function IncluirRegistro() As Long
     rs![EPI] = Me.txtEPI
     rs![OBS] = Me.txtOBS
     rs![AISP] = Me.txtAISP
-    rs![CODIGO] = Trim$(Nz(Me.txtCODIGO, ""))
+    rs![codigo] = Trim$(Nz(Me.txtCODIGO, ""))
     rs![Convênio] = Me.txtCONVENIO
     rs![OPM RESP] = Trim$(Nz(Me.txtOPM_RESP, ""))
     rs.Update
@@ -1249,7 +1260,7 @@ Private Function AtualizarRegistroEdicao(ByVal lngID As Long) As Boolean
         rs![EPI] = Me.txtEPI
         rs![OBS] = Me.txtOBS
         rs![AISP] = Me.txtAISP
-        rs![CODIGO] = Trim$(Nz(Me.txtCODIGO, ""))
+        rs![codigo] = Trim$(Nz(Me.txtCODIGO, ""))
         rs![Convênio] = Me.txtCONVENIO
         rs![OPM RESP] = Trim$(Nz(Me.txtOPM_RESP, ""))
         rs.Update

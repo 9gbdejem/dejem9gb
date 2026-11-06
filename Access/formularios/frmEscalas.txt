@@ -1157,8 +1157,38 @@ Private Sub btnAtualizarExcelAusent_Click()
 End Sub
 
 Private Sub btnAtualizarOnline_Click()
+    Dim blnEscolhasConferidas As Boolean
+
+    On Error GoTo Erro_btnAtualizarOnline
+
+    DoCmd.Hourglass True
+    Me.btnAtualizarOnline.Enabled = False
+    Me.Repaint
+
     Call VerificarFirebase
-    MsgBox "Status de pendência de solicitações atualizado."
+
+    blnEscolhasConferidas = ReconciliarEscolhasOficiaisFirebase(False)
+    If blnEscolhasConferidas Then
+        MsgBox "Status de pendência de solicitações atualizado." & vbCrLf & vbCrLf & _
+               "As escolhas de Oficiais também foram conferidas no Firebase." & vbCrLf & _
+               "Status, ID da escala e prazo de inscrição foram corrigidos quando necessário.", _
+               vbInformation, "Atualizar Online"
+    Else
+        MsgBox "O status de pendência de solicitações foi atualizado, mas houve falha ao conferir uma ou mais escolhas dos Oficiais." & vbCrLf & _
+               "Consulte a Janela Imediata para identificar os registros.", _
+               vbExclamation, "Atualizar Online"
+    End If
+
+Sair:
+    DoCmd.Hourglass False
+    Me.btnAtualizarOnline.Enabled = True
+    Exit Sub
+
+Erro_btnAtualizarOnline:
+    Debug.Print "Erro frmEscalas.btnAtualizarOnline_Click: " & Err.Number & " - " & Err.Description
+    MsgBox "Erro ao atualizar as informações online: " & Err.Description, _
+           vbExclamation, "Atualizar Online"
+    Resume Sair
 End Sub
 
 Private Sub btnVerDetalhes_Click()

@@ -73,6 +73,7 @@ Private Sub btnAdicionar_Click()
     Dim lngPracas As Long
     Dim dtMes As Date
     Dim strSQL As String
+    Dim blnFirebaseAtualizado As Boolean
     
     On Error GoTo Erro
     
@@ -82,15 +83,25 @@ Private Sub btnAdicionar_Click()
     lngPracas = ValorLongControle("txtQtdePracas")
     
     If Trim(Nz(Me.cboMesRef, "")) = "" Then
-        MsgBox "Selecione o mes de referencia do lancamento.", vbExclamation, "Distribuicao de Vagas"
+        MsgBox "Selecione o mês de referência do lançamento.", vbExclamation, "Distribuição de Vagas"
         Me.cboMesRef.SetFocus
         Exit Sub
     End If
     
     dtMes = MesReferenciaFiltro()
+
+    If lngOficiais = 0 And lngPracas = 0 Then
+        If MsgBox("Nenhuma quantidade foi informada." & vbCrLf & vbCrLf & _
+                  "Deseja apenas sincronizar e conferir no Firebase todas as distribuições de Oficiais de " & _
+                  Format(dtMes, "mm/yyyy") & "?", _
+                  vbQuestion + vbYesNo, "Distribuição de Vagas") = vbYes Then
+            Call AtualizarDistribuicaoOficiaisFirebase(dtMes, True)
+        End If
+        Exit Sub
+    End If
     
     If strOperacao = "" Then
-        MsgBox "Selecione a operacao de referencia do lancamento.", vbExclamation, "Distribuicao de Vagas"
+        MsgBox "Selecione a operação de referência do lançamento.", vbExclamation, "Distribuição de Vagas"
         Call FocarControle("cboOperacaoRef")
         Exit Sub
     End If
@@ -98,11 +109,6 @@ Private Sub btnAdicionar_Click()
     If strMatematica <> "Adicionar" And strMatematica <> "Subtrair" Then
         MsgBox "Selecione Adicionar ou Subtrair.", vbExclamation, "Distribuição de Vagas"
         Me.cboMatematica.SetFocus
-        Exit Sub
-    End If
-    
-    If lngOficiais = 0 And lngPracas = 0 Then
-        MsgBox "Informe quantidade de oficiais e/ou praças.", vbExclamation, "Distribuição de Vagas"
         Exit Sub
     End If
     
@@ -132,8 +138,16 @@ Private Sub btnAdicionar_Click()
     Call LimparControle("txtObservacao")
     
     Call AtualizarListas
-    
-    MsgBox "Lançamento incluído.", vbInformation, "Distribuição de Vagas"
+
+    blnFirebaseAtualizado = AtualizarDistribuicaoOficiaisFirebase(dtMes, False, strOperacao)
+    If blnFirebaseAtualizado Then
+        MsgBox "Lançamento incluído e distribuição de Oficiais atualizada no site.", _
+               vbInformation, "Distribuição de Vagas"
+    Else
+        MsgBox "O lançamento foi incluído no banco de dados, mas a distribuição de Oficiais não foi atualizada no site." & _
+               vbCrLf & "Verifique a composição correspondente e tente novamente.", _
+               vbExclamation, "Distribuição de Vagas"
+    End If
     
 Sair:
     On Error Resume Next

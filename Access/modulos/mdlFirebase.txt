@@ -492,6 +492,9 @@ Private Function ParseSolicitacaoUnica(strJson As String, Optional ByVal strIDFi
     AddJsonValue dict, strJson, "opm_codigo", True
     AddJsonValue dict, strJson, "opm_nome", True
     AddJsonValue dict, strJson, "necessidade", True
+    AddJsonValue dict, strJson, "origem", True
+    AddJsonValue dict, strJson, "id_escolha_oficial", True
+    AddJsonValue dict, strJson, "oficial_re", True
     
     If Not dict.Exists("ID_Firebase") And strIDFirebasePadrao <> "" Then
         dict.Add "ID_Firebase", strIDFirebasePadrao
@@ -661,6 +664,8 @@ Public Function ImportarSolicitacaoAusenteDoJson(ByVal strJsonMes As String, _
     Dim strIDCadastro As String
     Dim importados As Long
     Dim atualizados As Long
+    Dim blnEscolhaOficial As Boolean
+    Dim vDataEscolhaOficial As Variant
 
     On Error GoTo Erro
 
@@ -693,7 +698,19 @@ Public Function ImportarSolicitacaoAusenteDoJson(ByVal strJsonMes As String, _
         GoTo Sair
     End If
 
-    If Not SalvarSolicitacaoLocal(db, objSolic, importados, atualizados) Then GoTo Sair
+    blnEscolhaOficial = (LCase(Trim(DictVal(objSolic, "origem", ""))) = "dejem_oficiais")
+    vDataEscolhaOficial = DictVal(objSolic, "data", "")
+    If blnEscolhaOficial Then
+        If Not BloquearEscolhaOficialImportacao(strIDCadastro, vDataEscolhaOficial) Then GoTo Sair
+    End If
+
+    If Not SalvarSolicitacaoLocal(db, objSolic, importados, atualizados) Then
+        If blnEscolhaOficial Then
+            Call RestaurarEscolhaOficialAguardando(strIDCadastro, vDataEscolhaOficial)
+        End If
+        GoTo Sair
+    End If
+    If blnEscolhaOficial Then Call SincronizarEscolhaOficialPorIDCadastro(strIDCadastro)
     ImportarSolicitacaoAusenteDoJson = (importados = 1)
     If ImportarSolicitacaoAusenteDoJson Then
         Debug.Print "IMPORTADO | Firebase=" & strIDFirebase & _
@@ -722,19 +739,26 @@ Public Function ImportarSolicitacoesFirebase() As Boolean
     Dim respSolicitacoes As FirebaseResponse
     Dim colIDsPendentes As Collection
     Dim colIDsImportados As Collection
+    Dim colIDsEscolhasOficiais As Collection
     Dim objSolic As Object
     Dim strIDFirebase As Variant
+    Dim strIDCadastroSincronizar As Variant
     Dim strJsonSolicitacao As String
     Dim importados As Long
     Dim atualizados As Long
     Dim ignorados As Long
     Dim falhasBusca As Long
     Dim falhasFinalizacao As Long
+    Dim falhasSincronizacaoOficiais As Long
+    Dim blnEscolhaOficial As Boolean
+    Dim strIDCadastroOficial As String
+    Dim vDataEscolhaOficial As Variant
     
     On Error GoTo Erro
     
     Set db = CurrentDb
     Set colIDsImportados = New Collection
+    Set colIDsEscolhasOficiais = New Collection
     
     respPendentes = BuscarDadosFirebase("SolicPendentes")
     
@@ -780,11 +804,28 @@ Public Function ImportarSolicitacoesFirebase() As Boolean
             ignorados = ignorados + 1
             GoTo ProximaSolicitacao
         End If
+
+        blnEscolhaOficial = (LCase(Trim(DictVal(objSolic, "origem", ""))) = "dejem_oficiais")
+        strIDCadastroOficial = Replace(CStr(strIDFirebase), "/", "")
+        vDataEscolhaOficial = DictVal(objSolic, "data", "")
+
+        If blnEscolhaOficial Then
+            If Not BloquearEscolhaOficialImportacao(strIDCadastroOficial, vDataEscolhaOficial) Then
+                ignorados = ignorados + 1
+                GoTo ProximaSolicitacao
+            End If
+        End If
         
         If SalvarSolicitacaoLocal(db, objSolic, importados, atualizados) Then
             colIDsImportados.Add CStr(strIDFirebase)
+            If blnEscolhaOficial Then
+                colIDsEscolhasOficiais.Add strIDCadastroOficial
+            End If
         Else
             ignorados = ignorados + 1
+            If blnEscolhaOficial Then
+                Call RestaurarEscolhaOficialAguardando(strIDCadastroOficial, vDataEscolhaOficial)
+            End If
         End If
         
 ProximaSolicitacao:
@@ -793,6 +834,12 @@ ProximaSolicitacao:
     If colIDsImportados.Count > 0 Then
         If Not MarcarSolicitacoesImportadasEmLote(colIDsImportados) Then
             falhasFinalizacao = colIDsImportados.Count
+        Else
+            For Each strIDCadastroSincronizar In colIDsEscolhasOficiais
+                If Not SincronizarEscolhaOficialPorIDCadastro(CStr(strIDCadastroSincronizar), True) Then
+                    falhasSincronizacaoOficiais = falhasSincronizacaoOficiais + 1
+                End If
+            Next strIDCadastroSincronizar
         End If
     End If
     
@@ -801,7 +848,8 @@ ProximaSolicitacao:
            "Atualizados: " & atualizados & vbCrLf & _
            "Ignorados: " & ignorados & vbCrLf & _
            "Falhas ao buscar no Firebase: " & falhasBusca & vbCrLf & _
-           "Falhas ao finalizar pendencia: " & falhasFinalizacao, vbInformation
+           "Falhas ao finalizar pendência: " & falhasFinalizacao & vbCrLf & _
+           "Falhas ao atualizar escolhas de Oficiais: " & falhasSincronizacaoOficiais, vbInformation
     
     ImportarSolicitacoesFirebase = True
     Exit Function

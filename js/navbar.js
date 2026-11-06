@@ -187,11 +187,11 @@ function styleDropdownToggle() {
 // 7. ✅ FUNÇÃO CORRIGIDA: Atualizar navbar baseado no nível do usuário
 export function updateNavbarByLevel(userLevel) {
 
-    // As notificações e as solicitações de liberação são ações exclusivas
-    // do administrador. Mantém a regra também fora do fluxo do app.html.
+    // A fila de solicitações aguardando liberação também é exibida aos
+    // moderadores; o sino e a sirene continuam exclusivos do administrador.
     const acoesSolicitacoes = document.getElementById('navbarSolicitacoesTesteAcoes');
     if (acoesSolicitacoes) {
-        const mostrarAcoes = Number(userLevel) === 1;
+        const mostrarAcoes = [1, 2].includes(Number(userLevel));
         acoesSolicitacoes.classList.toggle('d-none', !mostrarAcoes);
         acoesSolicitacoes.classList.toggle('d-flex', mostrarAcoes);
         acoesSolicitacoes.style.setProperty('display', mostrarAcoes ? 'flex' : 'none', 'important');
@@ -203,6 +203,11 @@ export function updateNavbarByLevel(userLevel) {
             controle.style.display = 'none';
         }
     });
+
+    const aguardandoLiberacao = document.getElementById('aguardando-liberacao-dropdown');
+    if (aguardandoLiberacao) {
+        aguardandoLiberacao.style.display = [1, 2].includes(Number(userLevel)) ? '' : 'none';
+    }
 
     // Ocultar Exclusões para nível 3
     if (userLevel >= 3) {

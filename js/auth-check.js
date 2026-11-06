@@ -208,6 +208,14 @@ async function hideNavbarItemsByLevel() {
 
         configurarFechamentoDropdownsNavbar();
 
+        try {
+            const { atualizarVisibilidadeMenuDejemOficiais } = await import('./dejem-oficiais-acesso.js');
+            await atualizarVisibilidadeMenuDejemOficiais({ nivel: Number(userLevel) });
+        } catch (erroAcessoOficiais) {
+            hideElement('#navDejemOficiais');
+            console.error('Erro ao configurar o menu DEJEM dos Oficiais:', erroAcessoOficiais);
+        }
+
         // Sino e sirene são exclusivos do nível 1, inclusive nas páginas
         // carregadas fora do app.html.
         const acoesSolicitacoes = document.getElementById('navbarSolicitacoesTesteAcoes');

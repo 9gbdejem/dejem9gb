@@ -178,6 +178,9 @@ Private Function AlterarApenasStatusAdm3() As Long
             db.Execute "UPDATE TblEscGeral SET Status_Adm = '3', Alteracao = 1 " & _
                        "WHERE ID_Cadastro = " & SQLTexto(strID), dbFailOnError
             AlterarApenasStatusAdm3 = AlterarApenasStatusAdm3 + db.RecordsAffected
+            If db.RecordsAffected > 0 Then
+                Call SincronizarEscolhaOficialPorIDCadastro(strID)
+            End If
         End If
     Next
     
@@ -354,6 +357,9 @@ Private Sub AtualizarEscalaLocal(ByRef db As DAO.Database, ByRef rs As DAO.Recor
              "WHERE ID_Cadastro = " & SQLTexto(Nz(rs!ID_Cadastro, ""))
     
     db.Execute strSQL, dbFailOnError
+    If db.RecordsAffected > 0 And Trim(Nz(rs!ID_Cadastro, "")) <> "" Then
+        Call SincronizarEscolhaOficialPorIDCadastro(Trim(Nz(rs!ID_Cadastro, "")))
+    End If
 End Sub
 
 Private Sub LimparEnviarPorName(ByRef driver As ChromeDriver, ByRef por As by, _

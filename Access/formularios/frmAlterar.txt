@@ -510,6 +510,7 @@ Private Function AtualizarStatusLocal(ByVal colIDs As Collection, ByVal strNovoS
     Dim db As DAO.Database
     Dim i As Long
     Dim strSQL As String
+    Dim strIDCadastro As String
     
     Set db = CurrentDb
     
@@ -518,6 +519,10 @@ Private Function AtualizarStatusLocal(ByVal colIDs As Collection, ByVal strNovoS
                  ", Alteracao = 1 WHERE " & WhereChaveSelecionada(CStr(colIDs(i)))
         db.Execute strSQL, dbFailOnError
         AtualizarStatusLocal = AtualizarStatusLocal + db.RecordsAffected
+        strIDCadastro = IDCadastroDaChave(CStr(colIDs(i)))
+        If db.RecordsAffected > 0 And strIDCadastro <> "" Then
+            Call SincronizarEscolhaOficialPorIDCadastro(strIDCadastro)
+        End If
     Next
 End Function
 
@@ -525,6 +530,7 @@ Private Function AtualizarStatusLocalLimparIDEscala(ByVal colIDs As Collection, 
     Dim db As DAO.Database
     Dim i As Long
     Dim strSQL As String
+    Dim strIDCadastro As String
     
     Set db = CurrentDb
     
@@ -536,6 +542,10 @@ Private Function AtualizarStatusLocalLimparIDEscala(ByVal colIDs As Collection, 
                  "WHERE " & WhereChaveSelecionada(CStr(colIDs(i)))
         db.Execute strSQL, dbFailOnError
         AtualizarStatusLocalLimparIDEscala = AtualizarStatusLocalLimparIDEscala + db.RecordsAffected
+        strIDCadastro = IDCadastroDaChave(CStr(colIDs(i)))
+        If db.RecordsAffected > 0 And strIDCadastro <> "" Then
+            Call SincronizarEscolhaOficialPorIDCadastro(strIDCadastro)
+        End If
     Next
 End Function
 
@@ -699,6 +709,9 @@ Private Sub ExcluirEscalasIntranetSelecionadas(ByVal colIDs As Collection, ByVal
             strSQL = "UPDATE TblEscGeral SET Status_Adm = '2', Alteracao = 1 WHERE " & WhereChaveSelecionada(strChave)
             db.Execute strSQL, dbFailOnError
             lngAtualizadas = lngAtualizadas + db.RecordsAffected
+            If db.RecordsAffected > 0 And IDCadastroDaChave(strChave) <> "" Then
+                Call SincronizarEscolhaOficialPorIDCadastro(IDCadastroDaChave(strChave))
+            End If
         End If
     Next
     

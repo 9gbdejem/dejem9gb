@@ -45,6 +45,16 @@
                     </a>
                 </li>
 
+                <li class="nav-item d-none">
+                    <a class="nav-link" href="dejem-oficiais.html" id="navDejemOficiais">
+                        <span class="icone-tres-estrelas me-1" aria-hidden="true">
+                            <i class="fas fa-star estrela-superior"></i>
+                            <i class="fas fa-star estrela-inferior-esquerda"></i>
+                            <i class="fas fa-star estrela-inferior-direita"></i>
+                        </span>Oficiais
+                    </a>
+                </li>
+
                 <li class="nav-item">
                     <a class="nav-link" href="instalar.html" id="navInstalar">
                         <i class="fas fa-download me-1"></i>Instalar
@@ -74,8 +84,28 @@
                 </li> -->
             </ul>
             
-            <!-- PONTO DE SEGURANÇA: ações globais de solicitações para administradores. -->
+            <!-- Ações globais de solicitações; sino e sirene continuam exclusivos do administrador. -->
             <div id="navbarSolicitacoesTesteAcoes" class="d-none align-items-center gap-2 me-2">
+                <div class="dropdown" id="aguardando-liberacao-dropdown">
+                    <button class="btn btn-warning btn-sm position-relative aguardando-liberacao-pulso" data-bs-toggle="dropdown"
+                            style="min-width: 45px; padding: 5px 10px;" title="Solicitações aguardando liberação">
+                        <i class="fas fa-hourglass-half"></i>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                              id="badge-aguardando-liberacao" style="font-size: 0.55em; padding: 1px 4px;">0</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-0" style="width: 360px;">
+                        <div class="dropdown-header bg-warning text-dark py-2">
+                            <i class="fas fa-hourglass-half me-2"></i>Aguardando liberação
+                        </div>
+                        <div id="lista-aguardando-liberacao" style="max-height: 400px; overflow-y: auto;"></div>
+                        <div class="dropdown-divider m-0"></div>
+                        <div class="px-3 py-2">
+                            <button class="btn btn-sm btn-outline-warning w-100" id="btn-atualizar-aguardando-liberacao">
+                                <i class="fas fa-sync-alt me-1"></i>Atualizar lista
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 <div class="dropdown" id="notificacoes-dropdown">
                     <button class="btn btn-warning btn-sm position-relative" data-bs-toggle="dropdown"
                             style="min-width: 45px; padding: 5px 10px;" title="Solicitações pendentes">

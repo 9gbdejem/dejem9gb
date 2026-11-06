@@ -105,6 +105,7 @@ function normalizarSolicitacaoFirebase(dados = {}) {
         necessidade: dados.necessidade ?? '',
         pedido_liberacao_edicao: dados.pedido_liberacao_edicao || null,
         liberacao_quantidade: dados.liberacao_quantidade || null,
+        controle_importacao: dados.controle_importacao || null,
         esc_superior: Number(dados.Esc_Superior ?? dados.esc_superior ?? 0),
         esc_intermed: Number(dados.Esc_Intermed ?? dados.esc_intermed ?? 0),
         esc_subalterno: Number(dados.Esc_Subalterno ?? dados.esc_subalterno ?? 0),
@@ -411,7 +412,6 @@ async function carregarSolicitacoesMes() {
         const mesStr = mesFiltro.toString().padStart(2, '0');
         const anoStr = anoFiltro.toString();
         const opmsParaBuscar = obterOpmsDaSelecao();
-        const filtroOficiais = opmSelecionada === '__OFICIAIS__';
 
         // No teste, as composições só são carregadas depois que o usuário solicitar a atualização.
         await Promise.all(opmsParaBuscar.map(async (opm) => {
@@ -446,8 +446,6 @@ async function carregarSolicitacoesMes() {
 
                         if (dataInfo) {
                             const dadosNormalizados = normalizarSolicitacaoFirebase(dados);
-                            const nomeComposicao = String(dadosNormalizados.composicao_nome || '').toLowerCase();
-                            if (filtroOficiais && !nomeComposicao.includes('oficial')) return;
 
                             const idCompleto = `${anoStr}/${mesStr}/${opmCodigo}/${composicaoCod}/${idSolicitacao}`;
 
@@ -521,10 +519,6 @@ function obterPrefixoOpm(nome) {
 function prepararOpcoesEspeciaisOpm() {
     opmFiltrosEspeciais = {};
 
-    if (userDataCache?.nivel === 1) {
-        opmFiltrosEspeciais.__OFICIAIS__ = [];
-    }
-
     const grupos = new Map();
     opmsPermitidas.forEach((codigo) => {
         const prefixo = obterPrefixoOpm(opmsNomes[codigo]);
@@ -538,12 +532,15 @@ function prepararOpcoesEspeciaisOpm() {
             opmFiltrosEspeciais[`__GRUPO__${prefixo}`] = codigos;
         }
     });
+
+    if (opmSelecionada &&
+        !opmsPermitidas.includes(opmSelecionada) &&
+        !opmFiltrosEspeciais[opmSelecionada]) {
+        opmSelecionada = null;
+    }
 }
 
 function obterOpmsDaSelecao() {
-    if (opmSelecionada === '__OFICIAIS__' && userDataCache?.nivel === 1) {
-        return opmsPermitidas;
-    }
     if (opmFiltrosEspeciais[opmSelecionada]) return opmFiltrosEspeciais[opmSelecionada];
     return opmsPermitidas.includes(opmSelecionada) ? [opmSelecionada] : [];
 }
@@ -1733,12 +1730,26 @@ async function cadastrarDiaSolicitacao(dados, dia, numeroAnexo, urlAnexo, nomeSi
         criado_em: new Date().toISOString()
     };
 
-    const solicitacaoRef = ref(database, `solicitacoes/${idSolicitacao}`);
-    await set(solicitacaoRef, dadosSolicitacao);
-
-    await registrarPendenciaSolicitacao(idSolicitacao, {
-        ...dadosSolicitacao,
-        Status_Inicial: dadosSolicitacao.Status_Inicial ?? null
+    const agora = new Date().toISOString();
+    const caminhoIndice = caminhoAguardandoLiberacao(idSolicitacao, dadosSolicitacao);
+    const controleImportacao = {
+        estado: 'aguardando_liberacao',
+        atualizado_em: agora,
+        atualizado_por_re: userRE || '',
+        atualizado_por_nome: userDataCache?.nome || ''
+    };
+    await update(ref(database), {
+        [`solicitacoes/${idSolicitacao}`]: {
+            ...dadosSolicitacao,
+            controle_importacao: controleImportacao
+        },
+        [`SolicPendentes/${idSolicitacao}`]: null,
+        [caminhoIndice]: montarResumoAguardandoLiberacao(
+            idSolicitacao,
+            dadosSolicitacao,
+            'aguardando_liberacao',
+            agora
+        )
     });
 
     const historicoRef = ref(database, `solicitacoes/${idSolicitacao}/historico`);
@@ -2001,9 +2012,7 @@ function renderInterface() {
                                 <label class="form-label small mb-1">OPM / Estação</label>
                                 <select class="form-select form-select-sm" id="selectOpm">
                                     <option value="" ${!opmSelecionada ? 'selected' : ''}>Selecione a OPM</option>
-                                    ${userDataCache.nivel === 1 ? '<option value="__OFICIAIS__" ' + (opmSelecionada === '__OFICIAIS__' ? 'selected' : '') + '>OFICIAIS</option>' : ''}
                                     ${Object.entries(opmFiltrosEspeciais)
-                                        .filter(([chave]) => chave !== '__OFICIAIS__')
                                         .map(([chave]) => `
                                             <option value="${chave}" ${chave === opmSelecionada ? 'selected' : ''}>
                                                 ${chave.replace('__GRUPO__', '')} - TODAS
@@ -2385,9 +2394,15 @@ function renderInterface() {
                                             Resetar
                                         </button>
                                     </div>
-                                    <div class="col-12 col-xl-2 d-grid">
+                                    <div class="col-12 col-xl-1 d-grid">
                                         <button type="button" class="btn btn-sm btn-primary" id="btnAtualizarTabela">
                                             <i class="fas fa-sync me-1"></i>Atualizar
+                                        </button>
+                                    </div>
+                                    <div class="col-12 col-xl-1 d-grid">
+                                        <button type="button" class="btn btn-sm btn-warning d-none btn-liberar-solicitacoes-pulso"
+                                                id="btnLiberarSolicitacoes" title="Liberar as solicitações para importação no Access">
+                                            <i class="fas fa-unlock me-1"></i>Liberar
                                         </button>
                                     </div>
                                 </div>
@@ -2469,16 +2484,16 @@ function renderInterface() {
 
     configurarInputHorario();
 
-    if (userDataCache && userDataCache.nivel === 1) {
+    if (userDataCache && [1, 2].includes(Number(userDataCache.nivel))) {
         setTimeout(() => {
-            setupNotificacoesSolicitacoes();
-            setupSireneLiberacoes();
-            carregarLiberacoesPendentes();
-            setTimeout(() => {
-                if (window.carregarNotificacoesAdmin) {
-                    window.carregarNotificacoesAdmin();
-                }
-            }, 2000);
+            setupAguardandoLiberacao();
+            carregarAguardandoLiberacao();
+            if (Number(userDataCache.nivel) === 1) {
+                setupNotificacoesSolicitacoes();
+                setupSireneLiberacoes();
+                carregarLiberacoesPendentes();
+                setTimeout(() => window.carregarNotificacoesAdmin?.(), 2000);
+            }
         }, 500);
     }
 }
@@ -2816,6 +2831,11 @@ function inicializarEventListeners() {
         });
     }
 
+    const btnLiberarSolicitacoes = document.getElementById('btnLiberarSolicitacoes');
+    if (btnLiberarSolicitacoes) {
+        btnLiberarSolicitacoes.addEventListener('click', liberarSolicitacoesSelecionadas);
+    }
+
     const formNovaSolicitacao = document.getElementById('formNovaSolicitacao');
     if (formNovaSolicitacao) {
         formNovaSolicitacao.addEventListener('submit', async (e) => {
@@ -2889,16 +2909,16 @@ function inicializarEventListeners() {
         });
     }
 
-    if (userDataCache && userDataCache.nivel === 1) {
+    if (userDataCache && [1, 2].includes(Number(userDataCache.nivel))) {
         setTimeout(() => {
-            setupNotificacoesSolicitacoes();
-            setupSireneLiberacoes();
-            carregarLiberacoesPendentes();
-            setTimeout(() => {
-                if (window.carregarNotificacoesAdmin) {
-                    window.carregarNotificacoesAdmin();
-                }
-            }, 2000);
+            setupAguardandoLiberacao();
+            carregarAguardandoLiberacao();
+            if (Number(userDataCache.nivel) === 1) {
+                setupNotificacoesSolicitacoes();
+                setupSireneLiberacoes();
+                carregarLiberacoesPendentes();
+                setTimeout(() => window.carregarNotificacoesAdmin?.(), 2000);
+            }
         }, 500);
     }
 }
@@ -2965,27 +2985,183 @@ async function atualizarTabelaComDelay() {
 async function registrarPendenciaSolicitacao(idFirebase, dados = {}) {
     try {
         if (!idFirebase) return;
-
-        const pendenteRef = ref(database, `SolicPendentes/${idFirebase}`);
         const agora = new Date().toISOString();
+        const caminhoIndice = caminhoAguardandoLiberacao(idFirebase, dados);
+        if (!caminhoIndice) throw new Error('Não foi possível identificar a OPM e o mês da solicitação.');
 
-        await set(pendenteRef, {
-            ID_Firebase: idFirebase,
-            atualizado_em: agora
+        await update(ref(database), {
+            [`SolicPendentes/${idFirebase}`]: null,
+            [caminhoIndice]: montarResumoAguardandoLiberacao(idFirebase, dados, 'aguardando_liberacao', agora),
+            [`solicitacoes/${idFirebase}/controle_importacao`]: {
+                estado: 'aguardando_liberacao',
+                atualizado_em: agora,
+                atualizado_por_re: userRE || '',
+                atualizado_por_nome: userDataCache?.nome || ''
+            }
         });
     } catch (pendenteError) {
-        console.warn('⚠️ Erro ao registrar pendência:', pendenteError);
+        console.error('Erro ao registrar solicitação aguardando liberação:', pendenteError);
+        throw pendenteError;
     }
 }
 
-async function removerPendenciaSolicitacao(idFirebase) {
+function partesIdSolicitacao(idFirebase) {
+    const partes = String(idFirebase || '').replace(/^\/?solicitacoes\//, '').split('/');
+    if (partes.length < 5) return null;
+    return {
+        ano: partes[0],
+        mes: String(partes[1]).padStart(2, '0'),
+        opm: partes[2],
+        composicao: partes[3],
+        diaHora: partes[4]
+    };
+}
+
+function caminhoAguardandoLiberacao(idFirebase, dados = {}) {
+    const partes = partesIdSolicitacao(idFirebase);
+    const anoMes = partes ? `${partes.ano}${partes.mes}` : '';
+    const opm = String(dados.opm_codigo || partes?.opm || '').trim();
+    if (!opm || !anoMes) return '';
+    return `SolicAguardandoLiberacao/${opm}/${anoMes}/${chavePedidoLiberacao(idFirebase)}`;
+}
+
+function montarResumoAguardandoLiberacao(idFirebase, dados = {}, estado = 'aguardando_liberacao', agora = new Date().toISOString()) {
+    const partes = partesIdSolicitacao(idFirebase) || {};
+    return {
+        id_firebase: idFirebase,
+        opm_codigo: String(dados.opm_codigo || partes.opm || ''),
+        opm_nome: dados.opm_nome || opmsNomes[dados.opm_codigo || partes.opm] || '',
+        composicao_cod: String(dados.composicao_cod || partes.composicao || ''),
+        composicao_nome: dados.composicao_nome || '',
+        data: dados.data || dados.data_extraida || '',
+        horario_inicial: dados.horario_inicial || '',
+        estado,
+        atualizado_em: agora,
+        atualizado_por_re: userRE || '',
+        atualizado_por_nome: userDataCache?.nome || ''
+    };
+}
+
+async function registrarAguardandoEdicao(idFirebase, dados = {}) {
+    if (!idFirebase) return;
+    const agora = new Date().toISOString();
+    const caminhoIndice = caminhoAguardandoLiberacao(idFirebase, dados);
+    if (!caminhoIndice) return;
+
+    await update(ref(database), {
+        [`SolicPendentes/${idFirebase}`]: null,
+        [caminhoIndice]: montarResumoAguardandoLiberacao(idFirebase, dados, 'aguardando_edicao', agora),
+        [`solicitacoes/${idFirebase}/controle_importacao`]: {
+            estado: 'aguardando_edicao',
+            atualizado_em: agora,
+            atualizado_por_re: userRE || '',
+            atualizado_por_nome: userDataCache?.nome || ''
+        }
+    });
+}
+
+async function removerPendenciaSolicitacao(idFirebase, dados = {}) {
     try {
         if (!idFirebase) return;
 
-        const pendenteRef = ref(database, `SolicPendentes/${idFirebase}`);
-        await remove(pendenteRef);
+        const atualizacoes = { [`SolicPendentes/${idFirebase}`]: null };
+        const caminhoIndice = caminhoAguardandoLiberacao(idFirebase, dados);
+        if (caminhoIndice) atualizacoes[caminhoIndice] = null;
+        await update(ref(database), atualizacoes);
     } catch (pendenteError) {
-        console.warn('⚠️ Erro ao remover pendência:', pendenteError);
+        console.error('Erro ao remover pendência:', pendenteError);
+    }
+}
+
+function caminhoGrupoAguardandoLiberacaoAtual() {
+    if (!opmSelecionada || !opmsPermitidas.includes(opmSelecionada) || !mesFiltro || !anoFiltro) return '';
+    return `SolicAguardandoLiberacao/${opmSelecionada}/${anoFiltro}${String(mesFiltro).padStart(2, '0')}`;
+}
+
+async function obterSolicitacoesAguardandoLiberacaoAtual() {
+    const caminho = caminhoGrupoAguardandoLiberacaoAtual();
+    if (!caminho) return [];
+    const snapshot = await get(ref(database, caminho));
+    return snapshot.exists()
+        ? Object.values(snapshot.val() || {}).filter((item) => item?.id_firebase)
+        : [];
+}
+
+async function atualizarBotaoLiberarSolicitacoes() {
+    const botao = document.getElementById('btnLiberarSolicitacoes');
+    if (!botao) return;
+
+    try {
+        const itens = await obterSolicitacoesAguardandoLiberacaoAtual();
+        botao.classList.toggle('d-none', itens.length === 0);
+        botao.innerHTML = `<i class="fas fa-unlock me-1"></i>Liberar${itens.length ? ` (${itens.length})` : ''}`;
+    } catch (error) {
+        botao.classList.add('d-none');
+        console.error('Erro ao verificar solicitações aguardando liberação:', error);
+    }
+}
+
+async function liberarSolicitacoesSelecionadas() {
+    const botao = document.getElementById('btnLiberarSolicitacoes');
+    const caminhoGrupo = caminhoGrupoAguardandoLiberacaoAtual();
+    if (!botao || !caminhoGrupo) {
+        mostrarMensagemFormulario('Selecione uma OPM específica, o mês e o ano antes de liberar.', 'warning');
+        return;
+    }
+
+    try {
+        botao.disabled = true;
+        const itens = await obterSolicitacoesAguardandoLiberacaoAtual();
+        const prontas = itens.filter((item) => item.estado === 'aguardando_liberacao');
+        const aguardandoEdicao = itens.length - prontas.length;
+
+        if (prontas.length === 0) {
+            const complemento = aguardandoEdicao > 0
+                ? ' As solicitações deste grupo ainda aguardam a conclusão da edição.'
+                : '';
+            mostrarMensagemFormulario(`Não há solicitações prontas para liberação.${complemento}`, 'info');
+            return;
+        }
+
+        if (!confirm(`Liberar ${prontas.length} solicitação(ões) para importação no Access?`)) return;
+
+        const agora = new Date().toISOString();
+        const atualizacoes = {};
+        prontas.forEach((item) => {
+            const id = item.id_firebase;
+            const caminhoItem = `${caminhoGrupo}/${chavePedidoLiberacao(id)}`;
+            atualizacoes[`SolicPendentes/${id}`] = {
+                ID_Firebase: id,
+                atualizado_em: agora
+            };
+            atualizacoes[caminhoItem] = null;
+            atualizacoes[`solicitacoes/${id}/controle_importacao`] = {
+                estado: 'liberada',
+                liberado_em: agora,
+                liberado_por_re: userRE || '',
+                liberado_por_nome: userDataCache?.nome || ''
+            };
+            const historico = criarEntradaHistorico({
+                observacao: 'Solicitação liberada para importação no Access',
+                liberado_em: agora
+            });
+            Object.entries(historico).forEach(([chave, valor]) => {
+                atualizacoes[`solicitacoes/${id}/historico/${chave}`] = valor;
+            });
+        });
+
+        await update(ref(database), atualizacoes);
+        mostrarMensagemFormulario(`${prontas.length} solicitação(ões) liberada(s) para importação.`, 'success');
+        await Promise.all([
+            atualizarBotaoLiberarSolicitacoes(),
+            carregarAguardandoLiberacao(),
+            Number(userDataCache?.nivel) === 1 ? carregarNotificacoesAdmin() : Promise.resolve()
+        ]);
+    } catch (error) {
+        console.error('Erro ao liberar solicitações para importação:', error);
+        mostrarMensagemFormulario('Não foi possível liberar as solicitações para importação.', 'danger');
+    } finally {
+        botao.disabled = false;
     }
 }
 
@@ -3188,6 +3364,7 @@ function valorStatusFiltroSolicitacao(solicitacao) {
 
 function rotuloStatusFiltro(valor) {
     switch (String(valor)) {
+        case 'aguardando_liberacao': return 'Aguardando liberação';
         case 'pedido_liberacao': return 'Solicitação de liberação';
         case 'sem_status': return 'Aguardando';
         case '1': return 'Aprovada';
@@ -3228,6 +3405,10 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
         }
 
         statusDisponiveis.add(valorStatusFiltroSolicitacao(solicitacao));
+        if (solicitacao.controle_importacao?.estado === 'aguardando_liberacao' ||
+            solicitacao.controle_importacao?.estado === 'aguardando_edicao') {
+            statusDisponiveis.add('aguardando_liberacao');
+        }
         if (Number(userDataCache?.nivel) === 1 && solicitacao.pedido_liberacao_edicao) {
             statusDisponiveis.add('pedido_liberacao');
         }
@@ -3237,6 +3418,8 @@ function atualizarOpcoesFiltrosTabelaSolicitacoes(solicitacoesValidas) {
         .sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'pt-BR'));
     const diasOrdenados = [...dias].sort((a, b) => Number(a) - Number(b));
     const statusOrdenados = [...statusDisponiveis].sort((a, b) => {
+        if (a === 'aguardando_liberacao') return -1;
+        if (b === 'aguardando_liberacao') return 1;
         if (a === 'sem_status') return -1;
         if (b === 'sem_status') return 1;
         if (a === 'pedido_liberacao') return -1;
@@ -3349,9 +3532,17 @@ function aplicarFiltrosTabelaSolicitacoes(solicitacoesValidas) {
             ? filtrosTabelaSolicitacoes.status
             : (filtrosTabelaSolicitacoes.status ? [filtrosTabelaSolicitacoes.status] : []);
         const filtrarPedidosLiberacao = statusSelecionados.includes('pedido_liberacao');
-        const statusReais = statusSelecionados.filter((status) => status !== 'pedido_liberacao');
+        const filtrarAguardandoLiberacao = statusSelecionados.includes('aguardando_liberacao');
+        const statusReais = statusSelecionados.filter((status) =>
+            status !== 'pedido_liberacao' && status !== 'aguardando_liberacao'
+        );
 
         if (filtrarPedidosLiberacao && !solicitacao.pedido_liberacao_edicao) {
+            return false;
+        }
+
+        if (filtrarAguardandoLiberacao &&
+            !['aguardando_liberacao', 'aguardando_edicao'].includes(solicitacao.controle_importacao?.estado)) {
             return false;
         }
 
@@ -3621,6 +3812,7 @@ async function atualizarTabelaSolicitacoes() {
         `;
     } finally {
         atualizarBloqueioFormularioPorTabela();
+        atualizarBotaoLiberarSolicitacoes();
     }
 }
 
@@ -3633,10 +3825,15 @@ function posicionarAcoesTesteNoNavbar() {
         if (!destino.contains(controle)) controle.remove();
     });
 
-    const mostrarAcoes = Number(userDataCache?.nivel) === 1;
+    const mostrarAcoes = [1, 2].includes(Number(userDataCache?.nivel));
     destino.classList.toggle('d-none', !mostrarAcoes);
     destino.classList.toggle('d-flex', mostrarAcoes);
     destino.style.setProperty('display', mostrarAcoes ? 'flex' : 'none', 'important');
+
+    ['notificacoes-dropdown', 'liberacoes-dropdown'].forEach((id) => {
+        const controle = document.getElementById(id);
+        if (controle) controle.style.display = Number(userDataCache?.nivel) === 1 ? '' : 'none';
+    });
 }
 
 function atualizarCardsResumoSolicitacoes(solicitacoes) {
@@ -4426,7 +4623,10 @@ async function confirmarEdicao(id) {
 async function atualizarTelaAposLiberacao() {
     await carregarSolicitacoesMes();
     await atualizarTabelaSolicitacoes();
-    await carregarLiberacoesPendentes();
+    await Promise.all([
+        carregarAguardandoLiberacao(),
+        Number(userDataCache?.nivel) === 1 ? carregarLiberacoesPendentes() : Promise.resolve()
+    ]);
 }
 
 function formatarPrazoLiberacao(data, hora, minuto) {
@@ -4521,6 +4721,7 @@ function abrirModalSolicitarLiberacao(id) {
             atualizacoes[`solicitacoes/${id}/pedido_liberacao_edicao`] = pedido;
             atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = pedido;
             await update(ref(database), atualizacoes);
+            await registrarAguardandoEdicao(id, { ...solicitacao, ...pedido });
             await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
                 observacao: prazo ? 'Solicitada liberação com novo prazo de inscrição' : 'Solicitada liberação para alteração de quantidade',
                 prazo_inscricao_solicitado: prazo || null,
@@ -4601,6 +4802,9 @@ async function recusarPedidoLiberacao(id, motivo = '') {
     const anoMes = obterAnoMesSolicitacao({ ...dados, id });
     const atualizacoes = { [`solicitacoes/${id}/pedido_liberacao_edicao`]: null };
     if (anoMes && pedido.opm_codigo) atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = null;
+    const caminhoAguardando = caminhoAguardandoLiberacao(id, { ...dados, ...pedido });
+    if (caminhoAguardando) atualizacoes[caminhoAguardando] = null;
+    atualizacoes[`solicitacoes/${id}/controle_importacao`] = null;
     await update(ref(database), atualizacoes);
     await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
         observacao: 'Solicitação de liberação recusada pelo administrador',
@@ -4640,6 +4844,7 @@ async function solicitarLiberacaoQuantidade(id) {
         atualizacoes[`solicitacoes/${id}/pedido_liberacao_edicao`] = pedido;
         atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = pedido;
         await update(ref(database), atualizacoes);
+        await registrarAguardandoEdicao(id, { ...solicitacao, ...pedido });
         await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
             observacao: 'Solicitada liberação para alteração de quantidade',
             solicitado_por_re: pedido.solicitado_por_re,
@@ -4672,6 +4877,9 @@ async function cancelarPedidoLiberacao(id) {
         if (anoMes && pedido.opm_codigo) {
             atualizacoes[`SolicLiberacaoPendentes/${pedido.opm_codigo}/${anoMes.ano}${anoMes.mes}/${chavePedidoLiberacao(id)}`] = null;
         }
+        const caminhoAguardando = caminhoAguardandoLiberacao(id, { ...dados, ...pedido });
+        if (caminhoAguardando) atualizacoes[caminhoAguardando] = null;
+        atualizacoes[`solicitacoes/${id}/controle_importacao`] = null;
         await update(ref(database), atualizacoes);
         await update(ref(database, `solicitacoes/${id}/historico`), criarEntradaHistorico({
             observacao: 'Solicitação de liberação cancelada pelo administrador'
@@ -4779,9 +4987,13 @@ async function excluirSolicitacao(id) {
         const podeAlterar = await validarStatusParaAlteracao(id);
         if (!podeAlterar) return;
 
+        const solicitacao = solicitacoesCache.find((item) => item.id === id) || {};
         const atualizacoes = {};
         atualizacoes[`solicitacoes/${id}/Status_Inicial`] = 5;
         atualizacoes[`SolicPendentes/${id}`] = null;
+        const caminhoAguardando = caminhoAguardandoLiberacao(id, solicitacao);
+        if (caminhoAguardando) atualizacoes[caminhoAguardando] = null;
+        atualizacoes[`solicitacoes/${id}/controle_importacao`] = null;
         await update(ref(database), atualizacoes);
 
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
@@ -4810,18 +5022,14 @@ async function reativarSolicitacao(id) {
         const podeAlterar = await validarStatusParaAlteracao(id);
         if (!podeAlterar) return;
 
-        const agora = new Date().toISOString();
-        const atualizacoes = {};
-        atualizacoes[`solicitacoes/${id}/Status_Inicial`] = null;
-        atualizacoes[`SolicPendentes/${id}`] = {
-            ID_Firebase: id,
-            atualizado_em: agora
-        };
-        await update(ref(database), atualizacoes);
+        const snapshot = await get(ref(database, `solicitacoes/${id}`));
+        const dados = snapshot.val() || {};
+        await update(ref(database, `solicitacoes/${id}`), { Status_Inicial: null });
+        await registrarPendenciaSolicitacao(id, { ...dados, Status_Inicial: null });
 
         const historicoRef = ref(database, `solicitacoes/${id}/historico`);
         const entradaHistorico = criarEntradaHistorico({
-            observacao: 'Reativada pelo administrador e enviada para pendência de importação'
+            observacao: 'Reativada pelo administrador e enviada para aguardar liberação'
         });
         await update(historicoRef, entradaHistorico);
 
@@ -4833,7 +5041,7 @@ async function reativarSolicitacao(id) {
 
         await carregarSolicitacoesMes();
         atualizarTabelaSolicitacoes();
-        mostrarMensagemFormulario('Solicitação reativada e enviada para pendência de importação.', 'success');
+        mostrarMensagemFormulario('Solicitação reativada e aguardando liberação para importação.', 'success');
 
     } catch (error) {
         console.error('❌ Erro ao reativar:', error);
@@ -5058,6 +5266,122 @@ async function exportarCSV() {
 }
 
 // FUNÇÃO: Setup notificações
+async function carregarContextoAguardandoLiberacao() {
+    const nivel = Number(userDataCache?.nivel || sessionStorage.getItem('userLevel') || 0);
+    const reUsuario = userRE || sessionStorage.getItem('userRE') || '';
+
+    if (Object.keys(opmsNomes).length === 0) {
+        const localSnapshot = await get(ref(database, 'local'));
+        opmsNomes = localSnapshot.val() || {};
+    }
+
+    if (nivel === 1) return { nivel, opms: Object.keys(opmsNomes) };
+    if (nivel !== 2 || !reUsuario) return { nivel, opms: [] };
+
+    const permissaoSnapshot = await get(ref(database, `permissoes/${reUsuario}/opms`));
+    const permissoes = permissaoSnapshot.val() || {};
+    return {
+        nivel,
+        opms: Object.entries(permissoes)
+            .filter(([, permitido]) => permitido === true)
+            .map(([codigo]) => codigo)
+    };
+}
+
+export async function carregarAguardandoLiberacao() {
+    const lista = document.getElementById('lista-aguardando-liberacao');
+    const badge = document.getElementById('badge-aguardando-liberacao');
+    const botao = document.querySelector('#aguardando-liberacao-dropdown .aguardando-liberacao-pulso');
+    if (!lista) return;
+
+    try {
+        const contexto = await carregarContextoAguardandoLiberacao();
+        if (![1, 2].includes(contexto.nivel)) return;
+
+        lista.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-warning"></div></div>';
+        let dadosPorOpm = {};
+        if (contexto.nivel === 1) {
+            const snapshotGeral = await get(ref(database, 'SolicAguardandoLiberacao'));
+            dadosPorOpm = snapshotGeral.val() || {};
+        } else {
+            const resultados = await Promise.all(contexto.opms.map(async (opm) => ({
+                opm,
+                dados: (await get(ref(database, `SolicAguardandoLiberacao/${opm}`))).val() || {}
+            })));
+            resultados.forEach(({ opm, dados }) => {
+                dadosPorOpm[opm] = dados;
+            });
+        }
+        const grupos = new Map();
+        let total = 0;
+
+        Object.entries(dadosPorOpm).forEach(([opm, meses]) => {
+            Object.entries(meses || {}).forEach(([anoMes, itens]) => {
+                const quantidade = Object.values(itens || {}).filter((item) => item?.id_firebase).length;
+                if (!quantidade) return;
+                total += quantidade;
+                grupos.set(`${opm}_${anoMes}`, {
+                    opm,
+                    opmNome: opmsNomes[opm] || opm,
+                    ano: anoMes.substring(0, 4),
+                    mes: anoMes.substring(4, 6),
+                    quantidade
+                });
+            });
+        });
+
+        if (badge) badge.textContent = total > 99 ? '99+' : String(total);
+        if (botao) botao.classList.toggle('ativa', total > 0);
+
+        const itens = [...grupos.values()].sort((a, b) =>
+            a.opmNome.localeCompare(b.opmNome, 'pt-BR') || `${b.ano}${b.mes}`.localeCompare(`${a.ano}${a.mes}`)
+        );
+        if (itens.length === 0) {
+            lista.innerHTML = '<div class="text-center py-4 text-muted small">Nenhuma solicitação aguardando liberação</div>';
+            return;
+        }
+
+        lista.innerHTML = itens.map((item) => `
+            <button type="button" class="dropdown-item aguardando-liberacao-item border-bottom py-2"
+                    data-opm="${escaparHTML(item.opm)}" data-ano="${item.ano}" data-mes="${item.mes}">
+                <div class="fw-semibold small">${escaparHTML(item.opmNome)}</div>
+                <div class="small text-muted">${item.mes}/${item.ano} | ${item.quantidade} solicitação(ões)</div>
+            </button>
+        `).join('');
+    } catch (error) {
+        console.error('Erro ao carregar solicitações aguardando liberação:', error);
+        lista.innerHTML = '<div class="text-center py-4 text-danger small">Erro ao carregar solicitações</div>';
+    }
+}
+
+export function setupAguardandoLiberacao() {
+    const dropdown = document.getElementById('aguardando-liberacao-dropdown');
+    if (!dropdown) return;
+    const nivel = Number(userDataCache?.nivel || sessionStorage.getItem('userLevel') || 0);
+    if (![1, 2].includes(nivel)) {
+        dropdown.style.display = 'none';
+        return;
+    }
+    dropdown.style.display = '';
+    if (dropdown.dataset.configurado) return;
+    dropdown.dataset.configurado = '1';
+
+    document.getElementById('btn-atualizar-aguardando-liberacao')?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await carregarAguardandoLiberacao();
+    });
+
+    document.getElementById('lista-aguardando-liberacao')?.addEventListener('click', (event) => {
+        const item = event.target.closest('.aguardando-liberacao-item');
+        if (!item) return;
+        filtrosTabelaSolicitacoes.status = ['aguardando_liberacao'];
+        window.aplicarFiltrosSolicitacoes?.(item.dataset.opm, item.dataset.mes, item.dataset.ano);
+        const toggle = dropdown.querySelector('[data-bs-toggle="dropdown"]');
+        if (toggle && typeof bootstrap !== 'undefined') bootstrap.Dropdown.getOrCreateInstance(toggle).hide();
+    });
+}
+
 export async function carregarLiberacoesPendentes() {
     const lista = document.getElementById('lista-liberacoes');
     const badge = document.getElementById('badge-liberacoes');
@@ -5111,12 +5435,6 @@ export function setupSireneLiberacoes() {
 
     const nivel = Number(userDataCache?.nivel || sessionStorage.getItem('userLevel') || 0);
     if (nivel !== 1) {
-        const acoes = document.getElementById('navbarSolicitacoesTesteAcoes');
-        if (acoes) {
-            acoes.classList.add('d-none');
-            acoes.classList.remove('d-flex');
-            acoes.style.setProperty('display', 'none', 'important');
-        }
         dropdown.style.setProperty('display', 'none', 'important');
         return;
     }
@@ -5161,12 +5479,6 @@ export function setupNotificacoesSolicitacoes() {
 
     if (userLevel !== '1' || !notificacoesDropdown) {
         if (notificacoesDropdown) notificacoesDropdown.style.display = 'none';
-        const acoes = document.getElementById('navbarSolicitacoesTesteAcoes');
-        if (acoes) {
-            acoes.classList.add('d-none');
-            acoes.classList.remove('d-flex');
-            acoes.style.setProperty('display', 'none', 'important');
-        }
         return;
     }
 

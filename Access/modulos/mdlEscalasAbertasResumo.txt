@@ -810,6 +810,10 @@ Private Function EnviarPatchSolicitacoesAlteradas(ByRef db As DAO.Database, ByVa
     End If
     
     For Each vID In colIDFirebase
+        If Not SincronizarEscolhaOficialAlterada(db, CStr(vID)) Then
+            EnviarPatchSolicitacoesAlteradas = False
+            Exit Function
+        End If
         db.Execute "UPDATE TblEscGeral SET Alteracao = Null WHERE ID_Firebase = " & SQLTextoResumo(CStr(vID)), dbFailOnError
     Next
     
@@ -819,6 +823,40 @@ Private Function EnviarPatchSolicitacoesAlteradas(ByRef db As DAO.Database, ByVa
 Erro:
     Debug.Print "Erro EnviarPatchSolicitacoesAlteradas: " & Err.Number & " - " & Err.Description
     EnviarPatchSolicitacoesAlteradas = False
+End Function
+
+Private Function SincronizarEscolhaOficialAlterada(ByRef db As DAO.Database, _
+                                                    ByVal strIDFirebase As String) As Boolean
+    Dim rs As DAO.Recordset
+    Dim strIDCadastro As String
+    Dim strMotivo As String
+
+    On Error GoTo Erro
+    SincronizarEscolhaOficialAlterada = True
+
+    Set rs = db.OpenRecordset( _
+        "SELECT TOP 1 ID_Cadastro, Motivo FROM TblEscGeral WHERE ID_Firebase = " & _
+        SQLTextoResumo(strIDFirebase), dbOpenSnapshot)
+    If rs.EOF Then GoTo Sair
+
+    strIDCadastro = Trim(Nz(rs!ID_Cadastro, ""))
+    strMotivo = LCase$(Trim(Nz(rs!Motivo, "")))
+    If strMotivo = "escolha de dejem por oficial" And strIDCadastro <> "" Then
+        SincronizarEscolhaOficialAlterada = _
+            SincronizarEscolhaOficialPorIDCadastro(strIDCadastro, True)
+    End If
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Exit Function
+
+Erro:
+    Debug.Print "Erro SincronizarEscolhaOficialAlterada [" & strIDFirebase & "]: " & _
+                Err.Number & " - " & Err.Description
+    SincronizarEscolhaOficialAlterada = False
+    Resume Sair
 End Function
 
 Private Function PatchSolicitacaoEscala(ByRef rs As DAO.Recordset, ByVal strIDFirebase As String) As String

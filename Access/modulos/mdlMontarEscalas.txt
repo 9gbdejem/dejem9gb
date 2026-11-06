@@ -579,6 +579,9 @@ Private Sub AtualizarEscalaMontada(ByRef rsEscala As DAO.Recordset)
              "WHERE " & strWhere
     
     CurrentDb.Execute strSQL, dbFailOnError
+    If Trim(Nz(rsEscala!ID_Cadastro, "")) <> "" Then
+        Call SincronizarEscolhaOficialPorIDCadastro(Trim(Nz(rsEscala!ID_Cadastro, "")))
+    End If
 End Sub
 
 Public Sub SincronizarEscalasPendentesFirebase()
@@ -1180,6 +1183,9 @@ Private Sub RegistrarSemInscritos(ByRef rsEscala As DAO.Recordset)
              "WHERE " & strWhere
     
     CurrentDb.Execute strSQL, dbFailOnError
+    If Trim(Nz(rsEscala!ID_Cadastro, "")) <> "" Then
+        Call SincronizarEscolhaOficialPorIDCadastro(Trim(Nz(rsEscala!ID_Cadastro, "")))
+    End If
 End Sub
 
 Private Sub LimparMontagemFalha(ByRef rsEscala As DAO.Recordset)

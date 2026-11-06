@@ -393,6 +393,9 @@ Private Function AtualizarEscalaPorLinhaSite(ByVal itemSite As Object) As Boolea
     
     db.Execute strSQL, dbFailOnError
     AtualizarEscalaPorLinhaSite = (db.RecordsAffected > 0)
+    If AtualizarEscalaPorLinhaSite And strIDCadastro <> "" Then
+        Call SincronizarEscolhaOficialPorIDCadastro(strIDCadastro)
+    End If
     
 Sair:
     On Error Resume Next

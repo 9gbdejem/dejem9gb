@@ -1,0 +1,776 @@
+Option Compare Database
+Option Explicit
+
+Public Function AtualizarDistribuicaoOficiaisFirebase(ByVal dtMesReferencia As Date, _
+                                                       Optional ByVal blnExibirMensagem As Boolean = False, _
+                                                       Optional ByVal strOperacaoFiltro As String = "") As Boolean
+    Dim db As DAO.Database
+    Dim colOperacoes As Collection
+    Dim vOperacao As Variant
+    Dim strOperacao As String
+    Dim strComposicao As String
+    Dim strComposicaoChave As String
+    Dim strChave As String
+    Dim strNode As String
+    Dim strJson As String
+    Dim lngVagas As Long
+    Dim lngUtilizadas As Long
+    Dim lngAtualizadas As Long
+    Dim lngConferidas As Long
+    Dim blnOfertaExiste As Boolean
+    Dim resp As FirebaseResponse
+    Dim respConferencia As FirebaseResponse
+
+    On Error GoTo Erro
+    Set db = CurrentDb
+    Set colOperacoes = OperacoesDistribuicaoOficiais(db, strOperacaoFiltro)
+
+    For Each vOperacao In colOperacoes
+        strOperacao = UCase$(Trim(CStr(vOperacao)))
+        lngVagas = SaldoOficiaisOperacaoMes(db, dtMesReferencia, strOperacao)
+        strChave = ChaveOfertaOperacao(strOperacao)
+        strNode = "dejemOficiais/ofertas/" & Format(dtMesReferencia, "yyyymm") & "/" & strChave
+        resp = BuscarDadosFirebase(strNode)
+
+        If Not resp.Success Then
+            Err.Raise vbObjectError + 966, "AtualizarDistribuicaoOficiaisFirebase", _
+                      "Não foi possível consultar no Firebase a distribuição da operação " & _
+                      strOperacao & ". Nenhum dado dessa operação foi alterado no site."
+        End If
+
+        blnOfertaExiste = Trim(resp.ResponseText) <> "" And Trim(resp.ResponseText) <> "null"
+        If blnOfertaExiste Then
+            lngUtilizadas = ExtrairNumeroJsonOficial(resp.ResponseText, "vagas_ocupadas")
+        Else
+            lngUtilizadas = 0
+        End If
+
+        If lngVagas < 0 Then
+            Err.Raise vbObjectError + 961, "AtualizarDistribuicaoOficiaisFirebase", _
+                      "A distribuição de Oficiais da operação " & strOperacao & _
+                      " ficou negativa no mês " & Format(dtMesReferencia, "mm/yyyy") & "."
+        End If
+
+        If lngVagas < lngUtilizadas Then
+            Err.Raise vbObjectError + 962, "AtualizarDistribuicaoOficiaisFirebase", _
+                      "A operação " & strOperacao & " possui " & lngUtilizadas & _
+                      " vaga(s) já utilizada(s). A distribuição não pode ser reduzida para " & lngVagas & "."
+        End If
+
+        If lngVagas > 0 Then
+            strComposicao = ComposicaoOficialDaOperacao(db, strOperacao)
+            If strComposicao = "" Then
+                Err.Raise vbObjectError + 963, "AtualizarDistribuicaoOficiaisFirebase", _
+                          "Não foi localizada uma composição de Oficial para a operação " & strOperacao & "."
+            End If
+
+            If MontarJsonLocaisOficiais(db, strComposicao) = "{}" Then
+                Err.Raise vbObjectError + 964, "AtualizarDistribuicaoOficiaisFirebase", _
+                          "A composição " & strComposicao & " não possui local e código cadastrados."
+            End If
+            If Not AtualizarIndiceLocaisOficiaisFirebase(strComposicao, False) Then
+                Err.Raise vbObjectError + 970, "AtualizarDistribuicaoOficiaisFirebase", _
+                          "Não foi possível atualizar os locais da composição " & strComposicao & "."
+            End If
+        Else
+            strComposicao = ComposicaoOficialDaOperacao(db, strOperacao)
+        End If
+        strComposicaoChave = ChaveOfertaOperacao(strComposicao)
+
+        strJson = "{" & _
+                  """id"":""" & JsonEscapeDistribuicaoOficial(strChave) & """," & _
+                  """mes_ref"":""" & Format(dtMesReferencia, "yyyy-mm") & """," & _
+                  """operacao"":""" & JsonEscapeDistribuicaoOficial(strOperacao) & """," & _
+                  """composicao_nome"":""" & JsonEscapeDistribuicaoOficial(strComposicao) & """," & _
+                  """composicao_chave"":""" & JsonEscapeDistribuicaoOficial(strComposicaoChave) & """," & _
+                  """nome_exibicao"":""" & JsonEscapeDistribuicaoOficial(NomeExibicaoOperacao(strOperacao, strComposicao)) & """," & _
+                  """vagas_total"":" & lngVagas & "," & _
+                  """ativa"":" & IIf(lngVagas > 0, "true", "false") & "," & _
+                  """locais"":null," & _
+                  """origem"":""frm_distribuicao""," & _
+                  """atualizado_por_re"":""" & JsonEscapeDistribuicaoOficial(UsuarioLogadoRE()) & """," & _
+                  """atualizado_em"":""" & Format(Now, "yyyy-mm-dd\Thh:nn:ss") & """"
+
+        If Not blnOfertaExiste Then
+            strJson = strJson & ",""vagas_ocupadas"":0"
+        End If
+        strJson = strJson & "}"
+
+        If Not EnviarDadosFirebasePatch(strNode, strJson) Then
+            Err.Raise vbObjectError + 965, "AtualizarDistribuicaoOficiaisFirebase", _
+                      "Falha ao enviar a operação " & strOperacao & " ao Firebase."
+        End If
+
+        respConferencia = BuscarDadosFirebase(strNode)
+        If Not respConferencia.Success Or _
+           Trim(respConferencia.ResponseText) = "" Or _
+           Trim(respConferencia.ResponseText) = "null" Then
+            Err.Raise vbObjectError + 967, "AtualizarDistribuicaoOficiaisFirebase", _
+                      "A operação " & strOperacao & _
+                      " foi enviada, mas não foi possível conferir os dados gravados no Firebase."
+        End If
+
+        If ExtrairNumeroJsonOficial(respConferencia.ResponseText, "vagas_total") <> lngVagas Or _
+           ExtrairNumeroJsonOficial(respConferencia.ResponseText, "vagas_ocupadas") <> lngUtilizadas Or _
+           ExtrairTextoJsonOficial(respConferencia.ResponseText, "mes_ref") <> Format(dtMesReferencia, "yyyy-mm") Or _
+           UCase$(ExtrairTextoJsonOficial(respConferencia.ResponseText, "operacao")) <> strOperacao Or _
+           ExtrairTextoJsonOficial(respConferencia.ResponseText, "composicao_nome") <> strComposicao Or _
+           ExtrairTextoJsonOficial(respConferencia.ResponseText, "composicao_chave") <> strComposicaoChave Or _
+           LCase$(ExtrairTextoJsonOficial(respConferencia.ResponseText, "origem")) <> "frm_distribuicao" Then
+            Err.Raise vbObjectError + 968, "AtualizarDistribuicaoOficiaisFirebase", _
+                      "A conferência da operação " & strOperacao & _
+                      " encontrou valores diferentes entre o Access e o Firebase."
+        End If
+
+        lngAtualizadas = lngAtualizadas + 1
+        lngConferidas = lngConferidas + 1
+    Next vOperacao
+
+    AtualizarDistribuicaoOficiaisFirebase = True
+    If blnExibirMensagem Then
+        MsgBox "Distribuição de Oficiais atualizada no Firebase." & vbCrLf & _
+               "Operação(ões) sincronizada(s): " & lngAtualizadas & vbCrLf & _
+               "Operação(ões) conferida(s): " & lngConferidas, _
+               vbInformation, "Distribuição de Vagas"
+    End If
+
+Sair:
+    Set colOperacoes = Nothing
+    Set db = Nothing
+    Exit Function
+
+Erro:
+    Debug.Print "Erro AtualizarDistribuicaoOficiaisFirebase: " & Err.Number & " - " & Err.Description
+    If blnExibirMensagem Then
+        MsgBox Err.Description, vbExclamation, "Distribuição de Vagas"
+    End If
+    AtualizarDistribuicaoOficiaisFirebase = False
+    Resume Sair
+End Function
+
+Public Sub AtualizarLocaisOficiaisPorComposicaoFirebase(ByVal strComposicao As String)
+    On Error GoTo Erro
+
+    If Not AtualizarIndiceLocaisOficiaisFirebase(strComposicao, False) Then
+        Err.Raise vbObjectError + 969, "AtualizarLocaisOficiaisPorComposicaoFirebase", _
+                  "Não foi possível atualizar os locais da composição " & strComposicao & "."
+    End If
+    Exit Sub
+
+Erro:
+    Debug.Print "Erro AtualizarLocaisOficiaisPorComposicaoFirebase: " & Err.Number & " - " & Err.Description
+    Err.Raise vbObjectError + 973, "AtualizarLocaisOficiaisPorComposicaoFirebase", Err.Description
+End Sub
+
+Public Function AtualizarIndiceLocaisOficiaisFirebase(ByVal strComposicao As String, _
+                                                        Optional ByVal blnExibirMensagem As Boolean = False) As Boolean
+    Dim db As DAO.Database
+    Dim strJson As String
+    Dim strNode As String
+
+    On Error GoTo Erro
+    strComposicao = Trim(Nz(strComposicao, ""))
+    If strComposicao = "" Then Exit Function
+    If InStr(1, NormalizarOperacaoOficial(strComposicao), "OFICIAL", vbTextCompare) = 0 And _
+       InStr(1, NormalizarOperacaoOficial(strComposicao), "SUPERVISOR", vbTextCompare) = 0 Then
+        AtualizarIndiceLocaisOficiaisFirebase = True
+        Exit Function
+    End If
+
+    Set db = CurrentDb
+    strJson = MontarJsonLocaisOficiais(db, strComposicao)
+    strNode = "dejemOficiais/locaisPorComposicao/" & ChaveOfertaOperacao(strComposicao)
+
+    If strJson = "{}" Then strJson = "null"
+    If Not EnviarDadosFirebase(strNode, strJson) Then
+        Err.Raise vbObjectError + 971, "AtualizarIndiceLocaisOficiaisFirebase", _
+                  "Falha ao enviar os locais da composição " & strComposicao & " ao Firebase."
+    End If
+
+    AtualizarIndiceLocaisOficiaisFirebase = True
+    If blnExibirMensagem Then
+        MsgBox "Locais da composição atualizados no Firebase.", vbInformation, "Atualizar Online"
+    End If
+
+Sair:
+    Set db = Nothing
+    Exit Function
+
+Erro:
+    Debug.Print "Erro AtualizarIndiceLocaisOficiaisFirebase: " & Err.Number & " - " & Err.Description
+    If blnExibirMensagem Then MsgBox Err.Description, vbExclamation, "Atualizar Online"
+    AtualizarIndiceLocaisOficiaisFirebase = False
+    Resume Sair
+End Function
+
+Public Function AtualizarTodosIndicesLocaisOficiaisFirebase( _
+                    Optional ByVal blnExibirMensagem As Boolean = False) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strJson As String
+    Dim strComposicao As String
+    Dim strComposicaoNormalizada As String
+    Dim lngComposicoes As Long
+
+    On Error GoTo Erro
+    Set db = CurrentDb
+    Set rs = db.OpenRecordset( _
+        "SELECT DISTINCT [COMPOSIÇÃO] FROM TblComposicao " & _
+        "WHERE [COMPOSIÇÃO] Is Not Null AND [COMPOSIÇÃO] <> '' " & _
+        "ORDER BY [COMPOSIÇÃO]", dbOpenSnapshot)
+
+    strJson = "{"
+    Do While Not rs.EOF
+        strComposicao = Trim(Nz(rs![COMPOSIÇÃO], ""))
+        strComposicaoNormalizada = NormalizarOperacaoOficial(strComposicao)
+        If InStr(1, strComposicaoNormalizada, "OFICIAL", vbTextCompare) > 0 Or _
+           InStr(1, strComposicaoNormalizada, "SUPERVISOR", vbTextCompare) > 0 Then
+            If Len(strJson) > 1 Then strJson = strJson & ","
+            strJson = strJson & """" & _
+                      JsonEscapeDistribuicaoOficial(ChaveOfertaOperacao(strComposicao)) & _
+                      """:" & MontarJsonLocaisOficiais(db, strComposicao)
+            lngComposicoes = lngComposicoes + 1
+        End If
+        rs.MoveNext
+    Loop
+    strJson = strJson & "}"
+
+    If Not EnviarDadosFirebase("dejemOficiais/locaisPorComposicao", strJson) Then
+        Err.Raise vbObjectError + 972, "AtualizarTodosIndicesLocaisOficiaisFirebase", _
+                  "Falha ao atualizar o índice de locais dos Oficiais no Firebase."
+    End If
+
+    AtualizarTodosIndicesLocaisOficiaisFirebase = True
+    If blnExibirMensagem Then
+        MsgBox "Opções de escala dos Oficiais atualizadas no Firebase." & vbCrLf & _
+               "Composições sincronizadas: " & lngComposicoes, _
+               vbInformation, "Atualizar Online"
+    End If
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Exit Function
+
+Erro:
+    Debug.Print "Erro AtualizarTodosIndicesLocaisOficiaisFirebase: " & Err.Number & " - " & Err.Description
+    If blnExibirMensagem Then MsgBox Err.Description, vbExclamation, "Atualizar Online"
+    AtualizarTodosIndicesLocaisOficiaisFirebase = False
+    Resume Sair
+End Function
+
+Private Function OperacoesDistribuicaoOficiais(ByVal db As DAO.Database, _
+                                                ByVal strOperacaoFiltro As String) As Collection
+    Dim col As New Collection
+    Dim rs As DAO.Recordset
+    Dim dict As Object
+    Dim strOperacao As String
+    Dim vKey As Variant
+
+    Set dict = CreateObject("Scripting.Dictionary")
+    dict.CompareMode = vbTextCompare
+
+    strOperacaoFiltro = UCase$(Trim(strOperacaoFiltro))
+    If strOperacaoFiltro <> "" Then
+        col.Add strOperacaoFiltro
+        Set OperacoesDistribuicaoOficiais = col
+        Exit Function
+    End If
+
+    dict("ROTINEIRA") = True
+    Set rs = db.OpenRecordset( _
+        "SELECT Operacao FROM TblOperacoes WHERE Operacao Is Not Null AND Operacao <> '' ORDER BY Operacao", _
+        dbOpenSnapshot)
+    Do While Not rs.EOF
+        strOperacao = UCase$(Trim(Nz(rs!Operacao, "")))
+        If strOperacao <> "" Then dict(strOperacao) = True
+        rs.MoveNext
+    Loop
+    rs.Close
+
+    For Each vKey In dict.Keys
+        col.Add CStr(vKey)
+    Next vKey
+    Set OperacoesDistribuicaoOficiais = col
+End Function
+
+Private Function SaldoOficiaisOperacaoMes(ByVal db As DAO.Database, _
+                                           ByVal dtMesReferencia As Date, _
+                                           ByVal strOperacao As String) As Long
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+
+    strSQL = "SELECT Sum(IIf(Nz(Operacao_Matematica,'')='Subtrair'," & _
+             "-Nz(Qtde_Oficiais,0),Nz(Qtde_Oficiais,0))) AS Total " & _
+             "FROM TblDistribuicao WHERE Mes_Referencia >= #" & _
+             Format(DateSerial(Year(dtMesReferencia), Month(dtMesReferencia), 1), "mm\/dd\/yyyy") & "# " & _
+             "AND Mes_Referencia < #" & _
+             Format(DateSerial(Year(dtMesReferencia), Month(dtMesReferencia) + 1, 1), "mm\/dd\/yyyy") & "# " & _
+             "AND UCase(Trim(Nz(Operacao,''))) = " & SQLTextoDistribuicaoOficial(UCase$(Trim(strOperacao)))
+
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+    If Not rs.EOF Then SaldoOficiaisOperacaoMes = CLng(Nz(rs!Total, 0))
+    rs.Close
+End Function
+
+Private Function ComposicaoOficialDaOperacao(ByVal db As DAO.Database, _
+                                              ByVal strOperacao As String) As String
+    Dim rs As DAO.Recordset
+    Dim strComposicao As String
+    Dim strAlvo As String
+    Dim strOperacaoNormalizada As String
+
+    strOperacaoNormalizada = NormalizarOperacaoOficial(strOperacao)
+    If strOperacaoNormalizada = "ROTINEIRA" Then
+        strAlvo = "OFICIAL VISTORIADOR"
+    ElseIf InStr(1, strOperacaoNormalizada, "OFICIAL", vbTextCompare) > 0 Or _
+           InStr(1, strOperacaoNormalizada, "SUPERVISOR", vbTextCompare) > 0 Then
+        strAlvo = strOperacaoNormalizada
+    Else
+        strAlvo = strOperacaoNormalizada & " - OFICIAL"
+    End If
+
+    Set rs = db.OpenRecordset( _
+        "SELECT DISTINCT [COMPOSIÇÃO] FROM TblComposicao " & _
+        "WHERE [COMPOSIÇÃO] Is Not Null AND [COMPOSIÇÃO] <> ''", dbOpenSnapshot)
+    Do While Not rs.EOF
+        strComposicao = Trim(Nz(rs![COMPOSIÇÃO], ""))
+        If NormalizarOperacaoOficial(strComposicao) = strAlvo Then
+            ComposicaoOficialDaOperacao = strComposicao
+            Exit Do
+        End If
+        rs.MoveNext
+    Loop
+    rs.Close
+End Function
+
+Private Function MontarJsonLocaisOficiais(ByVal db As DAO.Database, _
+                                           ByVal strComposicao As String) As String
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strJson As String
+    Dim strChave As String
+    Dim strOPM As String
+    Dim strCodigo As String
+
+    strSQL = "SELECT OPM, CODIGO, LOCAL, [COMPOSIÇÃO] FROM TblComposicao " & _
+             "WHERE [COMPOSIÇÃO] = " & SQLTextoDistribuicaoOficial(strComposicao) & _
+             " AND Nz(OPM,'') <> '' AND Nz(CODIGO,'') <> '' ORDER BY ID"
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+
+    strJson = "{"
+    Do While Not rs.EOF
+        strOPM = Trim(Nz(rs!OPM, ""))
+        strCodigo = Trim(Nz(rs!CODIGO, ""))
+        strChave = ChaveOfertaOperacao(strOPM & "_" & strCodigo)
+        If Len(strJson) > 1 Then strJson = strJson & ","
+        strJson = strJson & """" & JsonEscapeDistribuicaoOficial(strChave) & """:{" & _
+                  """opm_codigo"":""" & JsonEscapeDistribuicaoOficial(strOPM) & """," & _
+                  """opm_nome"":""" & JsonEscapeDistribuicaoOficial(Nz(rs!LOCAL, "")) & """," & _
+                  """composicao_cod"":""" & JsonEscapeDistribuicaoOficial(strCodigo) & """," & _
+                  """composicao_nome"":""" & JsonEscapeDistribuicaoOficial(Nz(rs![COMPOSIÇÃO], "")) & """}"
+        rs.MoveNext
+    Loop
+    rs.Close
+    MontarJsonLocaisOficiais = strJson & "}"
+End Function
+
+Private Function NomeExibicaoOperacao(ByVal strOperacao As String, _
+                                       ByVal strComposicao As String) As String
+    Dim strNome As String
+
+    If UCase$(Trim(strOperacao)) = "ROTINEIRA" Then
+        NomeExibicaoOperacao = "OFICIAL VISTORIADOR"
+        Exit Function
+    End If
+
+    strNome = Trim(strComposicao)
+    If UCase$(Right$(strNome, 10)) = " - OFICIAL" Then
+        strNome = Left$(strNome, Len(strNome) - 10)
+    End If
+    If strNome = "" Then strNome = strOperacao
+    NomeExibicaoOperacao = strNome
+End Function
+
+Private Function ChaveOfertaOperacao(ByVal strOperacao As String) As String
+    Dim strChave As String
+    Dim vProibido As Variant
+
+    strChave = UCase$(Trim(strOperacao))
+    strChave = Replace(strChave, " ", "_")
+    For Each vProibido In Array(".", "#", "$", "[", "]", "/")
+        strChave = Replace(strChave, CStr(vProibido), "_")
+    Next vProibido
+    ChaveOfertaOperacao = strChave
+End Function
+
+Private Function NormalizarOperacaoOficial(ByVal strTexto As String) As String
+    strTexto = UCase$(Trim(strTexto))
+    strTexto = Replace(strTexto, "Á", "A")
+    strTexto = Replace(strTexto, "À", "A")
+    strTexto = Replace(strTexto, "Â", "A")
+    strTexto = Replace(strTexto, "Ã", "A")
+    strTexto = Replace(strTexto, "É", "E")
+    strTexto = Replace(strTexto, "Ê", "E")
+    strTexto = Replace(strTexto, "Í", "I")
+    strTexto = Replace(strTexto, "Ó", "O")
+    strTexto = Replace(strTexto, "Ô", "O")
+    strTexto = Replace(strTexto, "Õ", "O")
+    strTexto = Replace(strTexto, "Ú", "U")
+    strTexto = Replace(strTexto, "Ç", "C")
+    strTexto = Replace(strTexto, "Ñ", "N")
+    Do While InStr(strTexto, "  ") > 0
+        strTexto = Replace(strTexto, "  ", " ")
+    Loop
+    NormalizarOperacaoOficial = strTexto
+End Function
+
+Private Function ExtrairNumeroJsonOficial(ByVal strJson As String, _
+                                           ByVal strCampo As String) As Long
+    Dim regex As Object
+    Dim resultados As Object
+
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Pattern = """" & strCampo & """" & "\s*:\s*(-?\d+)"
+    regex.Global = False
+    regex.IgnoreCase = True
+    Set resultados = regex.Execute(strJson)
+    If resultados.Count > 0 Then
+        ExtrairNumeroJsonOficial = CLng(resultados(0).SubMatches(0))
+    End If
+End Function
+
+Private Function JsonEscapeDistribuicaoOficial(ByVal vValor As Variant) As String
+    Dim strTexto As String
+
+    strTexto = CStr(Nz(vValor, ""))
+    strTexto = Replace(strTexto, "\", "\\")
+    strTexto = Replace(strTexto, Chr(34), "\" & Chr(34))
+    strTexto = Replace(strTexto, vbCrLf, "\n")
+    strTexto = Replace(strTexto, vbCr, "\n")
+    strTexto = Replace(strTexto, vbLf, "\n")
+    JsonEscapeDistribuicaoOficial = strTexto
+End Function
+
+Private Function SQLTextoDistribuicaoOficial(ByVal vValor As Variant) As String
+    SQLTextoDistribuicaoOficial = "'" & Replace(Nz(vValor, ""), "'", "''") & "'"
+End Function
+
+Public Function BloquearEscolhaOficialImportacao(ByVal strIDCadastro As String, _
+                                                  ByVal vDataEsc As Variant) As Boolean
+    Dim strMes As String
+    Dim resp As FirebaseResponse
+    Dim strStatus As String
+
+    On Error GoTo Erro
+    BloquearEscolhaOficialImportacao = True
+    strMes = MesEscolhaOficial(vDataEsc)
+    strIDCadastro = Trim(Nz(strIDCadastro, ""))
+    If strMes = "" Or strIDCadastro = "" Then Exit Function
+
+    resp = BuscarDadosFirebase("dejemOficiais/escolhas/" & strMes & "/" & strIDCadastro)
+    If Not resp.Success Or Trim(resp.ResponseText) = "null" Then Exit Function
+
+    strStatus = LCase(ExtrairTextoJsonOficial(resp.ResponseText, "status"))
+    If strStatus <> "" And strStatus <> "aguardando" And strStatus <> "importando" Then
+        BloquearEscolhaOficialImportacao = False
+        Exit Function
+    End If
+
+    BloquearEscolhaOficialImportacao = EnviarDadosFirebasePatch( _
+        "dejemOficiais/escolhas/" & strMes & "/" & strIDCadastro, _
+        "{""status"":""importando""}")
+    Exit Function
+
+Erro:
+    Debug.Print "Erro BloquearEscolhaOficialImportacao: " & Err.Number & " - " & Err.Description
+    BloquearEscolhaOficialImportacao = False
+End Function
+
+Public Sub RestaurarEscolhaOficialAguardando(ByVal strIDCadastro As String, _
+                                              ByVal vDataEsc As Variant)
+    Dim strMes As String
+    Dim resp As FirebaseResponse
+
+    On Error GoTo Erro
+    strMes = MesEscolhaOficial(vDataEsc)
+    strIDCadastro = Trim(Nz(strIDCadastro, ""))
+    If strMes = "" Or strIDCadastro = "" Then Exit Sub
+
+    resp = BuscarDadosFirebase("dejemOficiais/escolhas/" & strMes & "/" & strIDCadastro)
+    If Not resp.Success Or Trim(resp.ResponseText) = "null" Then Exit Sub
+    If LCase(ExtrairTextoJsonOficial(resp.ResponseText, "status")) <> "importando" Then Exit Sub
+
+    Call EnviarDadosFirebasePatch( _
+        "dejemOficiais/escolhas/" & strMes & "/" & strIDCadastro, _
+        "{""status"":""aguardando""}")
+    Exit Sub
+
+Erro:
+    Debug.Print "Erro RestaurarEscolhaOficialAguardando: " & Err.Number & " - " & Err.Description
+End Sub
+
+Public Function SincronizarEscolhaOficialPorIDCadastro(ByVal strIDCadastro As String, _
+                                                        Optional ByVal blnExigirRegistro As Boolean = False) As Boolean
+    Dim db As DAO.Database
+    Dim rsEscala As DAO.Recordset
+    Dim rsMilitar As DAO.Recordset
+    Dim resp As FirebaseResponse
+    Dim strMes As String
+    Dim strNode As String
+    Dim strStatus As String
+    Dim strStatusAdm As String
+    Dim strIDEscala As String
+    Dim strREOficial As String
+    Dim strREMontado As String
+    Dim strPrazo As String
+    Dim strData As String
+    Dim strHora As String
+    Dim strNomeExibicao As String
+    Dim lngMilitares As Long
+    Dim strJson As String
+
+    On Error GoTo Erro
+    strIDCadastro = Trim(Nz(strIDCadastro, ""))
+    If strIDCadastro = "" Then Exit Function
+
+    Set db = CurrentDb
+    Set rsEscala = db.OpenRecordset( _
+        "SELECT TOP 1 ID_Cadastro, ID_Escala, Data_Esc, Horario_Inicial, " & _
+        "Prazo_Inscricao, Status_Adm, Composicao_Nome FROM TblEscGeral " & _
+        "WHERE ID_Cadastro = " & SQLTextoOficial(strIDCadastro), dbOpenSnapshot)
+    If rsEscala.EOF Then
+        If blnExigirRegistro Then
+            Debug.Print "SincronizarEscolhaOficialPorIDCadastro: ID_Cadastro não localizado na TblEscGeral: " & strIDCadastro
+        Else
+            SincronizarEscolhaOficialPorIDCadastro = True
+        End If
+        GoTo Sair
+    End If
+
+    strMes = MesEscolhaOficial(rsEscala!Data_Esc)
+    If strMes = "" Then GoTo Sair
+    strNode = "dejemOficiais/escolhas/" & strMes & "/" & strIDCadastro
+    resp = BuscarDadosFirebase(strNode)
+    If Not resp.Success Or Trim(resp.ResponseText) = "" Or Trim(resp.ResponseText) = "null" Then
+        If blnExigirRegistro Then
+            Debug.Print "SincronizarEscolhaOficialPorIDCadastro: escolha não localizada no Firebase." & _
+                        " | ID_Cadastro=" & strIDCadastro & " | Nó=" & strNode & _
+                        " | HTTP=" & resp.StatusCode
+        Else
+            SincronizarEscolhaOficialPorIDCadastro = True
+        End If
+        GoTo Sair
+    End If
+
+    strREOficial = SomenteNumerosOficial(ExtrairTextoJsonOficial(resp.ResponseText, "oficial_re"))
+    strNomeExibicao = ExtrairTextoJsonOficial(resp.ResponseText, "nome_exibicao")
+    strStatusAdm = Trim(Nz(rsEscala!Status_Adm, ""))
+    strIDEscala = Trim(Nz(rsEscala!ID_Escala, ""))
+    strData = Format(Nz(rsEscala!Data_Esc, 0), "dd/mm/yyyy")
+    strHora = Format(Nz(rsEscala!Horario_Inicial, 0), "hh:nn")
+    If Not IsNull(rsEscala!Prazo_Inscricao) Then
+        strPrazo = Format(rsEscala!Prazo_Inscricao, "dd/mm/yyyy hh:nn")
+    End If
+
+    If strStatusAdm = "2" Then
+        strStatus = "cancelada"
+    ElseIf strIDEscala = "" Or strIDEscala = "0" Then
+        strStatus = "importada"
+    ElseIf Val(strStatusAdm) < 4 Then
+        strStatus = "cadastrada"
+    Else
+        Set rsMilitar = db.OpenRecordset( _
+            "SELECT Militar_RE FROM TblMilEsc WHERE ID_Escala = " & SQLTextoOficial(strIDEscala), _
+            dbOpenSnapshot)
+        Do While Not rsMilitar.EOF
+            lngMilitares = lngMilitares + 1
+            If lngMilitares = 1 Then strREMontado = SomenteNumerosOficial(Nz(rsMilitar!Militar_RE, ""))
+            rsMilitar.MoveNext
+        Loop
+
+        If lngMilitares = 0 Then
+            strStatus = "nenhum_inscrito"
+        ElseIf lngMilitares = 1 And strREMontado = strREOficial Then
+            strStatus = "montada"
+        Else
+            strStatus = "divergencia"
+        End If
+    End If
+
+    strJson = "{" & _
+              """status"":""" & JsonEscapeOficial(strStatus) & """," & _
+              """ID_Escala"":""" & JsonEscapeOficial(strIDEscala) & """," & _
+              """Prazo_Inscricao"":""" & JsonEscapeOficial(strPrazo) & """," & _
+              """sincronizado_em"":""" & Format(Now, "yyyy-mm-dd\Thh:nn:ss") & """}"
+
+    If Not EnviarDadosFirebasePatch(strNode, strJson) Then GoTo Sair
+    Call AtualizarAlertaEscolhaOficial(strREOficial, strIDCadastro, strStatus, _
+                                       strIDEscala, strPrazo, strData, strHora, strNomeExibicao)
+    SincronizarEscolhaOficialPorIDCadastro = True
+
+Sair:
+    On Error Resume Next
+    If Not rsMilitar Is Nothing Then rsMilitar.Close
+    If Not rsEscala Is Nothing Then rsEscala.Close
+    Set rsMilitar = Nothing
+    Set rsEscala = Nothing
+    Set db = Nothing
+    Exit Function
+
+Erro:
+    Debug.Print "Erro SincronizarEscolhaOficialPorIDCadastro [" & strIDCadastro & "]: " & _
+                Err.Number & " - " & Err.Description
+    Resume Sair
+End Function
+
+Public Function ReconciliarEscolhasOficiaisFirebase( _
+                    Optional ByVal blnExibirMensagem As Boolean = True) As Boolean
+    Dim db As DAO.Database
+    Dim rs As DAO.Recordset
+    Dim strSQL As String
+    Dim strIDCadastro As String
+    Dim lngConferidas As Long
+    Dim lngFalhas As Long
+
+    On Error GoTo Erro
+    Set db = CurrentDb
+    strSQL = "SELECT ID_Cadastro FROM TblEscGeral " & _
+             "WHERE Trim(Nz(ID_Cadastro,'')) <> '' " & _
+             "AND LCase(Trim(Nz(Motivo,''))) = 'escolha de dejem por oficial' " & _
+             "ORDER BY Data_Esc, Horario_Inicial"
+    Set rs = db.OpenRecordset(strSQL, dbOpenSnapshot)
+
+    Do While Not rs.EOF
+        strIDCadastro = Trim(Nz(rs!ID_Cadastro, ""))
+        If SincronizarEscolhaOficialPorIDCadastro(strIDCadastro, True) Then
+            lngConferidas = lngConferidas + 1
+        Else
+            lngFalhas = lngFalhas + 1
+        End If
+        rs.MoveNext
+    Loop
+
+    ReconciliarEscolhasOficiaisFirebase = (lngFalhas = 0)
+    If blnExibirMensagem Then
+        MsgBox "Sincronização das escolhas de Oficiais concluída." & vbCrLf & _
+               "Conferidas: " & lngConferidas & vbCrLf & _
+               "Falhas: " & lngFalhas, _
+               IIf(lngFalhas = 0, vbInformation, vbExclamation), _
+               "DEJEM dos Oficiais"
+    End If
+
+Sair:
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+    Exit Function
+
+Erro:
+    Debug.Print "Erro ReconciliarEscolhasOficiaisFirebase: " & Err.Number & " - " & Err.Description
+    ReconciliarEscolhasOficiaisFirebase = False
+    If blnExibirMensagem Then
+        MsgBox "Erro ao sincronizar as escolhas de Oficiais: " & Err.Description, _
+               vbExclamation, "DEJEM dos Oficiais"
+    End If
+    Resume Sair
+End Function
+
+Private Sub AtualizarAlertaEscolhaOficial(ByVal strRE As String, _
+                                           ByVal strIDCadastro As String, _
+                                           ByVal strStatus As String, _
+                                           ByVal strIDEscala As String, _
+                                           ByVal strPrazo As String, _
+                                           ByVal strData As String, _
+                                           ByVal strHora As String, _
+                                           ByVal strNomeExibicao As String)
+    Dim strNode As String
+    Dim strJson As String
+
+    On Error GoTo Erro
+    If strRE = "" Then Exit Sub
+    strNode = "dejemOficiais/alertas/" & strRE & "/" & strIDCadastro
+
+    If strStatus <> "cadastrada" Or strIDEscala = "" Or strPrazo = "" Then
+        Call EnviarDadosFirebase(strNode, "null")
+        Exit Sub
+    End If
+
+    strJson = "{" & _
+              """ativo"":true," & _
+              """ID_Cadastro"":""" & JsonEscapeOficial(strIDCadastro) & """," & _
+              """ID_Escala"":""" & JsonEscapeOficial(strIDEscala) & """," & _
+              """Prazo_Inscricao"":""" & JsonEscapeOficial(strPrazo) & """," & _
+              """data"":""" & JsonEscapeOficial(strData) & """," & _
+              """horario_inicial"":""" & JsonEscapeOficial(strHora) & """," & _
+              """nome_exibicao"":""" & JsonEscapeOficial(strNomeExibicao) & """}"
+    Call EnviarDadosFirebase(strNode, strJson)
+    Exit Sub
+
+Erro:
+    Debug.Print "Erro AtualizarAlertaEscolhaOficial: " & Err.Number & " - " & Err.Description
+End Sub
+
+Private Function MesEscolhaOficial(ByVal vData As Variant) As String
+    Dim strData As String
+
+    strData = Trim(Nz(vData, ""))
+    If Len(strData) >= 7 And Mid$(strData, 5, 1) = "-" Then
+        MesEscolhaOficial = Left$(strData, 4) & Mid$(strData, 6, 2)
+    ElseIf IsDate(vData) Then
+        MesEscolhaOficial = Format(CDate(vData), "yyyymm")
+    End If
+End Function
+
+Private Function ExtrairTextoJsonOficial(ByVal strJson As String, ByVal strCampo As String) As String
+    Dim regex As Object
+    Dim resultados As Object
+    Dim strValor As String
+
+    On Error GoTo Erro
+    Set regex = CreateObject("VBScript.RegExp")
+    regex.Pattern = """" & strCampo & """" & "\s*:\s*""([^""]*)"""
+    regex.Global = False
+    regex.IgnoreCase = True
+    Set resultados = regex.Execute(strJson)
+    If resultados.Count = 0 Then Exit Function
+
+    strValor = resultados(0).SubMatches(0)
+    strValor = Replace(strValor, "\" & Chr(34), Chr(34))
+    strValor = Replace(strValor, "\\", "\")
+    ExtrairTextoJsonOficial = strValor
+    Exit Function
+
+Erro:
+    Debug.Print "Erro ExtrairTextoJsonOficial [" & strCampo & "]: " & Err.Number & " - " & Err.Description
+End Function
+
+Private Function JsonEscapeOficial(ByVal vValor As Variant) As String
+    Dim strTexto As String
+    strTexto = Nz(vValor, "")
+    strTexto = Replace(strTexto, "\", "\\")
+    strTexto = Replace(strTexto, Chr(34), "\" & Chr(34))
+    strTexto = Replace(strTexto, vbCrLf, "\n")
+    strTexto = Replace(strTexto, vbCr, "\n")
+    strTexto = Replace(strTexto, vbLf, "\n")
+    JsonEscapeOficial = strTexto
+End Function
+
+Private Function SQLTextoOficial(ByVal vValor As Variant) As String
+    SQLTextoOficial = "'" & Replace(Nz(vValor, ""), "'", "''") & "'"
+End Function
+
+Private Function SomenteNumerosOficial(ByVal vValor As Variant) As String
+    Dim i As Long
+    Dim strTexto As String
+    Dim strCaractere As String
+
+    strTexto = Nz(vValor, "")
+    For i = 1 To Len(strTexto)
+        strCaractere = Mid$(strTexto, i, 1)
+        If strCaractere Like "#" Then SomenteNumerosOficial = SomenteNumerosOficial & strCaractere
+    Next i
+End Function

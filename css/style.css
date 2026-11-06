@@ -2679,6 +2679,30 @@ main.container-fluid {
         max-width: calc(100vw - 48px);
     }
 }
+
+@keyframes pulsarLiberacaoImportacao {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.9);
+    }
+    45% {
+        transform: scale(1.06);
+        box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
+    }
+}
+
+.btn-liberar-solicitacoes-pulso,
+#aguardando-liberacao-dropdown .aguardando-liberacao-pulso.ativa {
+    animation: pulsarLiberacaoImportacao 0.85s ease-in-out infinite;
+}
+
+#aguardando-liberacao-dropdown .dropdown-menu {
+    border: 1px solid #ffc107;
+}
+
+.aguardando-liberacao-item:hover {
+    background-color: rgba(255, 193, 7, 0.12) !important;
+}
 /* Remove setas dos inputs numericos das quantidades na tabela de solicitacoes. */
 #tabelaSolicitacoes .vagas-cell input[type="number"] {
     appearance: textfield;
@@ -2955,4 +2979,106 @@ main.container-fluid {
 @keyframes pulsarCiencia {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.48; }
+}
+#dejemOficiaisPage .card {
+    border-radius: 8px;
+}
+
+#dejemOficiaisPage .table thead th {
+    background: #223c6c;
+    color: #fff;
+    white-space: nowrap;
+    font-size: 0.82rem;
+}
+
+#dejemOficiaisPage .table tbody td {
+    vertical-align: middle;
+    font-size: 0.86rem;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-linha-branca > td {
+    background-color: #ffffff;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-linha-cinza > td {
+    background-color: #f3f4f6;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-fim-semana > td {
+    background-color: #fff3cd;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-hoje > td {
+    background-color: #fff3cd;
+    border-top-color: #e6c85c;
+    border-bottom-color: #e6c85c;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-hoje > td:first-child {
+    box-shadow: inset 4px 0 0 #ffc107;
+    font-weight: 700;
+}
+
+#dejemOficiaisPage #selectMesOficiais {
+    min-width: 175px;
+}
+
+#dejemOficiaisPage .filtro-militar-oficiais {
+    width: min(100%, 285px);
+}
+
+#dejemOficiaisPage .resumo-oficiais-card {
+    border-top: 3px solid #4472c4;
+}
+
+#dejemOficiaisPage .resumo-oficiais-card .card-body {
+    padding: 0.85rem 1rem;
+}
+
+#dejemOficiaisPage #cardOfertasOficiaisAdmin .table thead th {
+    font-size: 0.78rem;
+}
+
+#alertaDejemOficialDashboard {
+    border-left: 5px solid #0d6efd;
+}
+
+.icone-tres-estrelas {
+    position: relative;
+    display: inline-block;
+    width: 1.15rem;
+    height: 1rem;
+    vertical-align: -0.12rem;
+}
+
+.icone-tres-estrelas .fa-star {
+    position: absolute;
+    font-size: 0.48rem;
+    line-height: 1;
+}
+
+.icone-tres-estrelas .estrela-superior {
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.icone-tres-estrelas .estrela-inferior-esquerda {
+    bottom: 0;
+    left: 0.08rem;
+}
+
+.icone-tres-estrelas .estrela-inferior-direita {
+    right: 0.08rem;
+    bottom: 0;
+}
+
+@media (max-width: 767.98px) {
+    #dejemOficiaisPage .table-responsive {
+        overflow-x: auto;
+    }
+
+    #dejemOficiaisPage .card-body {
+        padding: 0.85rem;
+    }
 }

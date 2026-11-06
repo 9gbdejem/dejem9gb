@@ -55,6 +55,7 @@ class AppCore {
             'solicitacoes.html',
             'escalas.html',
             'proximas-escalas.html',
+            'dejem-oficiais.html',
             'exclusoes.html',
             'perfil.html',
             'instalar.html'
@@ -67,7 +68,7 @@ class AppCore {
         const destino = document.getElementById('navbarSolicitacoesTesteAcoes');
         if (!destino) return;
 
-        if (Number(nivel) !== 1) {
+        if (![1, 2].includes(Number(nivel))) {
             destino.classList.add('d-none');
             destino.classList.remove('d-flex');
             destino.style.setProperty('display', 'none', 'important');
@@ -81,12 +82,17 @@ class AppCore {
         try {
             const notificacoes = await import('./solicitacoes.js');
             destino.style.display = 'flex';
+            notificacoes.setupAguardandoLiberacao();
             notificacoes.setupNotificacoesSolicitacoes();
             notificacoes.setupSireneLiberacoes();
-            await Promise.all([
-                notificacoes.carregarNotificacoesAdmin(),
-                notificacoes.carregarLiberacoesPendentes()
-            ]);
+            const tarefas = [notificacoes.carregarAguardandoLiberacao()];
+            if (Number(nivel) === 1) {
+                tarefas.push(
+                    notificacoes.carregarNotificacoesAdmin(),
+                    notificacoes.carregarLiberacoesPendentes()
+                );
+            }
+            await Promise.all(tarefas);
         } catch (error) {
             console.error('Erro ao iniciar notificações globais de solicitações:', error);
             destino.style.display = 'none';
@@ -225,7 +231,7 @@ class AppCore {
             
             const html = await response.text();
             
-            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html' || pageUrl === 'proximas-escalas.html' || pageUrl === 'instalar.html') {
+            if (pageUrl === 'escalas.html' || pageUrl === 'exclusoes.html' || pageUrl === 'perfil.html' || pageUrl === 'solicitacoes.html' || pageUrl === 'proximas-escalas.html' || pageUrl === 'dejem-oficiais.html' || pageUrl === 'instalar.html') {
                 await this.loadSpecialPage(html, pageUrl);
             } else {
                 const pageContent = this.extractContent(html, pageUrl);
@@ -269,6 +275,8 @@ class AppCore {
                 await this.loadSolicitacoesScript();
             } else if (pageUrl === 'proximas-escalas.html') {
                 await this.loadProximasEscalasScript();
+            } else if (pageUrl === 'dejem-oficiais.html') {
+                await this.loadDejemOficiaisScript();
             } else if (pageUrl === 'instalar.html') {
                 await this.loadInstalarScript();
             }
@@ -372,6 +380,16 @@ class AppCore {
             }
         } catch (error) {
             console.error('Erro ao carregar próximas escalas:', error);
+            this.showError(error);
+        }
+    }
+
+    async loadDejemOficiaisScript() {
+        try {
+            const modulo = await import('./dejem-oficiais.js');
+            if (modulo?.initDejemOficiais) await modulo.initDejemOficiais();
+        } catch (error) {
+            console.error('Erro ao carregar a DEJEM dos Oficiais:', error);
             this.showError(error);
         }
     }

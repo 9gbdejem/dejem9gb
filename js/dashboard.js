@@ -298,7 +298,7 @@ function renderDashboardBase() {
 
         <hr>
         <div class="text-center text-muted small">
-            <div><strong>Sistema de Gestão de Escalas</strong> - Versão 1.0.6</div>
+            <div><strong>Sistema de Gestão de Escalas</strong> - Versão 1.1.0</div>
             <div>Desenvolvido por Cabo PM Alexandre Alves Ferreira</div>
             <div>© 2026 Corpo de Bombeiros do Estado de São Paulo. Todos os direitos reservados.</div>
         </div>
@@ -374,15 +374,50 @@ async function prepararBotaoResumo() {
     }
 }
 
+async function carregarAlertaDejemOficial(reUsuario) {
+    const container = document.getElementById('alertaDejemOficialDashboard');
+    if (!container || !reUsuario) return;
+
+    try {
+        const snapshot = await get(ref(database, `dejemOficiais/alertas/${reUsuario}`));
+        const alertas = snapshot.exists()
+            ? Object.values(snapshot.val() || {}).filter(item => item && item.ativo !== false)
+            : [];
+
+        if (!alertas.length) {
+            container.className = 'd-none mb-3';
+            container.innerHTML = '';
+            return;
+        }
+
+        const maisProximo = alertas.sort((a, b) =>
+            `${a.data || ''} ${a.horario_inicial || ''}`.localeCompare(`${b.data || ''} ${b.horario_inicial || ''}`))[0];
+        container.className = 'alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3';
+        container.innerHTML = `
+            <div>
+                <strong><i class="fas fa-user-shield me-1"></i>Sua DEJEM está aberta para inscrição.</strong>
+                <div class="small">${escaparHTML(maisProximo.nome_exibicao || maisProximo.composicao_nome || 'Escala de Oficial')} · prazo ${escaparHTML(maisProximo.Prazo_Inscricao || '-')}</div>
+                ${alertas.length > 1 ? `<div class="small">Há ${alertas.length} escalas suas abertas para inscrição.</div>` : ''}
+            </div>
+            <a href="dejem-oficiais.html" class="btn btn-sm btn-primary"><i class="fas fa-eye me-1"></i>Ver escala</a>`;
+    } catch (error) {
+        container.className = 'd-none mb-3';
+        console.error('Erro ao carregar alerta da DEJEM dos Oficiais:', error);
+    }
+}
+
 export async function initDashboard() {
     try {
-        const { userData } = await checkAuth(3);
+        const { userData, re } = await checkAuth(3);
         userNivel = userData.nivel || 3;
 
         renderDashboardBase();
         configurarFiltrosDashboard();
 
-        await prepararBotaoResumo();
+        await Promise.all([
+            prepararBotaoResumo(),
+            carregarAlertaDejemOficial(re)
+        ]);
     } catch (error) {
         const container = document.getElementById('dashboard-content');
         if (container) container.innerHTML = `<div class="alert alert-danger">Erro ao carregar dashboard: ${error.message}</div>`;
