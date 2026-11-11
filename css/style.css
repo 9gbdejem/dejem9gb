@@ -3027,6 +3027,22 @@ main.container-fluid {
     width: min(100%, 285px);
 }
 
+#modalResumoOficiais .tabela-resumo-oficiais {
+    min-width: max-content;
+}
+
+#modalResumoOficiais .titulo-tipo-resumo {
+    max-width: 112px;
+    min-width: 74px;
+    font-size: 0.67rem;
+    line-height: 1.15;
+    white-space: normal;
+}
+
+#modalResumoOficiais .coluna-oficial-resumo {
+    min-width: 235px;
+}
+
 #dejemOficiaisPage .resumo-oficiais-card {
     border-top: 3px solid #4472c4;
 }

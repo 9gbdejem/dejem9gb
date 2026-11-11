@@ -37,6 +37,15 @@ function normalizarTexto(valor) {
         .replace(/\s+/g, ' ').trim().toUpperCase();
 }
 
+function nomeTipoDejemExibicao(oferta) {
+    return String(oferta?.nome_exibicao || oferta?.composicao_nome || '')
+        .replace(/\s*-\s*OFICIAIS?\b/gi, '')
+        .replace(/\bOFICIAIS?\s*-\s*/gi, '')
+        .replace(/\bOFICIAIS?\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function chaveComposicaoOficial(valor) {
     let chave = String(valor || '').trim().toUpperCase().replaceAll(' ', '_');
     ['.', '#', '$', '[', ']', '/'].forEach(caractere => {
@@ -193,6 +202,73 @@ function atualizarResumoMensal() {
     if (restantes) restantes.textContent = String(pendentes);
 }
 
+function ofertasAtivasDoMes() {
+    return Object.entries(ofertasMes || {})
+        .filter(([, oferta]) => oferta?.ativa !== false && oferta?.origem === 'frm_distribuicao')
+        .sort(([, a], [, b]) => nomeTipoDejemExibicao(a)
+            .localeCompare(nomeTipoDejemExibicao(b), 'pt-BR'));
+}
+
+function renderizarResumoOficiais() {
+    const cabecalho = document.getElementById('cabecalhoResumoOficiais');
+    const corpo = document.getElementById('corpoResumoOficiais');
+    const subtitulo = document.getElementById('subtituloResumoOficiais');
+    if (!cabecalho || !corpo) return;
+
+    const ofertas = ofertasAtivasDoMes();
+    const escolhas = Object.values(escolhasMes || {})
+        .filter(escolha => String(escolha?.status || '').toLowerCase() !== 'cancelada');
+    if (subtitulo) subtitulo.textContent = nomeMes(mesAtual);
+
+    if (!ofertas.length || !escolhas.length) {
+        cabecalho.innerHTML = '';
+        corpo.innerHTML = '<tr><td class="text-center text-muted py-4">Nenhuma escolha cadastrada neste mês.</td></tr>';
+        return;
+    }
+
+    const oficiais = new Map();
+    escolhas.forEach(escolha => {
+        const re = String(escolha.oficial_re || '').trim();
+        const chave = re || `${escolha.oficial_nome || ''}_${escolha.ID_Cadastro || ''}`;
+        if (!oficiais.has(chave)) {
+            oficiais.set(chave, {
+                re,
+                nome: militarFormatado(escolha),
+                quantidades: {},
+                total: 0
+            });
+        }
+        const oficial = oficiais.get(chave);
+        const ofertaId = String(escolha.oferta_id || '');
+        oficial.quantidades[ofertaId] = (oficial.quantidades[ofertaId] || 0) + 1;
+        oficial.total += 1;
+    });
+
+    cabecalho.innerHTML = `<tr>
+        <th class="coluna-oficial-resumo">Oficial</th>
+        ${ofertas.map(([, oferta]) => {
+            const nome = nomeTipoDejemExibicao(oferta) || '-';
+            return `<th class="text-center titulo-tipo-resumo" title="${escaparHTML(nome)}">${escaparHTML(nome)}</th>`;
+        }).join('')}
+        <th class="text-center">Total</th>
+    </tr>`;
+
+    const linhas = [...oficiais.values()].sort((a, b) =>
+        a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+    corpo.innerHTML = linhas.map(oficial => `<tr>
+        <td class="coluna-oficial-resumo">${escaparHTML(oficial.nome)}</td>
+        ${ofertas.map(([id]) => `<td class="text-center">${oficial.quantidades[id] || 0}</td>`).join('')}
+        <td class="text-center fw-semibold">${oficial.total}</td>
+    </tr>`).join('');
+}
+
+function abrirResumoOficiais() {
+    renderizarResumoOficiais();
+    const elemento = document.getElementById('modalResumoOficiais');
+    if (!elemento || !window.bootstrap?.Modal) return;
+    window.bootstrap.Modal.getOrCreateInstance(elemento).show();
+}
+
 function renderizarOfertasAdmin() {
     const card = document.getElementById('cardOfertasOficiaisAdmin');
     const corpo = document.getElementById('ofertasOficiaisAdminBody');
@@ -201,7 +277,7 @@ function renderizarOfertasAdmin() {
 
     const ofertas = Object.entries(ofertasMes || {})
         .filter(([, oferta]) => oferta?.ativa !== false && oferta?.origem === 'frm_distribuicao')
-        .sort(([, a], [, b]) => String(a.nome_exibicao || '').localeCompare(String(b.nome_exibicao || ''), 'pt-BR'));
+        .sort(([, a], [, b]) => nomeTipoDejemExibicao(a).localeCompare(nomeTipoDejemExibicao(b), 'pt-BR'));
 
     if (!ofertas.length) {
         corpo.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">Nenhuma vaga cadastrada neste mês.</td></tr>';
@@ -212,7 +288,7 @@ function renderizarOfertasAdmin() {
         const total = Number(oferta.vagas_total || 0);
         const utilizadas = Number(oferta.vagas_ocupadas || 0);
         return `<tr>
-            <td>${escaparHTML(oferta.nome_exibicao || oferta.composicao_nome)}</td>
+            <td>${escaparHTML(nomeTipoDejemExibicao(oferta))}</td>
             <td class="text-center">${total}</td>
             <td class="text-center">${utilizadas}</td>
             <td class="text-center">${Math.max(0, total - utilizadas)}</td>
@@ -700,6 +776,7 @@ function configurarEventos() {
         });
     }, sinal);
     document.getElementById('filtroMilitarOficiais')?.addEventListener('input', renderizarTabela, sinal);
+    document.getElementById('btnResumoOficiais')?.addEventListener('click', abrirResumoOficiais, sinal);
     document.getElementById('inputHoraInicialOficial')?.addEventListener('input', evento => {
         document.getElementById('inputHoraFinalOficial').value = somarOitoHoras(evento.target.value);
     }, sinal);

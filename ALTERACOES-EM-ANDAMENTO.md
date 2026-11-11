@@ -12,6 +12,8 @@ Ainda não definida.
 
 <!-- Registrar abaixo cada alteração concluída ou em teste. -->
 
+- Incluído na página `Oficiais` o botão `Resumo`, com modal que totaliza, por Oficial e tipo de DEJEM, as escolhas do mês selecionado sem realizar nova consulta ao Firebase.
+
 ## Pendências e observações
 
 <!-- Registrar aqui o que ainda depende de teste, validação ou decisão. -->

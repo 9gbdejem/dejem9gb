@@ -114,6 +114,9 @@
 
                         <div class="col-12 d-flex flex-wrap gap-2 justify-content-end">
                             <button type="button" id="btnCancelarEdicaoOficial" class="btn btn-outline-secondary d-none">Cancelar edição</button>
+                            <button type="button" id="btnResumoOficiais" class="btn btn-outline-primary">
+                                <i class="fas fa-table-list me-1"></i>Resumo
+                            </button>
                             <button type="submit" id="btnSalvarEscolhaOficial" class="btn btn-success">
                                 <i class="fas fa-check me-1"></i>Confirmar escolha
                             </button>
@@ -125,10 +128,12 @@
             <div class="card shadow-sm">
                 <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <span class="fw-semibold">Escolhas dos Oficiais</span>
-                    <div class="input-group input-group-sm filtro-militar-oficiais">
-                        <span class="input-group-text"><i class="fas fa-search"></i></span>
-                        <input type="search" id="filtroMilitarOficiais" class="form-control" autocomplete="off"
-                            placeholder="Filtrar por RE ou nome" aria-label="Filtrar escolhas por RE ou nome">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <div class="input-group input-group-sm filtro-militar-oficiais">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="search" id="filtroMilitarOficiais" class="form-control" autocomplete="off"
+                                placeholder="Filtrar por RE ou nome" aria-label="Filtrar escolhas por RE ou nome">
+                        </div>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -144,6 +149,28 @@
                                 <tr><td colspan="10" class="text-center text-muted py-4">Carregando...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="modalResumoOficiais" tabindex="-1" aria-labelledby="tituloResumoOficiais" aria-hidden="true">
+                <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <div>
+                                <h2 class="modal-title fs-5" id="tituloResumoOficiais">Resumo das escolhas de Oficiais</h2>
+                                <div class="small text-muted" id="subtituloResumoOficiais"></div>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0 tabela-resumo-oficiais">
+                                    <thead id="cabecalhoResumoOficiais"></thead>
+                                    <tbody id="corpoResumoOficiais"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
