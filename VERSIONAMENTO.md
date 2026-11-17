@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.2.0**
+**Sistema de Gestão de Escalas - Versão 1.2.1**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,11 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.2.1 - 17/11/2026
+
+- Corrigida a reserva de vagas na página `Oficiais`: antes de salvar uma escolha, o sistema reconcilia as reservas e o contador de vagas ocupadas, desconsiderando escolhas canceladas.
+- Corrigida a apresentação dos tipos de DEJEM para ocultar, somente no frontend, os termos `OFICIAL` e `OFICIAIS` e os hífens adjacentes.
 
 ### 1.2.0 - 17/11/2026
 

@@ -13,6 +13,7 @@ Ainda não definida.
 <!-- Registrar abaixo cada alteração concluída ou em teste. -->
 
 
+
 ## Pendências e observações
 
 <!-- Registrar aqui o que ainda depende de teste, validação ou decisão. -->

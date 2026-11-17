@@ -48,9 +48,9 @@ function normalizarTexto(valor) {
 
 function nomeTipoDejemExibicao(oferta) {
     return String(oferta?.nome_exibicao || oferta?.composicao_nome || '')
-        .replace(/\s*-\s*OFICIAIS?\b/gi, '')
-        .replace(/\bOFICIAIS?\s*-\s*/gi, '')
-        .replace(/\bOFICIAIS?\b/gi, '')
+        .replace(/\s*-\s*(?:OFICIAL|OFICIAIS)\b/gi, '')
+        .replace(/\b(?:OFICIAL|OFICIAIS)\s*-\s*/gi, '')
+        .replace(/\b(?:OFICIAL|OFICIAIS)\b/gi, '')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -688,6 +688,46 @@ function montarSolicitacao(escolha) {
     };
 }
 
+async function reconciliarOfertaAntesDaReserva(chaveMes, ofertaId) {
+    const escolhasSnap = await get(ref(database, `dejemOficiais/escolhas/${chaveMes}`));
+    const escolhas = escolhasSnap.exists() ? escolhasSnap.val() || {} : {};
+    const statusPorEscolha = new Map();
+    const escolhasEstaveis = [];
+
+    Object.entries(escolhas).forEach(([idCadastro, escolha]) => {
+        if (String(escolha?.oferta_id || '') !== String(ofertaId)) return;
+        const status = String(escolha?.status || '').toLowerCase();
+        statusPorEscolha.set(idCadastro, status);
+        if (status !== 'cancelada' && status !== 'reservando') {
+            escolhasEstaveis.push([idCadastro, escolha]);
+        }
+    });
+
+    const ofertaRef = ref(database, `dejemOficiais/ofertas/${chaveMes}/${ofertaId}`);
+    const resultado = await runTransaction(ofertaRef, oferta => {
+        if (!oferta || oferta.origem !== 'frm_distribuicao') return oferta;
+
+        const reservas = { ...(oferta.reservas || {}) };
+        Object.entries(statusPorEscolha).forEach(([idCadastro, status]) => {
+            if (status === 'cancelada') delete reservas[idCadastro];
+        });
+        escolhasEstaveis.forEach(([idCadastro, escolha]) => {
+            reservas[idCadastro] ||= {
+                oficial_re: escolha.oficial_re || '',
+                atualizado_em: escolha.atualizado_em || ''
+            };
+        });
+
+        const reservasAtivas = Object.keys(reservas).filter(idCadastro =>
+            statusPorEscolha.get(idCadastro) !== 'cancelada'
+        ).length;
+        const ocupadas = Math.max(escolhasEstaveis.length, reservasAtivas);
+        return { ...oferta, reservas, vagas_ocupadas: ocupadas };
+    });
+
+    return resultado.snapshot.exists() ? resultado.snapshot.val() : null;
+}
+
 async function reservarEscolha(escolha, anterior = null) {
     const chaveMesNova = escolha.mes_ref.replace('-', '');
     const chaveMesAntiga = anterior?.mes_ref?.replace('-', '');
@@ -699,8 +739,7 @@ async function reservarEscolha(escolha, anterior = null) {
     const mudouIdentificador = Boolean(anterior &&
         (anterior.ID_Cadastro !== escolha.ID_Cadastro || chaveMesAntiga !== chaveMesNova));
 
-    const ofertaServidorSnap = await get(ofertaNovaRef);
-    const ofertaServidor = ofertaServidorSnap.exists() ? ofertaServidorSnap.val() : null;
+    const ofertaServidor = await reconciliarOfertaAntesDaReserva(chaveMesNova, escolha.oferta_id);
     if (!ofertaServidor || ofertaServidor.ativa === false || ofertaServidor.origem !== 'frm_distribuicao') {
         throw new Error('Esta vaga não está mais disponível. Atualize a página e escolha novamente.');
     }
