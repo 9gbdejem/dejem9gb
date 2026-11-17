@@ -14,6 +14,15 @@ let eventos = null;
 let temporizadorMensagem = null;
 let locaisOfertaAtual = {};
 let sequenciaCarregamentoLocais = 0;
+let exibirDiasVazios = true;
+let filtrosTabelaOficiais = {
+    tipos: [],
+    opms: [],
+    codigos: [],
+    status: [],
+    diaInicial: '',
+    diaFinal: ''
+};
 
 const STATUS = {
     aguardando: ['Aguardando', 'secondary'],
@@ -170,9 +179,149 @@ function militarFormatado(escolha) {
         .filter(Boolean).join(' ');
 }
 
+function diasDoMesAtual() {
+    const [ano, mes] = String(mesAtual || '').split('-').map(Number);
+    if (!ano || !mes) return 31;
+    return new Date(ano, mes, 0).getDate();
+}
+
+function datasSemCandidatosDoMes() {
+    const [ano, mes] = String(mesAtual || '').split('-').map(Number);
+    if (!ano || !mes) return [];
+
+    const diasComEscolha = new Set(
+        Object.values(escolhasMes || {}).map(escolha => String(escolha?.data || '').trim()).filter(Boolean)
+    );
+    return Array.from({ length: diasDoMesAtual() }, (_, indice) => {
+        const data = `${ano}-${String(mes).padStart(2, '0')}-${String(indice + 1).padStart(2, '0')}`;
+        return diasComEscolha.has(data) ? '' : data;
+    }).filter(Boolean);
+}
+
+function diaAtendePeriodo(data) {
+    const dia = Number(String(data || '').split('-')[2] || 0);
+    const diaInicial = Number(filtrosTabelaOficiais.diaInicial || 0);
+    const diaFinal = Number(filtrosTabelaOficiais.diaFinal || 0);
+    return (!diaInicial || dia >= diaInicial) && (!diaFinal || dia <= diaFinal);
+}
+
+function haFiltroDeConteudoTabelaOficiais() {
+    return Boolean(normalizarTexto(document.getElementById('filtroMilitarOficiais')?.value)) ||
+        filtrosTabelaOficiais.tipos.length > 0 ||
+        filtrosTabelaOficiais.opms.length > 0 ||
+        filtrosTabelaOficiais.codigos.length > 0 ||
+        filtrosTabelaOficiais.status.length > 0;
+}
+
+function atualizarBotaoDiasVazios() {
+    const botao = document.getElementById('btnDiasVaziosOficiais');
+    if (!botao) return;
+    botao.classList.toggle('btn-danger', exibirDiasVazios);
+    botao.classList.toggle('btn-outline-danger', !exibirDiasVazios);
+    botao.setAttribute('aria-pressed', String(exibirDiasVazios));
+}
+
+function opcoesUnicasOrdenadas(valores, numerico = false) {
+    return [...new Set(valores.map(valor => String(valor || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: numerico, sensitivity: 'base' }));
+}
+
+function preencherOpcoesFiltroMultiplo(containerId, campo, valores, titulo, formatarOpcao = valor => valor) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const selecionados = filtrosTabelaOficiais[campo];
+    const opcoes = opcoesUnicasOrdenadas(valores, campo === 'codigos');
+    filtrosTabelaOficiais[campo] = selecionados.filter(valor => opcoes.includes(valor));
+
+    if (!opcoes.length) {
+        container.innerHTML = '<span class="small text-muted">Nenhuma opção disponível.</span>';
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center gap-3 pb-2 mb-2 border-bottom">
+            <span class="small fw-semibold">${escaparHTML(titulo)}</span>
+            <button type="button" class="btn btn-link btn-sm p-0" data-limpar-filtro="${campo}">Limpar</button>
+        </div>
+        ${opcoes.map((valor, indice) => {
+            const id = `filtroOficiais_${campo}_${indice}`;
+            return `<div class="form-check px-1 py-1">
+                <input class="form-check-input ms-0 me-2 filtro-oficiais-check" type="checkbox" id="${id}"
+                    value="${escaparHTML(valor)}" data-campo="${campo}" ${filtrosTabelaOficiais[campo].includes(valor) ? 'checked' : ''}>
+                <label class="form-check-label small" for="${id}">${escaparHTML(formatarOpcao(valor))}</label>
+            </div>`;
+        }).join('')}`;
+}
+
+function atualizarResumoFiltrosTabelaOficiais() {
+    const configuracoes = [
+        ['tipos', 'resumoFiltroTipoOficiais', 'Todos', 'tipo(s)'],
+        ['opms', 'resumoFiltroOpmOficiais', 'Todas', 'OPM(s)'],
+        ['codigos', 'resumoFiltroCodigoOficiais', 'Todos', 'código(s)'],
+        ['status', 'resumoFiltroStatusOficiais', 'Todos', 'status selecionados']
+    ];
+    configuracoes.forEach(([campo, idResumo, padrao, rotulo]) => {
+        const elemento = document.getElementById(idResumo);
+        const valores = filtrosTabelaOficiais[campo];
+        if (!elemento) return;
+        const unico = campo === 'status' ? (STATUS[valores[0]]?.[0] || valores[0]) : valores[0];
+        elemento.textContent = valores.length === 0 ? padrao :
+            (valores.length === 1 ? unico : `${valores.length} ${rotulo}`);
+    });
+}
+
+function preencherDiasFiltrosTabelaOficiais() {
+    const inicio = document.getElementById('filtroDiaInicialOficiais');
+    const fim = document.getElementById('filtroDiaFinalOficiais');
+    if (!inicio || !fim) return;
+
+    const ultimoDia = diasDoMesAtual();
+    inicio.innerHTML = '<option value="">Todos</option>' + Array.from({ length: ultimoDia }, (_, indice) => {
+        const dia = String(indice + 1);
+        return `<option value="${dia}">${dia}</option>`;
+    }).join('');
+    inicio.value = filtrosTabelaOficiais.diaInicial;
+
+    const diaInicial = Number(filtrosTabelaOficiais.diaInicial || 0);
+    if (!diaInicial) {
+        filtrosTabelaOficiais.diaFinal = '';
+        fim.disabled = true;
+        fim.innerHTML = '<option value="">Selecione o início</option>';
+        return;
+    }
+
+    fim.disabled = false;
+    fim.innerHTML = '<option value="">Até o fim do mês</option>' +
+        Array.from({ length: ultimoDia - diaInicial + 1 }, (_, indice) => {
+            const dia = String(diaInicial + indice);
+            return `<option value="${dia}">${dia}</option>`;
+        }).join('');
+    if (Number(filtrosTabelaOficiais.diaFinal) < diaInicial) filtrosTabelaOficiais.diaFinal = '';
+    fim.value = filtrosTabelaOficiais.diaFinal;
+}
+
+function preencherFiltrosTabelaOficiais() {
+    const escolhas = Object.values(escolhasMes || {});
+    preencherOpcoesFiltroMultiplo(
+        'opcoesFiltroTipoOficiais', 'tipos', escolhas.map(nomeTipoDejemExibicao), 'Selecionar tipos'
+    );
+    preencherOpcoesFiltroMultiplo(
+        'opcoesFiltroOpmOficiais', 'opms', escolhas.map(escolha => escolha.opm_nome || escolha.oficial_opm), 'Selecionar OPMs'
+    );
+    preencherOpcoesFiltroMultiplo(
+        'opcoesFiltroCodigoOficiais', 'codigos', escolhas.map(escolha => escolha.composicao_cod), 'Selecionar códigos'
+    );
+    preencherOpcoesFiltroMultiplo(
+        'opcoesFiltroStatusOficiais', 'status', escolhas.map(escolha => escolha.status || 'sem_status'),
+        'Selecionar status', status => STATUS[status]?.[0] || status
+    );
+    preencherDiasFiltrosTabelaOficiais();
+    atualizarResumoFiltrosTabelaOficiais();
+}
+
 async function carregarMes() {
     const corpo = document.getElementById('dejemOficiaisBody');
-    if (corpo) corpo.innerHTML = '<tr><td colspan="10" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
+    if (corpo) corpo.innerHTML = '<tr><td colspan="11" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
 
     const chaveMes = mesAtual.replace('-', '');
     const [ofertasSnap, escolhasSnap] = await Promise.all([
@@ -182,16 +331,18 @@ async function carregarMes() {
     ofertasMes = ofertasSnap.exists() ? ofertasSnap.val() : {};
     escolhasMes = escolhasSnap.exists() ? escolhasSnap.val() : {};
     preencherOfertas();
+    preencherFiltrosTabelaOficiais();
     atualizarResumoMensal();
     renderizarOfertasAdmin();
     renderizarTabela();
 }
 
 function atualizarResumoMensal() {
-    const ofertas = Object.values(ofertasMes || {}).filter(oferta =>
+    const ofertas = Object.entries(ofertasMes || {}).filter(([, oferta]) =>
         oferta?.ativa !== false && oferta?.origem === 'frm_distribuicao');
-    const disponibilizadas = ofertas.reduce((total, oferta) => total + Number(oferta.vagas_total || 0), 0);
-    const utilizadas = ofertas.reduce((total, oferta) => total + Number(oferta.vagas_ocupadas || 0), 0);
+    const escolhasAtivas = contagemEscolhasAtivasPorOferta();
+    const disponibilizadas = ofertas.reduce((total, [, oferta]) => total + Number(oferta.vagas_total || 0), 0);
+    const utilizadas = ofertas.reduce((total, [id]) => total + (escolhasAtivas[id] || 0), 0);
     const pendentes = Math.max(0, disponibilizadas - utilizadas);
 
     const total = document.getElementById('totalVagasOficiais');
@@ -200,6 +351,15 @@ function atualizarResumoMensal() {
     if (total) total.textContent = String(disponibilizadas);
     if (usadas) usadas.textContent = String(utilizadas);
     if (restantes) restantes.textContent = String(pendentes);
+}
+
+function contagemEscolhasAtivasPorOferta() {
+    return Object.values(escolhasMes || {}).reduce((contagem, escolha) => {
+        if (String(escolha?.status || '').toLowerCase() === 'cancelada') return contagem;
+        const ofertaId = String(escolha?.oferta_id || '').trim();
+        if (ofertaId) contagem[ofertaId] = (contagem[ofertaId] || 0) + 1;
+        return contagem;
+    }, {});
 }
 
 function ofertasAtivasDoMes() {
@@ -284,9 +444,10 @@ function renderizarOfertasAdmin() {
         return;
     }
 
+    const escolhasAtivas = contagemEscolhasAtivasPorOferta();
     corpo.innerHTML = ofertas.map(([id, oferta]) => {
         const total = Number(oferta.vagas_total || 0);
-        const utilizadas = Number(oferta.vagas_ocupadas || 0);
+        const utilizadas = escolhasAtivas[id] || 0;
         return `<tr>
             <td>${escaparHTML(nomeTipoDejemExibicao(oferta))}</td>
             <td class="text-center">${total}</td>
@@ -299,13 +460,14 @@ function renderizarOfertasAdmin() {
 function preencherOfertas() {
     const select = document.getElementById('selectOfertaOficial');
     if (!select) return;
+    const escolhasAtivas = contagemEscolhasAtivasPorOferta();
     const opcoes = Object.entries(ofertasMes)
-        .filter(([, oferta]) => oferta?.ativa !== false && oferta?.origem === 'frm_distribuicao' &&
-            Number(oferta?.vagas_ocupadas || 0) < Number(oferta?.vagas_total || 0))
-        .sort(([, a], [, b]) => String(a.nome_exibicao).localeCompare(String(b.nome_exibicao), 'pt-BR'));
+        .filter(([id, oferta]) => oferta?.ativa !== false && oferta?.origem === 'frm_distribuicao' &&
+            (escolhasAtivas[id] || 0) < Number(oferta?.vagas_total || 0))
+        .sort(([, a], [, b]) => nomeTipoDejemExibicao(a).localeCompare(nomeTipoDejemExibicao(b), 'pt-BR'));
     select.innerHTML = '<option value="">Selecione...</option>' + opcoes.map(([id, oferta]) => {
-        const restantes = Number(oferta.vagas_total || 0) - Number(oferta.vagas_ocupadas || 0);
-        return `<option value="${escaparHTML(id)}">${escaparHTML(oferta.nome_exibicao)} (${restantes} disponível(is))</option>`;
+        const restantes = Number(oferta.vagas_total || 0) - (escolhasAtivas[id] || 0);
+        return `<option value="${escaparHTML(id)}">${escaparHTML(nomeTipoDejemExibicao(oferta))} (${restantes} disponível(is))</option>`;
     }).join('');
     void preencherLocais();
 }
@@ -361,25 +523,57 @@ function renderizarTabela() {
     const escolhasDoMes = Object.values(escolhasMes || {}).sort((a, b) =>
         `${a.data || ''} ${a.horario_inicial || ''}`.localeCompare(`${b.data || ''} ${b.horario_inicial || ''}`));
     const escolhas = escolhasDoMes.filter(escolha => {
-        if (!filtroMilitar) return true;
         const pesquisa = normalizarTexto([
             escolha.oficial_re,
             escolha.oficial_nome,
             escolha.oficial_nome_exibicao
         ].join(' '));
-        return pesquisa.includes(filtroMilitar);
+        const tipo = nomeTipoDejemExibicao(escolha);
+        const opm = String(escolha.opm_nome || escolha.oficial_opm || '').trim();
+        const codigo = String(escolha.composicao_cod || '').trim();
+        const status = String(escolha.status || 'sem_status').trim();
+
+        if (filtroMilitar && !pesquisa.includes(filtroMilitar)) return false;
+        if (filtrosTabelaOficiais.tipos.length && !filtrosTabelaOficiais.tipos.includes(tipo)) return false;
+        if (filtrosTabelaOficiais.opms.length && !filtrosTabelaOficiais.opms.includes(opm)) return false;
+        if (filtrosTabelaOficiais.codigos.length && !filtrosTabelaOficiais.codigos.includes(codigo)) return false;
+        if (filtrosTabelaOficiais.status.length && !filtrosTabelaOficiais.status.includes(status)) return false;
+        if (!diaAtendePeriodo(escolha.data)) return false;
+        return true;
     });
 
-    if (!escolhas.length) {
-        corpo.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4">${
-            escolhasDoMes.length
-                ? 'Nenhum Oficial encontrado para o filtro informado.'
-                : 'Nenhuma escolha cadastrada neste mês.'
+    const diasVazios = exibirDiasVazios && !haFiltroDeConteudoTabelaOficiais()
+        ? datasSemCandidatosDoMes().filter(diaAtendePeriodo)
+        : [];
+    const linhas = [
+        ...escolhas.map(escolha => ({ tipo: 'escolha', data: escolha.data, horario: escolha.horario_inicial, escolha })),
+        ...diasVazios.map(data => ({ tipo: 'vazio', data, horario: '' }))
+    ].sort((a, b) => `${a.data || ''} ${a.horario || ''}`.localeCompare(`${b.data || ''} ${b.horario || ''}`));
+
+    if (!linhas.length) {
+        corpo.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-4">${
+            exibirDiasVazios
+                ? 'Nenhum dia vazio foi encontrado no período selecionado.'
+                : escolhasDoMes.length
+                    ? 'Nenhum Oficial encontrado para o filtro informado.'
+                    : 'Nenhuma escolha cadastrada neste mês.'
         }</td></tr>`;
         return;
     }
 
-    corpo.innerHTML = escolhas.map((escolha, indice) => {
+    let indiceDiaVazio = 0;
+    corpo.innerHTML = linhas.map((linha, indice) => {
+        if (linha.tipo === 'vazio') {
+            const dataExibicao = dataComDiaSemana(linha.data);
+            const classeTom = indiceDiaVazio % 2 === 0 ? 'dejem-oficiais-dia-vazio' : 'dejem-oficiais-dia-vazio-claro';
+            indiceDiaVazio = indiceDiaVazio + 1;
+            return `<tr class="${classeTom}">
+                <td><div>${escaparHTML(dataExibicao.data)}</div><small>${escaparHTML(dataExibicao.diaSemana)}</small></td>
+                ${'<td></td>'.repeat(10)}
+            </tr>`;
+        }
+
+        const escolha = linha.escolha;
         const [rotulo, cor] = STATUS[escolha.status] || [escolha.status || '-', 'secondary'];
         const podeAlterar = escolha.status === 'aguardando' &&
             (acessoAtual.administrador || String(escolha.oficial_re) === acessoAtual.re);
@@ -394,6 +588,7 @@ function renderizarTabela() {
             <td>${escaparHTML(escolha.horario_final)}</td>
             <td>${escaparHTML(militarFormatado(escolha))}</td>
             <td>${escaparHTML(escolha.opm_nome || escolha.oficial_opm || '-')}</td>
+            <td>${escaparHTML(nomeTipoDejemExibicao(escolha) || '-')}</td>
             <td>${escaparHTML(escolha.composicao_cod || '-')}</td>
             <td>${escaparHTML(escolha.Prazo_Inscricao || '-')}</td>
             <td>${escaparHTML(escolha.ID_Escala || '-')}</td>
@@ -765,6 +960,7 @@ function configurarEventos() {
     const sinal = { signal: eventos.signal };
     document.getElementById('selectMesOficiais')?.addEventListener('change', async evento => {
         mesAtual = evento.target.value;
+        filtrosTabelaOficiais = { tipos: [], opms: [], codigos: [], status: [], diaInicial: '', diaFinal: '' };
         limparFormulario();
         document.getElementById('inputDataOficial').min = `${mesAtual}-01`;
         document.getElementById('inputDataOficial').max = `${mesAtual}-31`;
@@ -776,6 +972,47 @@ function configurarEventos() {
         });
     }, sinal);
     document.getElementById('filtroMilitarOficiais')?.addEventListener('input', renderizarTabela, sinal);
+    document.getElementById('btnDiasVaziosOficiais')?.addEventListener('click', () => {
+        exibirDiasVazios = !exibirDiasVazios;
+        atualizarBotaoDiasVazios();
+        renderizarTabela();
+    }, sinal);
+    document.getElementById('filtrosTabelaOficiais')?.addEventListener('change', evento => {
+        const checkbox = evento.target.closest('.filtro-oficiais-check');
+        if (checkbox) {
+            const campo = checkbox.dataset.campo;
+            filtrosTabelaOficiais[campo] = [...document.querySelectorAll(`.filtro-oficiais-check[data-campo="${campo}"]:checked`)]
+                .map(item => item.value);
+            atualizarResumoFiltrosTabelaOficiais();
+            renderizarTabela();
+            return;
+        }
+
+        if (evento.target.id === 'filtroDiaInicialOficiais') {
+            filtrosTabelaOficiais.diaInicial = evento.target.value;
+            filtrosTabelaOficiais.diaFinal = '';
+            preencherDiasFiltrosTabelaOficiais();
+            renderizarTabela();
+            return;
+        }
+
+        if (evento.target.id === 'filtroDiaFinalOficiais') {
+            filtrosTabelaOficiais.diaFinal = evento.target.value;
+            renderizarTabela();
+        }
+    }, sinal);
+    document.getElementById('filtrosTabelaOficiais')?.addEventListener('click', evento => {
+        const botao = evento.target.closest('[data-limpar-filtro]');
+        if (!botao) return;
+        evento.preventDefault();
+        const campo = botao.dataset.limparFiltro;
+        filtrosTabelaOficiais[campo] = [];
+        document.querySelectorAll(`.filtro-oficiais-check[data-campo="${campo}"]`).forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        atualizarResumoFiltrosTabelaOficiais();
+        renderizarTabela();
+    }, sinal);
     document.getElementById('btnResumoOficiais')?.addEventListener('click', abrirResumoOficiais, sinal);
     document.getElementById('inputHoraInicialOficial')?.addEventListener('input', evento => {
         document.getElementById('inputHoraFinalOficial').value = somarOitoHoras(evento.target.value);
@@ -815,6 +1052,7 @@ export async function initDejemOficiais() {
 
         preencherMeses();
         configurarEventos();
+        atualizarBotaoDiasVazios();
         oficialAdminSelecionado = acessoAtual.administrador ? null : acessoAtual.militar;
         document.getElementById('grupoOficialAdmin').classList.toggle('d-none', !acessoAtual.administrador);
         document.getElementById('inputDataOficial').min = `${mesAtual}-01`;

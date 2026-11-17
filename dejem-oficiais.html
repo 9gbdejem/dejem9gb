@@ -114,9 +114,6 @@
 
                         <div class="col-12 d-flex flex-wrap gap-2 justify-content-end">
                             <button type="button" id="btnCancelarEdicaoOficial" class="btn btn-outline-secondary d-none">Cancelar edição</button>
-                            <button type="button" id="btnResumoOficiais" class="btn btn-outline-primary">
-                                <i class="fas fa-table-list me-1"></i>Resumo
-                            </button>
                             <button type="submit" id="btnSalvarEscolhaOficial" class="btn btn-success">
                                 <i class="fas fa-check me-1"></i>Confirmar escolha
                             </button>
@@ -126,13 +123,75 @@
             </div>
 
             <div class="card shadow-sm">
-                <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="card-header d-flex flex-wrap align-items-center gap-2">
                     <span class="fw-semibold">Escolhas dos Oficiais</span>
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <div class="input-group input-group-sm filtro-militar-oficiais">
-                            <span class="input-group-text"><i class="fas fa-search"></i></span>
-                            <input type="search" id="filtroMilitarOficiais" class="form-control" autocomplete="off"
-                                placeholder="Filtrar por RE ou nome" aria-label="Filtrar escolhas por RE ou nome">
+                </div>
+                <div class="card-body py-2 border-bottom">
+                    <div id="filtrosTabelaOficiais" class="row g-2 align-items-end">
+                        <div class="col-12 col-lg-2">
+                            <label for="filtroMilitarOficiais" class="form-label small mb-1">Militar</label>
+                            <div class="input-group input-group-sm filtro-militar-oficiais">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                <input type="search" id="filtroMilitarOficiais" class="form-control" autocomplete="off"
+                                    placeholder="RE ou nome" aria-label="Filtrar escolhas por RE ou nome">
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-4 col-lg">
+                            <label class="form-label small mb-1">Tipo</label>
+                            <div class="dropdown filtro-tabela-oficiais" id="filtroTipoOficiais">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
+                                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                    <span id="resumoFiltroTipoOficiais">Todos</span>
+                                </button>
+                                <div class="dropdown-menu p-2" id="opcoesFiltroTipoOficiais"></div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-4 col-lg">
+                            <label class="form-label small mb-1">OPM</label>
+                            <div class="dropdown filtro-tabela-oficiais" id="filtroOpmOficiais">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
+                                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                    <span id="resumoFiltroOpmOficiais">Todas</span>
+                                </button>
+                                <div class="dropdown-menu p-2" id="opcoesFiltroOpmOficiais"></div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-4 col-lg">
+                            <label class="form-label small mb-1">Código</label>
+                            <div class="dropdown filtro-tabela-oficiais" id="filtroCodigoOficiais">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
+                                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                    <span id="resumoFiltroCodigoOficiais">Todos</span>
+                                </button>
+                                <div class="dropdown-menu p-2" id="opcoesFiltroCodigoOficiais"></div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-lg-1">
+                            <label for="filtroDiaInicialOficiais" class="form-label small mb-1">Início</label>
+                            <select id="filtroDiaInicialOficiais" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-6 col-lg-1">
+                            <label for="filtroDiaFinalOficiais" class="form-label small mb-1">Fim</label>
+                            <select id="filtroDiaFinalOficiais" class="form-select form-select-sm" disabled></select>
+                        </div>
+                        <div class="col-12 col-sm-4 col-lg-2">
+                            <label class="form-label small mb-1">Status</label>
+                            <div class="dropdown filtro-tabela-oficiais" id="filtroStatusOficiais">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
+                                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                    <span id="resumoFiltroStatusOficiais">Todos</span>
+                                </button>
+                                <div class="dropdown-menu p-2" id="opcoesFiltroStatusOficiais"></div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-lg-auto d-flex align-items-end">
+                            <button type="button" id="btnDiasVaziosOficiais" class="btn btn-danger btn-sm w-100"
+                                aria-pressed="true">DIAS VAZIOS</button>
+                        </div>
+                        <div class="col-12 col-lg-auto d-flex align-items-end">
+                            <button type="button" id="btnResumoOficiais" class="btn btn-outline-primary btn-sm w-100">
+                                <i class="fas fa-table-list me-1"></i>Resumo
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -142,11 +201,11 @@
                             <thead>
                                 <tr>
                                     <th>Data</th><th>Início</th><th>Término</th><th>Militar</th><th>OPM</th>
-                                    <th>Código</th><th>Prazo</th><th>ID</th><th>Status</th><th>Ações</th>
+                                    <th>Tipo</th><th>Código</th><th>Prazo</th><th>ID</th><th>Status</th><th>Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="dejemOficiaisBody">
-                                <tr><td colspan="10" class="text-center text-muted py-4">Carregando...</td></tr>
+                                <tr><td colspan="11" class="text-center text-muted py-4">Carregando...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -155,20 +214,25 @@
 
             <div class="modal fade" id="modalResumoOficiais" tabindex="-1" aria-labelledby="tituloResumoOficiais" aria-hidden="true">
                 <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-                    <div class="modal-content">
+                    <div class="modal-content modal-resumo-oficiais">
                         <div class="modal-header">
-                            <div>
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="modal-resumo-oficiais-icone"><i class="fas fa-chart-column"></i></span>
+                                <div>
                                 <h2 class="modal-title fs-5" id="tituloResumoOficiais">Resumo das escolhas de Oficiais</h2>
                                 <div class="small text-muted" id="subtituloResumoOficiais"></div>
+                                </div>
                             </div>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                         </div>
-                        <div class="modal-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-hover align-middle mb-0 tabela-resumo-oficiais">
-                                    <thead id="cabecalhoResumoOficiais"></thead>
-                                    <tbody id="corpoResumoOficiais"></tbody>
-                                </table>
+                        <div class="modal-body">
+                            <div class="resumo-oficiais-tabela-wrap">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover align-middle mb-0 tabela-resumo-oficiais">
+                                        <thead id="cabecalhoResumoOficiais"></thead>
+                                        <tbody id="corpoResumoOficiais"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>

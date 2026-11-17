@@ -3009,13 +3009,37 @@ main.container-fluid {
 }
 
 #dejemOficiaisPage .table tbody tr.dejem-oficiais-hoje > td {
-    background-color: #fff3cd;
-    border-top-color: #e6c85c;
-    border-bottom-color: #e6c85c;
+    background-color: #e7f6ec;
+    border-top-color: #8ac8a0;
+    border-bottom-color: #8ac8a0;
 }
 
 #dejemOficiaisPage .table tbody tr.dejem-oficiais-hoje > td:first-child {
-    box-shadow: inset 4px 0 0 #ffc107;
+    box-shadow: inset 4px 0 0 #198754;
+    font-weight: 700;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-dia-vazio > td {
+    background-color: #fdebec;
+    border-top-color: #efb7bc;
+    border-bottom-color: #efb7bc;
+    color: #8a3039;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-dia-vazio > td:first-child {
+    box-shadow: inset 4px 0 0 #dc3545;
+    font-weight: 700;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-dia-vazio-claro > td {
+    background-color: #fff5f5;
+    border-top-color: #f4d3d6;
+    border-bottom-color: #f4d3d6;
+    color: #8a3039;
+}
+
+#dejemOficiaisPage .table tbody tr.dejem-oficiais-dia-vazio-claro > td:first-child {
+    box-shadow: inset 4px 0 0 #ea868f;
     font-weight: 700;
 }
 
@@ -3027,20 +3051,158 @@ main.container-fluid {
     width: min(100%, 285px);
 }
 
+#dejemOficiaisPage .filtro-tabela-oficiais {
+    position: relative;
+}
+
+#dejemOficiaisPage .filtro-tabela-oficiais .dropdown-menu {
+    z-index: 1060;
+    min-width: 235px;
+    max-width: min(360px, calc(100vw - 2rem));
+    max-height: min(360px, 55vh);
+    overflow-y: auto;
+}
+
+#modalResumoOficiais .modal-resumo-oficiais {
+    overflow: hidden;
+    border: 0;
+    border-radius: 14px;
+    box-shadow: 0 22px 56px rgba(15, 23, 42, 0.24);
+}
+
+#modalResumoOficiais .modal-header {
+    min-height: 78px;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #dce5f0;
+    background: linear-gradient(135deg, #f7faff 0%, #edf3fb 100%);
+}
+
+#modalResumoOficiais .modal-title {
+    margin: 0;
+    color: #1d3557;
+    font-weight: 700;
+}
+
+#modalResumoOficiais #subtituloResumoOficiais {
+    margin-top: 0.15rem;
+    color: #5c6c80 !important;
+}
+
+#modalResumoOficiais .modal-resumo-oficiais-icone {
+    display: inline-flex;
+    width: 2.35rem;
+    height: 2.35rem;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 10px;
+    color: #fff;
+    background: #4472c4;
+    box-shadow: 0 5px 12px rgba(68, 114, 196, 0.28);
+}
+
+#modalResumoOficiais .modal-resumo-oficiais-icone i {
+    color: #fff !important;
+    font-size: 1rem;
+}
+
+#modalResumoOficiais .btn-close {
+    width: 2rem;
+    height: 2rem;
+    margin: 0;
+    border: 1px solid #cfd9e6;
+    border-radius: 50%;
+    background-color: #fff;
+    opacity: 0.8;
+}
+
+#modalResumoOficiais .btn-close:hover {
+    opacity: 1;
+    background-color: #f4f7fb;
+}
+
+#modalResumoOficiais .modal-body {
+    padding: 1.15rem 1.25rem 1.3rem;
+    background: #f8fafc;
+}
+
+#modalResumoOficiais .resumo-oficiais-tabela-wrap {
+    overflow: hidden;
+    border: 1px solid #dce5f0;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+#modalResumoOficiais .table-responsive {
+    max-height: min(60vh, 540px);
+}
+
 #modalResumoOficiais .tabela-resumo-oficiais {
     min-width: max-content;
+}
+
+#modalResumoOficiais .tabela-resumo-oficiais thead th {
+    padding: 0.75rem 0.65rem;
+    border-bottom: 1px solid #cfd9e6;
+    color: #243a5a;
+    background: #eef3fb;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
+
+#modalResumoOficiais .tabela-resumo-oficiais tbody td {
+    padding: 0.68rem 0.65rem;
+    border-color: #e7edf5;
+    color: #27364a;
+}
+
+#modalResumoOficiais .tabela-resumo-oficiais tbody tr:hover td {
+    background-color: #f4f8fd;
+}
+
+#modalResumoOficiais .tabela-resumo-oficiais th:last-child,
+#modalResumoOficiais .tabela-resumo-oficiais td:last-child {
+    color: #1d4f91;
+    background-color: #f3f7fd;
+    font-weight: 700;
 }
 
 #modalResumoOficiais .titulo-tipo-resumo {
     max-width: 112px;
     min-width: 74px;
     font-size: 0.67rem;
-    line-height: 1.15;
+    line-height: 1.2;
     white-space: normal;
 }
 
 #modalResumoOficiais .coluna-oficial-resumo {
     min-width: 235px;
+    font-weight: 600;
+}
+
+@media (max-width: 575.98px) {
+    #modalResumoOficiais .modal-header {
+        min-height: 70px;
+        padding: 0.85rem 1rem;
+    }
+
+    #modalResumoOficiais .modal-body {
+        padding: 0.85rem;
+    }
+
+    #modalResumoOficiais .modal-resumo-oficiais-icone {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 8px;
+    }
+
+    #modalResumoOficiais .coluna-oficial-resumo {
+        min-width: 190px;
+    }
 }
 
 #dejemOficiaisPage .resumo-oficiais-card {

@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.1.0**
+**Sistema de Gestão de Escalas - Versão 1.2.0**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,15 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.2.0 - 17/11/2026
+
+- Incluído na página `Oficiais` o botão `Resumo`, com modal que totaliza, por Oficial e tipo de DEJEM, as escolhas do mês selecionado sem realizar nova consulta ao Firebase.
+- Ajustados os totais, a tabela administrativa e a disponibilidade das vagas para desconsiderar escolhas canceladas.
+- Incluídos filtros por militar, tipo, OPM, código, status e período por dias na tabela de escolhas dos Oficiais.
+- Acrescentada a coluna `Tipo` à tabela de escolhas e padronizada a exibição dos nomes dos tipos sem o texto redundante `OFICIAL` ou `OFICIAIS`.
+- Incluído o botão alternável `DIAS VAZIOS`, iniciado como ativo, para exibir as datas sem candidatos em dois tons suaves de vermelho.
+- Modernizado o modal `Resumo`, com espaçamento interno, cabeçalho visual, tabela enquadrada e adaptação para telas menores.
 
 ### 1.1.0 - 06/11/2026
 
