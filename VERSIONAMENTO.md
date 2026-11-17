@@ -2,7 +2,7 @@
 
 ## Versão atual
 
-**Sistema de Gestão de Escalas - Versão 1.2.1**
+**Sistema de Gestão de Escalas - Versão 1.2.2**
 
 O número exibido no Dashboard é a referência oficial da versão entregue aos usuários.
 
@@ -45,6 +45,11 @@ git push origin main --follow-tags
 Não criar versão quando a alteração ainda estiver em teste, incompleta ou depender de validação operacional. Nesse caso, registrar a situação em `ALTERACOES-EM-ANDAMENTO.md` e aguardar o fechamento para upload.
 
 ## Histórico
+
+### 1.2.2 - 17/11/2026
+
+- Ajustada a distribuição de vagas dos Oficiais: escolhas sincronizadas como `Cancelada` ou `Nenhum inscrito` não ocupam mais a vaga do respectivo tipo de DEJEM.
+- A reconciliação das reservas remove escolhas sem inscritos antes de registrar uma nova escolha, liberando a vaga de forma segura e evitando contagens divergentes nos cards, listas e resumo.
 
 ### 1.2.1 - 17/11/2026
 

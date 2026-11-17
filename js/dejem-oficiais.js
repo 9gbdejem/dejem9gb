@@ -35,6 +35,14 @@ const STATUS = {
     divergencia: ['Divergência', 'danger']
 };
 
+function escolhaOcupaVagaDistribuida(escolhaOuStatus) {
+    const status = typeof escolhaOuStatus === 'object'
+        ? escolhaOuStatus?.status
+        : escolhaOuStatus;
+    const normalizado = String(status || '').trim().toLowerCase();
+    return normalizado !== 'cancelada' && normalizado !== 'nenhum_inscrito';
+}
+
 function escaparHTML(valor) {
     return String(valor ?? '')
         .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -355,7 +363,7 @@ function atualizarResumoMensal() {
 
 function contagemEscolhasAtivasPorOferta() {
     return Object.values(escolhasMes || {}).reduce((contagem, escolha) => {
-        if (String(escolha?.status || '').toLowerCase() === 'cancelada') return contagem;
+        if (!escolhaOcupaVagaDistribuida(escolha)) return contagem;
         const ofertaId = String(escolha?.oferta_id || '').trim();
         if (ofertaId) contagem[ofertaId] = (contagem[ofertaId] || 0) + 1;
         return contagem;
@@ -377,7 +385,7 @@ function renderizarResumoOficiais() {
 
     const ofertas = ofertasAtivasDoMes();
     const escolhas = Object.values(escolhasMes || {})
-        .filter(escolha => String(escolha?.status || '').toLowerCase() !== 'cancelada');
+        .filter(escolha => escolhaOcupaVagaDistribuida(escolha));
     if (subtitulo) subtitulo.textContent = nomeMes(mesAtual);
 
     if (!ofertas.length || !escolhas.length) {
@@ -698,7 +706,7 @@ async function reconciliarOfertaAntesDaReserva(chaveMes, ofertaId) {
         if (String(escolha?.oferta_id || '') !== String(ofertaId)) return;
         const status = String(escolha?.status || '').toLowerCase();
         statusPorEscolha.set(idCadastro, status);
-        if (status !== 'cancelada' && status !== 'reservando') {
+        if (escolhaOcupaVagaDistribuida(status) && status !== 'reservando') {
             escolhasEstaveis.push([idCadastro, escolha]);
         }
     });
@@ -709,7 +717,7 @@ async function reconciliarOfertaAntesDaReserva(chaveMes, ofertaId) {
 
         const reservas = { ...(oferta.reservas || {}) };
         Object.entries(statusPorEscolha).forEach(([idCadastro, status]) => {
-            if (status === 'cancelada') delete reservas[idCadastro];
+            if (!escolhaOcupaVagaDistribuida(status)) delete reservas[idCadastro];
         });
         escolhasEstaveis.forEach(([idCadastro, escolha]) => {
             reservas[idCadastro] ||= {
@@ -718,9 +726,10 @@ async function reconciliarOfertaAntesDaReserva(chaveMes, ofertaId) {
             };
         });
 
-        const reservasAtivas = Object.keys(reservas).filter(idCadastro =>
-            statusPorEscolha.get(idCadastro) !== 'cancelada'
-        ).length;
+        const reservasAtivas = Object.keys(reservas).filter(idCadastro => {
+            const status = statusPorEscolha.get(idCadastro);
+            return status === undefined || escolhaOcupaVagaDistribuida(status);
+        }).length;
         const ocupadas = Math.max(escolhasEstaveis.length, reservasAtivas);
         return { ...oferta, reservas, vagas_ocupadas: ocupadas };
     });
